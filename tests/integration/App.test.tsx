@@ -163,6 +163,7 @@ describe("App integration with MSW", () => {
     toastErrorMock.mockReset();
   });
 
+  // The full async app flow can exceed Vitest's default 5-second budget when files run in parallel.
   it("covers basic provider flows via real hooks", async () => {
     const { default: App } = await import("@/App");
     renderApp(App);
@@ -218,7 +219,7 @@ describe("App integration with MSW", () => {
 
     expect(toastErrorMock).not.toHaveBeenCalled();
     expect(toastSuccessMock).toHaveBeenCalled();
-  });
+  }, 15_000);
 
   it("shows toast when auto sync fails in background", async () => {
     const { default: App } = await import("@/App");
