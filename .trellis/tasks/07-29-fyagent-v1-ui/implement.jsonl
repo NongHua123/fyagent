@@ -1,0 +1,3 @@
+{"file":"docs/fyagent/dev/v1/09-FRONTEND-UI-I18N.md","reason":"前端分层、状态表、文案和禁止控件规范"}
+{"file":"docs/fyagent/dev/v1/05-DOMAIN-MODEL-STATE-MACHINE-IPC.md","reason":"Rust/TS DTO、event snapshot 与 sequence 契约"}
+{"file":".trellis/spec/frontend/index.md","reason":"现有 renderer 分层、i18n 与质量约定索引"}

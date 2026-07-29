@@ -1,0 +1,3 @@
+{"file":"docs/fyagent/dev/v1/00-AGENT-START-HERE.md","reason":"冻结 V1 权威、平台范围、质量门和冲突裁决"}
+{"file":"docs/fyagent/dev/v1/02-REQUIREMENTS-AND-DECISIONS.md","reason":"P0/P1/EXP 需求与最终决策基线"}
+{"file":"docs/fyagent/dev/v1/12-IMPLEMENTATION-SEQUENCE.md","reason":"父任务的依赖图、里程碑和回滚顺序"}

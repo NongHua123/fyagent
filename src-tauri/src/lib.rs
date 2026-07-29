@@ -5,6 +5,8 @@ mod claude_desktop_config;
 mod claude_mcp;
 mod claude_plugin;
 mod codex_config;
+pub mod codex_desktop;
+mod codex_desktop_runtime;
 mod codex_history_migration;
 mod codex_state_db;
 mod commands;
@@ -39,6 +41,7 @@ mod tray;
 mod usage_events;
 mod usage_script;
 
+use crate::codex_desktop::types::JobStage;
 pub use app_config::{AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps};
 pub use codex_config::{get_codex_auth_path, get_codex_config_path, write_codex_live_atomic};
 pub use commands::open_provider_terminal;
@@ -68,6 +71,7 @@ pub use settings::{update_settings, AppSettings};
 pub use store::AppState;
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_opener::OpenerExt;
 
 use std::{fmt, sync::Arc};
 #[cfg(target_os = "macos")]
@@ -76,6 +80,32 @@ use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::RunEvent;
 use tauri::{Emitter, Manager};
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+
+/// Handles the two reserved experimental all-users installer flags before the
+/// Tauri runtime exists.  This public binary-facing shim deliberately exposes
+/// no renderer/IPC operation; ordinary startup remains unchanged.
+pub fn maybe_run_codex_desktop_headless() -> Option<i32> {
+    #[cfg(target_os = "windows")]
+    {
+        codex_desktop::platform::windows::elevation::maybe_run_from_process()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        use codex_desktop::all_users::{
+            parse_headless_invocation, HeadlessInvocation, HEADLESS_EXIT_INVALID_ARGUMENTS,
+            HEADLESS_EXIT_UNSUPPORTED,
+        };
+
+        match parse_headless_invocation(std::env::args_os()) {
+            HeadlessInvocation::NormalApplication => None,
+            HeadlessInvocation::InvalidReservedArguments => Some(HEADLESS_EXIT_INVALID_ARGUMENTS),
+            HeadlessInvocation::PrepareAllUsers | HeadlessInvocation::ElevatedProvision { .. } => {
+                Some(HEADLESS_EXIT_UNSUPPORTED)
+            }
+        };
+    }
+}
 
 #[cfg(target_os = "windows")]
 fn set_windows_app_user_model_id(app: &tauri::AppHandle) {
@@ -456,27 +486,30 @@ pub fn run() {
 
                 // 用户配置存在数据库中，数据库尚未打开时使用保守的 Info 级别。
                 log::set_max_level(log::LevelFilter::Info);
-                log::info!("=== CC Switch v{} started ===", env!("CARGO_PKG_VERSION"));
+                log::info!("=== FyAgent v{} started ===", env!("CARGO_PKG_VERSION"));
             }
 
             // 首次读取覆盖路径时 logger 尚未可用；此处重放一次，
             // 让 Store 损坏或路径无效等启动警告能够真正落盘。
             let _ = app_store::refresh_app_config_dir_override(app.handle());
 
-            #[cfg(target_os = "windows")]
-            set_windows_app_user_model_id(app.handle());
-
-            // 注册 Updater 插件（桌面端）；放在 logger 之后，确保失败可诊断。
-            #[cfg(desktop)]
-            {
-                if let Err(e) = app
-                    .handle()
-                    .plugin(tauri_plugin_updater::Builder::new().build())
-                {
-                    // 若配置不完整（如缺少 pubkey），跳过 Updater 而不中断应用
-                    log::warn!("初始化 Updater 插件失败，已跳过：{e}");
+            match crate::codex_desktop::temp::JobTempDir::cleanup_stale_system_root() {
+                Ok(removed) if removed > 0 => {
+                    log::info!(
+                        "Codex desktop installer removed {removed} stale temporary job directories"
+                    );
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    log::warn!(
+                        "Codex desktop installer stale temporary cleanup failed with {:?}",
+                        error.code()
+                    );
                 }
             }
+
+            #[cfg(target_os = "windows")]
+            set_windows_app_user_model_id(app.handle());
 
             // 注入 AppHandle 给 usage_events，让无 AppHandle 持有的写日志路径
             // 也能向前端推送 `usage-log-recorded`。
@@ -617,6 +650,39 @@ pub fn run() {
 
             // 设置 AppHandle 用于代理故障转移时的 UI 更新
             app_state.proxy_service.set_app_handle(app.handle().clone());
+
+            let job_event_handle = app.handle().clone();
+            app_state
+                .codex_desktop_service
+                .attach_job_event_sink(Arc::new(move |snapshot| {
+                    if let Err(error) = job_event_handle.emit(
+                        crate::services::codex_desktop::JOB_UPDATED_EVENT,
+                        snapshot,
+                    ) {
+                        // Event delivery is observational only. The service remains the source
+                        // of truth and a later query can recover the complete snapshot.
+                        log::warn!(
+                            "Codex desktop installer could not emit a job snapshot: {error}"
+                        );
+                    }
+                }));
+
+            let log_opener_handle = app.handle().clone();
+            app_state
+                .codex_desktop_service
+                .attach_log_directory_opener(Arc::new(move |directory: &std::path::Path| {
+                    log_opener_handle
+                        .opener()
+                        .open_path(directory.to_string_lossy().to_string(), None::<String>)
+                        .map_err(|_| {
+                            crate::codex_desktop::error::InstallerError::new(
+                                crate::codex_desktop::error::InstallerErrorCode::InternalError,
+                            )
+                            .with_diagnostic_message(
+                                "the application log directory could not be opened",
+                            )
+                        })
+                }));
 
             // ============================================================
             // 按表独立判断的导入逻辑（各类数据独立检查，互不影响）
@@ -1035,7 +1101,7 @@ pub fn run() {
 
             // 构建托盘
             let mut tray_builder = TrayIconBuilder::with_id(tray::TRAY_ID)
-                .tooltip("CC Switch") // 鼠标悬停提示
+                .tooltip("FyAgent") // 鼠标悬停提示
                 .on_tray_icon_event(|tray, event| match event {
                     // 鼠标悬停/点击到托盘图标时，后台异步刷新用量缓存，
                     // 让用户下一次（或快速打开菜单的那一刻）看到较新的数字。
@@ -1350,9 +1416,6 @@ pub fn run() {
             commands::get_log_config,
             commands::set_log_config,
             commands::restart_app,
-            commands::install_update_and_restart,
-            commands::check_app_update_available,
-            commands::check_for_updates,
             commands::is_portable_mode,
             commands::copy_text_to_clipboard,
             commands::get_claude_plugin_status,
@@ -1631,6 +1694,13 @@ pub fn run() {
             commands::enter_lightweight_mode,
             commands::exit_lightweight_mode,
             commands::is_lightweight_mode,
+            commands::codex_desktop_get_local_status,
+            commands::codex_desktop_check_latest,
+            commands::codex_desktop_get_job,
+            commands::codex_desktop_start_install,
+            commands::codex_desktop_cancel_install,
+            commands::codex_desktop_launch,
+            commands::codex_desktop_open_log_directory,
         ]);
 
     let app = builder
@@ -1648,51 +1718,93 @@ pub fn run() {
                     api.prevent_exit();
                     return;
                 }
-                // code 为 RESTART_EXIT_CODE：app.restart() / 自更新 relaunch 发起的重启。
-                // 这条路径上 prevent_exit() 会被 Tauri 忽略，事件循环必定退出，随后由
-                // Tauri 在 RunEvent::Exit 后用新二进制 re-exec（macOS 会按更新后的
-                // Info.plist 解析可执行名）。
-                //
-                // 绝不能复用下面的异步清理任务：该任务在 tokio 线程调 save_window_state，
-                // 持有 window-state 插件锁的同时向主线程查询窗口几何；而主线程此刻正在
-                // 退出事件循环，并在插件自带的 RunEvent::Exit 钩子里等待同一把锁——双方
-                // 互等造成进程永久卡死（更新已安装但应用冻结、不再重启，见 #3998）。
-                //
-                // 重启路径交还 Tauri 默认流程即可：
-                //   - 窗口状态：插件 Exit 钩子在主线程保存（同线程读取窗口几何，无死锁）
-                //   - 托盘图标：Tauri 内部 cleanup_before_exit 清理，正常走 Drop
-                //   - 代理/Live 配置：无需恢复，重启后新实例立即接管并恢复代理状态
-                //   - 100ms 落盘等待：重启前的 DB 写入均为命令驱动、此刻已完成，
-                //     与所有 Tauri 应用默认重启路径的行为一致，无需额外等待
+                // 重启不拦截：Tauri 的默认 re-exec 路径会在主线程保存窗口状态，避免
+                // 自定义异步清理和 window-state 插件的退出钩子争用同一把锁。
                 ExitRequestAction::DeferToTauriRestart => {
-                    log::info!("收到重启请求 (code={code:?})，交由 Tauri 默认重启流程 re-exec");
+                    log::info!("收到重启请求 (code={code:?})，交由 Tauri 默认重启流程处理");
                     return;
                 }
-                // 其它 Some(_)：用户主动调用 app.exit() 退出（如托盘菜单"退出"），
-                // 此时执行清理后退出。
+                // 其它 Some(_)：用户主动调用 app.exit() 退出（如托盘菜单"退出"）。
                 ExitRequestAction::CleanupAndExit => {}
+            }
+
+            let installer_job = match app_handle.try_state::<store::AppState>() {
+                Some(state) => match state.codex_desktop_service.get_job() {
+                    Ok(job) => job,
+                    Err(error) => {
+                        log::warn!(
+                            "Codex desktop installer state could not be inspected during exit: {:?}",
+                            error.code()
+                        );
+                        api.prevent_exit();
+                        show_codex_desktop_exit_status_unavailable_dialog(app_handle);
+                        return;
+                    }
+                },
+                None => None,
+            };
+
+            match classify_codex_desktop_exit_protection(
+                installer_job
+                    .as_ref()
+                    .map(|job| (job.stage, job.cancellable)),
+            ) {
+                CodexDesktopExitProtection::AllowExit => {}
+                CodexDesktopExitProtection::ConfirmCancellation => {
+                    api.prevent_exit();
+                    let Some(job) = installer_job else {
+                        return;
+                    };
+                    if !confirm_codex_desktop_installation_cancellation(app_handle) {
+                        return;
+                    }
+
+                    let Some(state) = app_handle.try_state::<store::AppState>() else {
+                        show_codex_desktop_exit_status_unavailable_dialog(app_handle);
+                        return;
+                    };
+                    match state.codex_desktop_service.cancel_install(&job.job_id) {
+                        Ok(snapshot) if snapshot.stage == JobStage::Cancelled => {
+                            exit_after_cleanup(app_handle.clone());
+                        }
+                        Ok(snapshot)
+                            if snapshot.stage.is_cancellable() && !snapshot.cancellable =>
+                        {
+                            exit_after_installer_cancellation(app_handle.clone(), snapshot.job_id);
+                        }
+                        Ok(snapshot)
+                            if matches!(
+                                snapshot.stage,
+                                JobStage::Installing | JobStage::VerifyingInstallation
+                            ) =>
+                        {
+                            show_codex_desktop_installation_wait_dialog(app_handle);
+                        }
+                        Ok(_) | Err(_) => {
+                            show_codex_desktop_exit_status_unavailable_dialog(app_handle);
+                        }
+                    }
+                    return;
+                }
+                CodexDesktopExitProtection::WaitForCancellation => {
+                    api.prevent_exit();
+                    let Some(job) = installer_job else {
+                        return;
+                    };
+                    show_codex_desktop_cancellation_wait_dialog(app_handle);
+                    exit_after_installer_cancellation(app_handle.clone(), job.job_id);
+                    return;
+                }
+                CodexDesktopExitProtection::WaitForInstallation => {
+                    api.prevent_exit();
+                    show_codex_desktop_installation_wait_dialog(app_handle);
+                    return;
+                }
             }
 
             log::info!("收到用户主动退出请求 (code={code:?})，开始清理...");
             api.prevent_exit();
-
-            let app_handle = app_handle.clone();
-            tauri::async_runtime::spawn(async move {
-                save_window_state_before_exit(&app_handle);
-                cleanup_before_exit(&app_handle).await;
-                // 先于 std::process::exit 显式移除托盘图标。
-                // 进程直接退出时 Tauri 运行时不走正常 Drop 流程，
-                // 不会向 Windows Shell 发送 NIM_DELETE，导致已退出的进程
-                // 注册的图标仍残留在系统托盘（鼠标悬停 Shell 才会重绘发现进程已死）。
-                remove_tray_icon_before_exit(&app_handle);
-                log::info!("清理完成，退出应用");
-
-                // 短暂等待确保所有 I/O 操作（如数据库写入）刷新到磁盘
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
-                // 使用 std::process::exit 避免再次触发 ExitRequested
-                std::process::exit(0);
-            });
+            exit_after_cleanup(app_handle.clone());
             return;
         }
 
@@ -1785,6 +1897,84 @@ pub fn run() {
         #[cfg(not(target_os = "macos"))]
         {
             let _ = (app_handle, event);
+        }
+    });
+}
+
+/// Completes the normal application cleanup and terminates without sending a
+/// second `ExitRequested` event. Callers must have already decided that no
+/// Codex desktop installer worker can still touch package or temporary state.
+fn exit_after_cleanup(app_handle: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        save_window_state_before_exit(&app_handle);
+        cleanup_before_exit(&app_handle).await;
+        // 先于 std::process::exit 显式移除托盘图标。
+        // 进程直接退出时 Tauri 运行时不走正常 Drop 流程，
+        // 不会向 Windows Shell 发送 NIM_DELETE，导致已退出的进程
+        // 注册的图标仍残留在系统托盘（鼠标悬停 Shell 才会重绘发现进程已死）。
+        remove_tray_icon_before_exit(&app_handle);
+        log::info!("清理完成，退出应用");
+
+        // 短暂等待确保所有 I/O 操作（如数据库写入）刷新到磁盘。
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // 使用 std::process::exit 避免再次触发 ExitRequested。
+        std::process::exit(0);
+    });
+}
+
+/// Waits for a previously accepted installer cancellation to become terminal
+/// before the normal exit cleanup begins. The job remains non-terminal until
+/// its worker has stopped cancellable I/O and removed its temporary data.
+fn exit_after_installer_cancellation(app_handle: tauri::AppHandle, job_id: String) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let job = match app_handle.try_state::<store::AppState>() {
+                Some(state) => match state.codex_desktop_service.get_job() {
+                    Ok(job) => job,
+                    Err(error) => {
+                        log::warn!(
+                            "Codex desktop installer state could not be read while waiting to exit: {:?}",
+                            error.code()
+                        );
+                        show_codex_desktop_exit_status_unavailable_dialog(&app_handle);
+                        return;
+                    }
+                },
+                None => {
+                    show_codex_desktop_exit_status_unavailable_dialog(&app_handle);
+                    return;
+                }
+            };
+
+            match job {
+                Some(snapshot)
+                    if snapshot.job_id == job_id && snapshot.stage == JobStage::Cancelled =>
+                {
+                    exit_after_cleanup(app_handle.clone());
+                    return;
+                }
+                Some(snapshot)
+                    if snapshot.job_id == job_id
+                        && snapshot.stage.is_cancellable()
+                        && !snapshot.cancellable => {}
+                Some(snapshot)
+                    if snapshot.job_id == job_id
+                        && matches!(
+                            snapshot.stage,
+                            JobStage::Installing | JobStage::VerifyingInstallation
+                        ) =>
+                {
+                    show_codex_desktop_installation_wait_dialog(&app_handle);
+                    return;
+                }
+                _ => {
+                    show_codex_desktop_exit_status_unavailable_dialog(&app_handle);
+                    return;
+                }
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
     });
 }
@@ -2020,7 +2210,7 @@ fn show_migration_error_dialog(app: &tauri::AppHandle, error: &str) -> bool {
         format!(
             "从旧版本迁移配置时发生错误：\n\n{error}\n\n\
             您的数据尚未丢失，旧配置文件仍然保留。\n\
-            建议回退到旧版本 CC Switch 以保护数据。\n\n\
+            建议回退到旧版本 FyAgent 以保护数据。\n\n\
             点击「重试」重新尝试迁移\n\
             点击「退出」关闭程序（可回退版本后重新打开）"
         )
@@ -2028,7 +2218,7 @@ fn show_migration_error_dialog(app: &tauri::AppHandle, error: &str) -> bool {
         format!(
             "An error occurred while migrating configuration:\n\n{error}\n\n\
             Your data is NOT lost - the old config file is still preserved.\n\
-            Consider rolling back to an older CC Switch version.\n\n\
+            Consider rolling back to an older FyAgent version.\n\n\
             Click 'Retry' to attempt migration again\n\
             Click 'Exit' to close the program"
         )
@@ -2093,7 +2283,7 @@ fn show_database_init_error_dialog(
             Common causes include: newer database version, corrupted file, permission issues, or low disk space.\n\n\
             Suggestions:\n\
             1) Back up the entire config directory (including cc-switch.db)\n\
-            2) If you see “database version is newer”, please upgrade CC Switch\n\
+            2) If you see “database version is newer”, please upgrade FyAgent\n\
             3) If this happened right after upgrading, consider rolling back to export/backup then upgrade again\n\n\
             Click 'Retry' to attempt initialization again\n\
             Click 'Exit' to close the program",
@@ -2123,6 +2313,106 @@ fn show_database_init_error_dialog(
         .blocking_show()
 }
 
+fn confirm_codex_desktop_installation_cancellation(app: &tauri::AppHandle) -> bool {
+    let (title, message, confirm, keep_running) = if is_chinese_locale() {
+        (
+            "FyAgent",
+            "Codex 桌面应用仍在下载或校验。取消后，FyAgent 会等待清理完成再退出。",
+            "取消并退出",
+            "继续安装",
+        )
+    } else {
+        (
+            "FyAgent",
+            "Codex desktop is still downloading or verifying. FyAgent will wait for cleanup before it exits.",
+            "Cancel and exit",
+            "Keep installing",
+        )
+    };
+
+    app.dialog()
+        .message(message)
+        .title(title)
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            confirm.to_string(),
+            keep_running.to_string(),
+        ))
+        .blocking_show()
+}
+
+fn show_codex_desktop_installation_wait_dialog(app: &tauri::AppHandle) {
+    let (title, message, acknowledge) = if is_chinese_locale() {
+        (
+            "FyAgent",
+            "Codex 桌面应用正在安装或进行安装后校验。为避免中断系统部署，请等待完成后再退出。",
+            "我知道了",
+        )
+    } else {
+        (
+            "FyAgent",
+            "Codex desktop is installing or being verified after installation. Wait for it to finish before exiting so the system deployment is not interrupted.",
+            "OK",
+        )
+    };
+
+    let _ = app
+        .dialog()
+        .message(message)
+        .title(title)
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCustom(acknowledge.to_string()))
+        .blocking_show();
+}
+
+fn show_codex_desktop_cancellation_wait_dialog(app: &tauri::AppHandle) {
+    let (title, message, acknowledge) = if is_chinese_locale() {
+        (
+            "FyAgent",
+            "Codex 桌面应用的取消请求正在完成清理。FyAgent 会在清理完成后退出。",
+            "继续等待",
+        )
+    } else {
+        (
+            "FyAgent",
+            "Codex desktop is finishing cancellation cleanup. FyAgent will exit when cleanup completes.",
+            "Keep waiting",
+        )
+    };
+
+    let _ = app
+        .dialog()
+        .message(message)
+        .title(title)
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCustom(acknowledge.to_string()))
+        .blocking_show();
+}
+
+fn show_codex_desktop_exit_status_unavailable_dialog(app: &tauri::AppHandle) {
+    let (title, message, acknowledge) = if is_chinese_locale() {
+        (
+            "FyAgent",
+            "无法确认 Codex 桌面应用安装任务的安全状态。请稍候后重试退出。",
+            "我知道了",
+        )
+    } else {
+        (
+            "FyAgent",
+            "FyAgent could not confirm that the Codex desktop installation task is safe to exit. Please wait briefly and try again.",
+            "OK",
+        )
+    };
+
+    let _ = app
+        .dialog()
+        .message(message)
+        .title(title)
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCustom(acknowledge.to_string()))
+        .blocking_show();
+}
+
 // ============================================================
 // 退出请求分类
 // ============================================================
@@ -2150,6 +2440,38 @@ fn classify_exit_request(code: Option<i32>) -> ExitRequestAction {
         None => ExitRequestAction::StayInTray,
         Some(tauri::RESTART_EXIT_CODE) => ExitRequestAction::DeferToTauriRestart,
         Some(_) => ExitRequestAction::CleanupAndExit,
+    }
+}
+
+/// Installer-aware exit outcome. Cancellation remains distinct from terminal
+/// `Cancelled`: the latter is published only after the background worker has
+/// acknowledged its temporary-directory cleanup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CodexDesktopExitProtection {
+    AllowExit,
+    ConfirmCancellation,
+    WaitForCancellation,
+    WaitForInstallation,
+}
+
+fn classify_codex_desktop_exit_protection(
+    job: Option<(JobStage, bool)>,
+) -> CodexDesktopExitProtection {
+    match job {
+        None => CodexDesktopExitProtection::AllowExit,
+        Some((stage, _)) if stage.is_terminal() => CodexDesktopExitProtection::AllowExit,
+        Some((stage, true)) if stage.is_cancellable() => {
+            CodexDesktopExitProtection::ConfirmCancellation
+        }
+        Some((stage, false)) if stage.is_cancellable() => {
+            CodexDesktopExitProtection::WaitForCancellation
+        }
+        Some((JobStage::Installing | JobStage::VerifyingInstallation, _)) => {
+            CodexDesktopExitProtection::WaitForInstallation
+        }
+        // New non-terminal stages must fail closed until their exit semantics
+        // are deliberately classified with the state-machine owner.
+        Some(_) => CodexDesktopExitProtection::WaitForInstallation,
     }
 }
 
@@ -2200,10 +2522,12 @@ pub fn restart_process(app_handle: &tauri::AppHandle) -> ! {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_exit_request, enabled_proxy_apps_on_startup, redact_url_for_log,
-        redact_url_for_log_with_secrets, redact_url_origin_for_log, runtime_log_level_allows,
+        classify_codex_desktop_exit_protection, classify_exit_request,
+        enabled_proxy_apps_on_startup, redact_url_for_log, redact_url_for_log_with_secrets,
+        redact_url_origin_for_log, runtime_log_level_allows, CodexDesktopExitProtection,
         ExitRequestAction,
     };
+    use crate::codex_desktop::types::JobStage;
     use crate::database::Database;
 
     #[test]
@@ -2310,6 +2634,121 @@ mod tests {
             classify_exit_request(Some(1)),
             ExitRequestAction::CleanupAndExit
         );
+    }
+
+    #[test]
+    fn installer_exit_protection_waits_for_worker_cleanup_before_exit() {
+        assert_eq!(
+            classify_codex_desktop_exit_protection(None),
+            CodexDesktopExitProtection::AllowExit
+        );
+        assert_eq!(
+            classify_codex_desktop_exit_protection(Some((JobStage::Downloading, true))),
+            CodexDesktopExitProtection::ConfirmCancellation
+        );
+        assert_eq!(
+            classify_codex_desktop_exit_protection(Some((JobStage::VerifyingDownload, false,))),
+            CodexDesktopExitProtection::WaitForCancellation
+        );
+        assert_eq!(
+            classify_codex_desktop_exit_protection(Some((JobStage::Installing, false))),
+            CodexDesktopExitProtection::WaitForInstallation
+        );
+        assert_eq!(
+            classify_codex_desktop_exit_protection(Some((JobStage::Succeeded, false))),
+            CodexDesktopExitProtection::AllowExit
+        );
+    }
+
+    #[test]
+    fn ordinary_codex_desktop_ipc_is_exactly_seven_unprivileged_commands() {
+        const EXPECTED_COMMANDS: [&str; 7] = [
+            "codex_desktop_get_local_status",
+            "codex_desktop_check_latest",
+            "codex_desktop_get_job",
+            "codex_desktop_start_install",
+            "codex_desktop_cancel_install",
+            "codex_desktop_launch",
+            "codex_desktop_open_log_directory",
+        ];
+
+        let command_source = include_str!("commands/codex_desktop.rs").replace("\r\n", "\n");
+        let library_source = include_str!("lib.rs").replace("\r\n", "\n");
+        let type_source = include_str!("codex_desktop/types.rs").replace("\r\n", "\n");
+
+        assert_eq!(
+            command_source.matches("#[tauri::command]").count(),
+            EXPECTED_COMMANDS.len()
+        );
+        for command in EXPECTED_COMMANDS {
+            assert_eq!(
+                command_source
+                    .matches(&format!("pub async fn {command}("))
+                    .count(),
+                1,
+                "ordinary command {command} must be declared exactly once"
+            );
+        }
+
+        let handler_start = library_source
+            .find("tauri::generate_handler![")
+            .expect("the Tauri invoke handler remains present");
+        let handler_end = library_source[handler_start..]
+            .find("\n        ]);")
+            .map(|offset| handler_start + offset)
+            .expect("the Tauri invoke handler remains bounded");
+        let handler = &library_source[handler_start..handler_end];
+
+        assert_eq!(
+            handler.matches("commands::codex_desktop_").count(),
+            EXPECTED_COMMANDS.len()
+        );
+        for command in EXPECTED_COMMANDS {
+            assert!(
+                handler.contains(&format!("commands::{command}")),
+                "ordinary command {command} must remain registered"
+            );
+        }
+        let handler_lowercase = handler.to_ascii_lowercase();
+        assert!(!handler_lowercase.contains("all_users"));
+        assert!(!handler_lowercase.contains("all-users"));
+
+        let request_start = type_source
+            .find("pub struct StartInstallRequest {")
+            .expect("the ordinary start request remains present");
+        let request_attribute_start = type_source[..request_start]
+            .rfind("#[serde(")
+            .expect("the ordinary start request remains serde constrained");
+        let request_end = type_source[request_start..]
+            .find("\n}\n\nimpl StartInstallRequest")
+            .map(|offset| request_start + offset + 2)
+            .expect("the ordinary start request remains bounded");
+        let request_definition = &type_source[request_attribute_start..request_end];
+
+        assert!(request_definition.contains("deny_unknown_fields"));
+        let request_fields = request_definition
+            .lines()
+            .map(str::trim)
+            .filter(|line| line.starts_with("pub ") && !line.starts_with("pub struct"))
+            .collect::<Vec<_>>();
+        assert_eq!(request_fields, vec!["pub expected_release_id: String,"]);
+        let request_lowercase = request_definition.to_ascii_lowercase();
+        for prohibited in [
+            "all_users",
+            "all-users",
+            "scope",
+            "url",
+            "path",
+            "sha",
+            "hash",
+            "identity",
+            "bypass",
+        ] {
+            assert!(
+                !request_lowercase.contains(prohibited),
+                "ordinary start request must not accept {prohibited}"
+            );
+        }
     }
 
     #[tokio::test]

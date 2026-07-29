@@ -72,7 +72,7 @@ pub enum PlatformVersion {
 - macOS 比较 `CFBundleVersion`，解析器必须根据真实官方格式实现确定性比较；
 - `CFBundleShortVersionString` 和镜像展示版本只用于 UI；
 - 无法可靠比较时返回结构化错误，不允许按普通字典序猜测；
-- 本地版本高于镜像版本时只允许启动，不自动降级。
+- 本地版本与镜像相同或高于镜像版本时只允许启动，不自动重装或降级；该裁决必须由 Rust 服务端在下载前执行，不能只依赖前端按钮状态。
 
 ### 2.3 本地安装状态
 
@@ -213,7 +213,7 @@ pub enum JobStage {
 }
 ```
 
-`Idle`、`ReadyToInstall`、`ReadyToUpdate` 不是运行中 Job 的阶段，而是由本地状态 + 远程 release 在前端 View Model 中推导的页面状态。这样避免把“没有任务”伪装成长期 job。
+`Idle`、`ReadyToInstall`、`ReadyToUpdate` 不是运行中 Job 的阶段，而是由本地状态 + 远程 release 在前端 View Model 中推导的页面状态。这样避免把“没有任务”伪装成长期 job。`JobStore` 可以保留终态快照供查询和一次性提示，但成功 job 对应的 `releaseId` 与一次成功刷新得到的当前 remote `releaseId` 不同时，旧成功态不得遮蔽版本派生；页面必须重新显示 `ReadyToUpdate` 或 `ReadyToLaunch`。
 
 ### 4.2 JobSnapshot
 
@@ -260,6 +260,7 @@ pub struct JobProgress {
 stateDiagram-v2
     [*] --> Checking: start_install(expected_release_id)
     Checking --> Preflight: release_id still matches
+    Checking --> Succeeded: trusted local version >= descriptor and launch succeeds
     Checking --> Failed: metadata/source/compatibility error
     Checking --> Cancelled: cancellation observed
 
@@ -289,29 +290,29 @@ stateDiagram-v2
 
 ### 5.1 阶段不变量
 
-| 阶段 | 必须成立 |
-|---|---|
-| `Checking` | 还未信任前端提交的 release；正在强制重新解析远程元数据 |
-| `Preflight` | 已锁定 descriptor；检查平台、运行状态、磁盘空间和临时目录 |
-| `Downloading` | 只访问内置短链及其合规 HTTPS redirect；写入 job 专属临时文件 |
-| `VerifyingDownload` | 下载句柄关闭；先 hash，再做包解析/签名/身份校验 |
-| `Installing` | 已获得 `VerifiedPackage`；原始未验证路径不能直接进入平台 installer |
-| `VerifyingInstallation` | 平台操作已返回；必须重新查询系统实际安装状态 |
-| `Succeeded` | Stable 身份和版本满足 descriptor；临时安装包已安排清理 |
-| `Failed` | 有且仅有一个稳定错误；不得把失败标记成成功 Toast |
-| `Cancelled` | 已停止可取消工作，未开始不可逆平台安装；部分文件已清理 |
+| 阶段                    | 必须成立                                                                                                                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Checking`              | 还未信任前端提交的 release；正在强制重新解析远程元数据；若重新检测到可信本地 Stable 版本不低于 descriptor，则只启动本地应用并结束，不创建临时目录、不下载、不安装                                |
+| `Preflight`             | 已锁定 descriptor；检查平台、运行状态、磁盘空间和临时目录                                                                                                                                        |
+| `Downloading`           | 只访问内置短链及其合规 HTTPS redirect；写入 job 专属临时文件                                                                                                                                     |
+| `VerifyingDownload`     | 下载句柄关闭；先 hash，再做包解析/签名/身份校验                                                                                                                                                  |
+| `Installing`            | 已获得保留锁定 descriptor 的 `VerifiedPackage`；平台消费前必须重新打开受控 job artifact，确认固定文件名、regular/non-link、size 和 SHA-256 仍精确匹配 descriptor；原始路径不能直接进入 installer |
+| `VerifyingInstallation` | 平台操作已返回；必须重新查询系统实际安装状态                                                                                                                                                     |
+| `Succeeded`             | Stable 身份和版本满足 descriptor；完成安装时临时安装包已安排清理；launch-only 分支则已重新检测并成功启动可信本地应用                                                                             |
+| `Failed`                | 有且仅有一个稳定错误；不得把失败标记成成功 Toast                                                                                                                                                 |
+| `Cancelled`             | 已停止可取消工作，未开始不可逆平台安装；部分文件已清理                                                                                                                                           |
 
 ### 5.2 取消边界
 
-| 阶段 | 是否允许取消 | 行为 |
-|---|---|---|
-| `Checking` | 是 | 取消元数据请求，清理临时状态 |
-| `Preflight` | 是 | 在进入安装前终止 |
-| `Downloading` | 是 | 取消流、关闭文件、删除部分包 |
-| `VerifyingDownload` | 是 | 检查 cancellation token；安全停止校验 |
-| `Installing` | 否 | UI 禁用取消；不强杀系统部署/复制进程 |
-| `VerifyingInstallation` | 否 | 必须确认最终状态 |
-| 终态 | 否 | 取消命令返回当前快照或明确 no-op 语义 |
+| 阶段                    | 是否允许取消 | 行为                                  |
+| ----------------------- | ------------ | ------------------------------------- |
+| `Checking`              | 是           | 取消元数据请求，清理临时状态          |
+| `Preflight`             | 是           | 在进入安装前终止                      |
+| `Downloading`           | 是           | 取消流、关闭文件、删除部分包          |
+| `VerifyingDownload`     | 是           | 检查 cancellation token；安全停止校验 |
+| `Installing`            | 否           | UI 禁用取消；不强杀系统部署/复制进程  |
+| `VerifyingInstallation` | 否           | 必须确认最终状态                      |
+| 终态                    | 否           | 取消命令返回当前快照或明确 no-op 语义 |
 
 竞态要求：`cancel` 与“进入 Installing”竞争时，后端必须在同一锁/原子状态转换中裁决。不能出现 UI 收到 Cancelled，但平台安装仍被启动。
 
@@ -339,6 +340,17 @@ pub struct CodexDesktopService {
 - panic/JoinError 映射为 `INTERNAL_ERROR` 并尽可能发布 Failed；
 - 页面离开不会取消任务；
 - 应用重启不恢复任务，启动时清理超过 24 小时的旧临时目录。
+
+### 6.1 受控应用重启
+
+设置变更需要重启时，渲染层只能调用后端 `restart_app` command；默认 Tauri
+capability 不得授予 `process:allow-restart`。`restart_app` 必须在保存窗口状态、
+执行退出清理或请求 re-exec 之前调用 `CodexDesktopService::claim_restart()`，与
+`start_install` 竞争同一个 job 槽。若存在可取消、取消清理中、Installing 或
+VerifyingInstallation job，则返回 `JOB_ALREADY_RUNNING`，不得取消、替换或绕过该
+job 后直接重启。现有用户主动退出可保留更窄的 `process:allow-exit`，但该路径必须
+进入应用既有的 `ExitRequested` 安装任务保护；它不是重启能力，也不得改回
+`process:default`。
 
 ## 7. 安装请求
 
@@ -445,7 +457,7 @@ async fn codex_desktop_open_log_directory(
 4. 后台异步执行流程；
 5. 强制重新解析 release；
 6. 不接受或推断所有用户 scope；
-7. 不允许空 ID、未知 ID、过期 ID、降级或重装绕过。
+7. 不允许空 ID、未知 ID、过期 ID、降级或重装绕过；可信本地版本与目标相同或更高时，服务端只启动本地应用且绝不触发下载/安装。
 
 #### `cancel_install(job_id)`
 
@@ -584,7 +596,9 @@ pub trait CodexDesktopPlatform: Send + Sync {
 安全边界：
 
 - `VerifiedPackage` 的字段私有或构造器受限，只有校验模块能创建；
-- 平台 installer 不接受裸下载路径；
+- `VerifiedPackage` 保留锁定的完整 descriptor；平台 installer 不接受裸下载路径，且在
+  每次实际消费 artifact 前必须重新打开受控 job 目录中的固定 regular/non-link 文件，按
+  descriptor 复验 size 与 SHA-256；
 - Windows all-users 不加入此 trait；
 - Linux/unsupported adapter 返回 `PLATFORM_UNSUPPORTED`，但 crate 可编译；
 - command runner、WinRT deployment facade、clock 和 filesystem 可注入 fake。

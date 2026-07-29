@@ -4,20 +4,20 @@
 
 ## 1. 新增后端文件
 
-| 路径 | Owner | 作用 |
-|---|---|---|
-| `src-tauri/src/codex_desktop/mod.rs` | Core | 领域模块导出、平台构造 |
-| `src-tauri/src/codex_desktop/types.rs` | Core | 平台、版本、release、本地状态、结果 DTO |
-| `src-tauri/src/codex_desktop/error.rs` | Core | 稳定错误码、诊断、脱敏 |
-| `src-tauri/src/codex_desktop/source.rs` | Core | agentsmirror parser、cache、release_id |
-| `src-tauri/src/codex_desktop/download.rs` | Core | 专用 HTTP、重试、进度、临时文件 |
-| `src-tauri/src/codex_desktop/verify.rs` | Core | hash、size×3、release漂移、通用验证 |
-| `src-tauri/src/codex_desktop/platform/mod.rs` | Core | trait、cfg、unsupported adapter |
-| `src-tauri/src/codex_desktop/platform/windows/*` | Windows | MSIX、WinRT、启动、提权实验 |
-| `src-tauri/src/codex_desktop/platform/macos/*` | macOS | Bundle、DMG、签名、复制、启动 |
-| `src-tauri/src/services/codex_desktop/mod.rs` | Core | 用例编排、缓存、AppHandle |
-| `src-tauri/src/services/codex_desktop/job.rs` | Core | 状态机、互斥、取消、事件 |
-| `src-tauri/src/commands/codex_desktop.rs` | Core | 薄 Tauri commands |
+| 路径                                             | Owner   | 作用                                    |
+| ------------------------------------------------ | ------- | --------------------------------------- |
+| `src-tauri/src/codex_desktop/mod.rs`             | Core    | 领域模块导出、平台构造                  |
+| `src-tauri/src/codex_desktop/types.rs`           | Core    | 平台、版本、release、本地状态、结果 DTO |
+| `src-tauri/src/codex_desktop/error.rs`           | Core    | 稳定错误码、诊断、脱敏                  |
+| `src-tauri/src/codex_desktop/source.rs`          | Core    | agentsmirror parser、cache、release_id  |
+| `src-tauri/src/codex_desktop/download.rs`        | Core    | 专用 HTTP、重试、进度、临时文件         |
+| `src-tauri/src/codex_desktop/verify.rs`          | Core    | hash、size×3、release漂移、通用验证     |
+| `src-tauri/src/codex_desktop/platform/mod.rs`    | Core    | trait、cfg、unsupported adapter         |
+| `src-tauri/src/codex_desktop/platform/windows/*` | Windows | MSIX、WinRT、启动、提权实验             |
+| `src-tauri/src/codex_desktop/platform/macos/*`   | macOS   | Bundle、DMG、签名、复制、启动           |
+| `src-tauri/src/services/codex_desktop/mod.rs`    | Core    | 用例编排、缓存、AppHandle               |
+| `src-tauri/src/services/codex_desktop/job.rs`    | Core    | 状态机、互斥、取消、事件                |
+| `src-tauri/src/commands/codex_desktop.rs`        | Core    | 薄 Tauri commands                       |
 
 ## 2. 修改后端共享文件
 
@@ -208,13 +208,13 @@ V1 应停止前端调用并从 invoke registration删除 updater命令。是否�
 
 ## 5. 新增前端文件
 
-| 路径 | Owner | 作用 |
-|---|---|---|
-| `src/types/codexDesktop.ts` | UI | DTO |
-| `src/lib/api/codex-desktop.ts` | UI | invoke |
-| `src/lib/query/codex-desktop.ts` | UI | query/mutations |
-| `src/hooks/useCodexDesktopInstaller.ts` | UI | 事件、组合、Toast |
-| `src/components/codex/CodexDesktopInstallerCard.tsx` | UI | 卡片 |
+| 路径                                                 | Owner | 作用              |
+| ---------------------------------------------------- | ----- | ----------------- |
+| `src/types/codexDesktop.ts`                          | UI    | DTO               |
+| `src/lib/api/codex-desktop.ts`                       | UI    | invoke            |
+| `src/lib/query/codex-desktop.ts`                     | UI    | query/mutations   |
+| `src/hooks/useCodexDesktopInstaller.ts`              | UI    | 事件、组合、Toast |
+| `src/components/codex/CodexDesktopInstallerCard.tsx` | UI    | 卡片              |
 
 测试文件按项目惯例放在同级 `__tests__` 或现有 test目录。
 
@@ -327,6 +327,10 @@ MCP/Skill/Prompt/Usage domain
 Provider form/data model
 ```
 
+品牌清理的窄例外：若上述既有文件中仍有用户可见的 `CC Switch` 品牌字面量，允许仅将该
+字面量替换为 `FyAgent` 并补针对性测试；不得借此修改 provider form 的状态、数据模型、
+请求或业务流，也不得修改 proxy 的协议语义、结构化错误码或控制流。
+
 ## 10. 搜索审计清单
 
 集成完成后：
@@ -349,8 +353,7 @@ rg -n "agentsmirror|github.com|oaistatic|apps.microsoft.com" \
 
 - Codex install命令只允许出现在历史注释/测试迁移说明时，最好清理；
 - agentsmirror只应在 source模块常量；
-- GitHub/OpenAI/Microsoft地址不得出现在新安装器生产代码；
--许可证文本中的 CC Switch不删除。
+- GitHub/OpenAI/Microsoft地址不得出现在新安装器生产代码；-许可证文本中的 CC Switch不删除。
 
 ## 11. 变更规模控制
 

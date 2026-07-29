@@ -2,6 +2,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    // The experimental all-users path is parsed before Tauri creates a runtime.
+    // It is never registered as an IPC command or UI action.
+    if let Some(exit_code) = cc_switch_lib::maybe_run_codex_desktop_headless() {
+        std::process::exit(exit_code);
+    }
+
     // 在 Linux 上设置 WebKit 环境变量以解决 DMA-BUF 渲染问题
     // 某些 Linux 系统（如 Debian 13.2、Nvidia GPU）上 WebKitGTK 的 DMA-BUF 渲染器可能导致白屏/黑屏
     // 参考: https://github.com/tauri-apps/tauri/issues/9394

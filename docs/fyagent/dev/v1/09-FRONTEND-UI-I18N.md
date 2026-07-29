@@ -82,6 +82,9 @@ export const codexDesktopKeys = {
 - refresh 调 `checkLatest(true)`；
 - start 成功写入 job cache；
 - job 终态使 local/remote invalidated；
+- `Succeeded` 可保留为当前 release 的一次性确认和 Toast，但当成功刷新得到不同
+  `releaseId` 时，它不得遮蔽 local + remote 的版本派生；较新的 remote 必须重新显示
+  `ready_update`，并把新的 release ID 传给下一次 start；
 - remote error 不清空 local；
 - 不定时轮询 active job；使用事件，必要时窗口 focus 可调用 `getJob` 恢复。
 
@@ -155,25 +158,25 @@ interface CodexDesktopInstallerViewModel {
 
 ## 8. 状态与按钮表
 
-| 条件 | 主文案 | 主按钮 | 辅助行为 |
-|---|---|---|---|
-| 本地/远程检查中 | 正在检查 | 禁用 | 刷新禁用 |
-| 未安装 + release | 最新版 x | 一键安装 Codex | 刷新 |
-| 旧版 + release | 可更新到 x | 更新 Codex | 启动可不单独显示，避免误启动旧版？可按产品选择保留辅助启动；V1 主按钮更新 |
-| 同版 | 已是最新版 | 启动 Codex | 刷新 |
-| 本地比远程新 | 已安装较新版本 | 启动 Codex | 不提供降级 |
-| 本地安装 + remote fail | 暂时无法检查更新 | 启动 Codex | 重试 |
-| 未安装 + remote fail | 无法获取最新版 | 重试 | 代理提示 |
-| 下载中 | 已下载 x/y | 禁用主按钮 | 取消 |
-| 验证中 | 正在验证官方安装包 | 禁用 | 若后端 cancellable 则取消 |
-| 安装中 | 正在安装 | 禁用 | 不可取消 |
-| 安装后验证 | 正在确认安装结果 | 禁用 | 不可取消 |
-| 成功 | 已安装 | 启动 Codex | Toast 一次 |
-| 失败 | 简短错误 | 重试 | 复制详情、打开日志 |
-| Cancelled | 已取消 | 安装/更新 | 刷新 |
-| Ambiguous | 检测到多个安装 | 禁用 | 复制详情 |
-| Intel Mac | 暂不支持 Intel Mac | 禁用 | 无 |
-| Linux | 卡片不渲染 | — | — |
+| 条件                   | 主文案             | 主按钮         | 辅助行为                                                                  |
+| ---------------------- | ------------------ | -------------- | ------------------------------------------------------------------------- |
+| 本地/远程检查中        | 正在检查           | 禁用           | 刷新禁用                                                                  |
+| 未安装 + release       | 最新版 x           | 一键安装 Codex | 刷新                                                                      |
+| 旧版 + release         | 可更新到 x         | 更新 Codex     | 启动可不单独显示，避免误启动旧版？可按产品选择保留辅助启动；V1 主按钮更新 |
+| 同版                   | 已是最新版         | 启动 Codex     | 刷新                                                                      |
+| 本地比远程新           | 已安装较新版本     | 启动 Codex     | 不提供降级                                                                |
+| 本地安装 + remote fail | 暂时无法检查更新   | 启动 Codex     | 重试                                                                      |
+| 未安装 + remote fail   | 无法获取最新版     | 重试           | 代理提示                                                                  |
+| 下载中                 | 已下载 x/y         | 禁用主按钮     | 取消                                                                      |
+| 验证中                 | 正在验证官方安装包 | 禁用           | 若后端 cancellable 则取消                                                 |
+| 安装中                 | 正在安装           | 禁用           | 不可取消                                                                  |
+| 安装后验证             | 正在确认安装结果   | 禁用           | 不可取消                                                                  |
+| 成功                   | 已安装             | 启动 Codex     | Toast 一次                                                                |
+| 失败                   | 简短错误           | 重试           | 复制详情、打开日志                                                        |
+| Cancelled              | 已取消             | 安装/更新      | 刷新                                                                      |
+| Ambiguous              | 检测到多个安装     | 禁用           | 复制详情                                                                  |
+| Intel Mac              | 暂不支持 Intel Mac | 禁用           | 无                                                                        |
+| Linux                  | 卡片不渲染         | —              | —                                                                         |
 
 ## 9. 最终文案
 

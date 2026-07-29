@@ -50,20 +50,6 @@ pub async fn copy_text_to_clipboard(text: String) -> Result<bool, String> {
     .map_err(|e| format!("剪贴板任务执行失败: {e}"))?
 }
 
-/// 检查更新
-#[tauri::command]
-pub async fn check_for_updates(handle: AppHandle) -> Result<bool, String> {
-    handle
-        .opener()
-        .open_url(
-            "https://github.com/farion1231/cc-switch/releases/latest",
-            None::<String>,
-        )
-        .map_err(|e| format!("打开更新页面失败: {e}"))?;
-
-    Ok(true)
-}
-
 /// 判断是否为便携版（绿色版）运行
 #[tauri::command]
 pub async fn is_portable_mode() -> Result<bool, String> {
@@ -114,6 +100,15 @@ pub struct ToolVersion {
 const VALID_TOOLS: [&str; 7] = [
     "claude", "codex", "gemini", "grok", "opencode", "openclaw", "hermes",
 ];
+
+const CODEX_CLI_LIFECYCLE_DISABLED_MESSAGE: &str =
+    "Codex CLI lifecycle management is disabled in FyAgent V1; version detection remains read-only.";
+
+/// 生命周期写权限比只读探测更窄。Codex 保留在 `VALID_TOOLS`，因此版本和安装分布
+/// 诊断仍可用；但不得规划或执行 install/update/repair 命令。
+fn is_lifecycle_writable(tool: &str) -> bool {
+    tool != "codex"
+}
 
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -183,6 +178,14 @@ pub async fn run_tool_lifecycle_action(
     action: String,
     wsl_shell_by_tool: Option<HashMap<String, WslShellPreferenceInput>>,
 ) -> Result<(), String> {
+    // 在解析 `action` 前拒绝，确保旧版直接 IPC 的 install/update/repair 都得到同一稳定错误。
+    if tools
+        .iter()
+        .any(|tool| !is_lifecycle_writable(tool.as_str()))
+    {
+        return Err(CODEX_CLI_LIFECYCLE_DISABLED_MESSAGE.to_string());
+    }
+
     let action = ToolLifecycleAction::from_str(&action)?;
     let requested = normalize_requested_tools(&tools);
     if requested.is_empty() {
@@ -393,6 +396,10 @@ fn build_tool_lifecycle_command(
     lines.push("@echo off".to_string());
 
     for tool in tools {
+        if !is_lifecycle_writable(tool) {
+            return Err(CODEX_CLI_LIFECYCLE_DISABLED_MESSAGE.to_string());
+        }
+
         let label = tool_display_name(tool);
         lines.push(format!("echo ========== {label} =========="));
 
@@ -501,9 +508,12 @@ enum LifecycleCommandShell {
 }
 
 fn npm_install_command_for(tool: &str) -> Option<&'static str> {
+    if !is_lifecycle_writable(tool) {
+        return None;
+    }
+
     match tool {
         "claude" => Some("npm i -g @anthropic-ai/claude-code@latest"),
-        "codex" => Some("npm i -g @openai/codex@latest"),
         "gemini" => Some("npm i -g @google/gemini-cli@latest"),
         "grok" => Some("npm i -g @xai-official/grok@latest"),
         "opencode" => Some("npm i -g opencode-ai@latest"),
@@ -514,7 +524,7 @@ fn npm_install_command_for(tool: &str) -> Option<&'static str> {
 
 fn official_update_args(tool: &str) -> Option<&'static str> {
     match tool {
-        "claude" | "codex" | "grok" | "hermes" => Some("update"),
+        "claude" | "grok" | "hermes" => Some("update"),
         "openclaw" => Some("update --yes"),
         "opencode" => Some("upgrade"),
         _ => None,
@@ -546,6 +556,10 @@ fn tool_action_shell_command_for_shell(
     action: ToolLifecycleAction,
     shell: LifecycleCommandShell,
 ) -> Option<String> {
+    if !is_lifecycle_writable(tool) {
+        return None;
+    }
+
     // xAI's primary Windows distribution is the native PowerShell installer.
     // Keep npm as the network/policy fallback, matching the POSIX installer chain.
     #[cfg(target_os = "windows")]
@@ -608,6 +622,10 @@ fn tool_action_shell_command(tool: &str, action: ToolLifecycleAction) -> Option<
 /// 强制生成 POSIX 版命令。
 #[cfg(target_os = "windows")]
 fn wsl_tool_action_shell_command(tool: &str, action: ToolLifecycleAction) -> Option<String> {
+    if !is_lifecycle_writable(tool) {
+        return None;
+    }
+
     match action {
         ToolLifecycleAction::Install => {
             let command = posix_install_command_for(tool);
@@ -1994,7 +2012,6 @@ fn enumerate_tool_installations(tool: &str) -> Vec<ToolInstallation> {
 fn npm_package_for(tool: &str) -> Option<&'static str> {
     match tool {
         "claude" => Some("@anthropic-ai/claude-code"),
-        "codex" => Some("@openai/codex"),
         "gemini" => Some("@google/gemini-cli"),
         "grok" => Some("@xai-official/grok"),
         "opencode" => Some("opencode-ai"),
@@ -2206,14 +2223,6 @@ fn anchored_official_update_command(tool: &str, bin_path: &str) -> Option<String
 }
 
 /// 哪些工具的"官方 self-update"优先于包管理器升级（生成 `<tool> update || <pkg-mgr>`）。
-///
-/// **codex 刻意不在此列**：`codex update` 在 npm 安装上只是裸 `npm install -g
-/// @openai/codex`（无 `@latest` / `--include=optional` / 不先卸载），却只检查 exit code、
-/// 无条件打印 “Update ran successfully”。当 npm 把平台二进制 optional 依赖
-/// `@openai/codex-<triple>` 漏装时它仍 **exit 0 假成功**，使外层 `||` 兜底被短路、损坏被
-/// 成功 toast 掩盖（用户报告的 “Missing optional dependency” 即源于此）。因此 codex 一律走
-/// npm 锚定升级；真正损坏（`runnable=false`）时由 `installs_anchored_command` 的门控改用
-/// `codex_repair_command` 的 uninstall+install 自愈，而非交给 codex 自身的 self-update。
 fn prefers_official_update(tool: &str, shell: LifecycleCommandShell) -> bool {
     match shell {
         LifecycleCommandShell::Posix => {
@@ -2230,59 +2239,6 @@ fn prefers_official_update(tool: &str, shell: LifecycleCommandShell) -> bool {
             )
         }
     }
-}
-
-/// Codex 平台分发包损坏的自愈命令。Codex 的 npm 包是「主包 `@openai/codex`（纯 JS
-/// launcher）+ 平台二进制 optional 依赖 `@openai/codex-<triple>`」的分发模式（同 esbuild/swc）。
-/// 当平台二进制缺失时 codex 跑不起来——`enumerate_tool_installations` 跑 `--version` 会拿到
-/// “Missing optional dependency” 的非 0 退出，标记 `runnable=false`。此状态下普通
-/// `npm i -g @pkg@latest` 是 **no-op**：npm 视 optional 依赖缺失为非致命，reify 又认为主包已是
-/// 最新（外加半损坏留下的空 nested `node_modules` 残骸强化「tree 已满足」判断），不会补回平台
-/// 二进制。唯一实测可靠的修复是先 `uninstall` 清掉残骸、再 `install` 装回完整的主包 + 平台二进制
-/// （实测输出 `added 2 packages`）。
-///
-/// 锚定到与 codex 入口同目录的 npm，并把该目录放到每条 npm 命令的 PATH 首位，使 npm
-/// 的 `#!/usr/bin/env node` 能找到同一安装下的 node，不依赖 GUI 非登录进程的 PATH。
-/// `|| true` 让 uninstall 失败（如 nvm 上对半损坏包静默返回非 0）不触发外层 `set -e`
-/// 中止，但随后的 install 若失败仍会被 `set -e` 捕获并上报给前端 toast。
-///
-/// **仅对会锚定到 sibling npm 的 node 管理器来源（nvm/fnm/mise/homebrew npm）生效**：
-/// `runnable=false` 是宽信号（权限 / node 版本 / 任意 `--version` 失败皆可触发），非 npm
-/// 全局安装各有自己的二进制分发与修复方式，无脑套 npm uninstall+install 会出错——Homebrew
-/// formula（real 在 `Cellar/`）本应 `brew upgrade codex`，npm 够不到它反而旁路装第二份 npm
-/// 全局 codex；Volta/Bun 本应 `volta install`/`bun add`，且 `~/.bun/bin` 下没有 npm、
-/// `sibling_bin` 会拼出不存在的路径；system/未知来源无可靠 sibling npm。这些来源一律返回
-/// None，让上游继续走 source-specific 的 `anchored_command_from_paths`。白名单与
-/// `package_manager_anchored_command_from_paths` 的 sibling-npm 分支对齐。
-/// 刻意**不**额外用 `inst.error` 文本确认「确系缺二进制」：enumerate 只保留 stderr 末尾 4 行，
-/// 而 codex.js 抛错的 "Missing optional dependency" 行会被尾部 node stack `at ...` 行挤出窗口
-/// （实测用户原始错误即如此），强加该条件反而漏修真实缺包；对 npm 全局安装，uninstall+install
-/// 对各类损坏都是合理且不会更糟的修复。
-#[cfg(not(target_os = "windows"))]
-fn codex_repair_command(bin_path: &str, real: &str) -> Option<String> {
-    // brew formula（real 在 Cellar）→ 不归 npm 管，交回 anchored 走 brew upgrade。
-    if brew_formula_from_path(real).is_some() {
-        return None;
-    }
-    // 只认会落到 sibling npm 的 node 管理器来源；volta/bun/system/未知交回 anchored。
-    if !matches!(
-        infer_install_source(Path::new(bin_path)),
-        "nvm" | "fnm" | "mise" | "homebrew"
-    ) {
-        return None;
-    }
-    let pkg = "@openai/codex";
-    let uninstall = anchored_npm_command(bin_path, &format!("uninstall -g {pkg}"))?;
-    let install = anchored_npm_command(bin_path, &format!("i -g {pkg}@latest"))?;
-    Some(format!("{uninstall} || true; {install}"))
-}
-
-/// Windows 暂不做平台分发自愈：Windows 上 codex 的破坏模式不同（EPERM 文件锁 / 版本 bump
-/// 残留，见 openai/codex#21872、#19824），且 `.bat` 链的错误处理与 POSIX `set -e` 语义不同，
-/// 需要单独设计；先在本问题实际发生的 POSIX 平台落地。返回 None → 上游走正常锚定命令。
-#[cfg(target_os = "windows")]
-fn codex_repair_command(_bin_path: &str, _real: &str) -> Option<String> {
-    None
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -2341,12 +2297,17 @@ fn package_manager_anchored_command_from_paths(
 ///    且在 PATH 里比 nvm/homebrew 更靠前,用 npm 升级会装到别处且被原生那份遮蔽。
 /// ③ Homebrew formula（真身在 `Cellar/<formula>/`）→ `<bin_path 同目录>/brew upgrade <formula>`;
 ///    formula 由 Homebrew 拥有,避免 self-update 尝试改动包管理器管理的安装。
-/// ④ 其余支持官方自升级的工具 → `<bin_path 绝对> update/upgrade || <原锚定包管理器命令>`；
-///    Codex 的 self-update 只在部分 release 可用,所以保留 npm/brew/bun/volta fallback。
+/// ④ 其余支持官方自升级的工具（不含 Codex CLI）→ `<bin_path 绝对> update/upgrade ||
+///    <原锚定包管理器命令>`；Codex CLI 会在 `is_lifecycle_writable` gate 提前返回，始终
+///    保持只读而不生成 self-update 或包管理器 fallback。
 /// ⑤ 不支持官方自升级的 npm 全局包(例如 Gemini CLI，以及非 native 的 Grok Build) → 锚定到
 ///    "那处 bin 目录的 npm"。
 #[cfg(not(target_os = "windows"))]
 fn anchored_command_from_paths(tool: &str, bin_path: &str, real_target: &str) -> Option<String> {
+    if !is_lifecycle_writable(tool) {
+        return None;
+    }
+
     let real_lower = real_target.to_ascii_lowercase();
 
     if tool == "hermes" {
@@ -2434,6 +2395,10 @@ fn package_manager_anchored_command_from_paths(tool: &str, bin_path: &str) -> Op
 /// 才返 None 让上游兜回静态命令、`anchored=false`。
 #[cfg(target_os = "windows")]
 fn anchored_command_from_paths(tool: &str, bin_path: &str, real_target: &str) -> Option<String> {
+    if !is_lifecycle_writable(tool) {
+        return None;
+    }
+
     if tool == "hermes" {
         return anchored_official_update_command(tool, bin_path);
     }
@@ -2476,19 +2441,12 @@ fn default_install(installs: &[ToolInstallation]) -> Option<&ToolInstallation> {
 /// 全平台共用——`anchored_command_from_paths` 自身是 cfg 二选一(POSIX 五分支 /
 /// Windows 三分支),这里只负责取默认那处 + 转发。
 fn installs_anchored_command(tool: &str, installs: &[ToolInstallation]) -> Option<String> {
+    if !is_lifecycle_writable(tool) {
+        return None;
+    }
+
     let inst = default_install(installs)?;
     let real = inst.real.to_string_lossy();
-    // Codex 平台分发包损坏自愈：主包在但平台二进制缺失时 codex 跑不起来
-    // （runnable=false），此时正常锚定的 `npm i -g @latest` 是 no-op 修不好——改用
-    // uninstall+install 重装补回平台二进制。**但仅限会锚定到 sibling npm 的 node 管理器
-    // 来源**（codex_repair_command 内按 source/real 收窄，brew/volta/bun/system 交回下方
-    // source-specific 锚定，避免误用 npm 重装）。runnable=true 的正常升级也走下方普通锚定
-    // 路径（且因 codex 不在 prefers_official_update，不会再跑会假成功掩盖损坏的 `codex update`）。
-    if tool == "codex" && !inst.runnable {
-        if let Some(cmd) = codex_repair_command(&inst.path, &real) {
-            return Some(cmd);
-        }
-    }
     anchored_command_from_paths(tool, &inst.path, &real)
 }
 
@@ -2561,6 +2519,10 @@ fn install_command_for(tool: &str) -> String {
 ///   None(无默认 / sibling 不存在等)→ 静态兜底、`anchored=false`,
 ///   前端据此给"默认入口无法确定"诚实文案。
 fn plan_command_for(tool: &str, installs: &[ToolInstallation]) -> (String, bool, bool) {
+    if !is_lifecycle_writable(tool) {
+        return (String::new(), false, false);
+    }
+
     #[cfg(target_os = "windows")]
     {
         if wsl_distro_for_tool(tool).is_some() {
@@ -3788,6 +3750,41 @@ mod tests {
     }
 
     #[test]
+    fn codex_remains_discoverable_but_has_no_lifecycle_plan() {
+        let requested = vec!["codex".to_string()];
+        assert!(VALID_TOOLS.contains(&"codex"));
+        assert_eq!(normalize_requested_tools(&requested), vec!["codex"]);
+        assert!(!is_lifecycle_writable("codex"));
+        assert!(is_lifecycle_writable("claude"));
+        assert_eq!(npm_install_command_for("codex"), None);
+        assert_eq!(
+            tool_action_shell_command_for_shell(
+                "codex",
+                ToolLifecycleAction::Install,
+                LifecycleCommandShell::Posix,
+            ),
+            None
+        );
+        assert_eq!(
+            plan_command_for("codex", &[]),
+            (String::new(), false, false)
+        );
+    }
+
+    #[tokio::test]
+    async fn codex_lifecycle_ipc_is_stably_rejected_for_all_legacy_actions() {
+        for action in ["install", "update", "repair"] {
+            let result =
+                run_tool_lifecycle_action(vec!["codex".to_string()], action.to_string(), None)
+                    .await;
+            assert_eq!(
+                result,
+                Err(CODEX_CLI_LIFECYCLE_DISABLED_MESSAGE.to_string())
+            );
+        }
+    }
+
+    #[test]
     fn test_compare_semver() {
         use std::cmp::Ordering;
         assert_eq!(
@@ -3967,30 +3964,31 @@ mod tests {
         }
 
         #[test]
-        fn volta_windows_uses_volta_install() {
+        fn volta_windows_uses_volta_install_for_gemini() {
             // tempdir 路径里不含 "volta" 子串,所以在 tempdir 下手建一个 `Volta` 子目录
             // 才能让 `infer_install_source` 通过路径 normalize 后命中 `/volta/` 分支。
             // sibling 候选顺序 `[exe, cmd]`——Volta 是 Rust 写的 native binary,首选 .exe。
             // expected 通过 `expect_quoted_path` 算出,以适应 temp 根目录含特殊字符的环境。
-            let (_dir, sub, bin_path) = setup_sibling("Volta", "codex.cmd", &["volta.exe"]);
-            let cmd = anchored_command_from_paths("codex", &bin_path, &bin_path);
+            let (_dir, sub, bin_path) = setup_sibling("Volta", "gemini.cmd", &["volta.exe"]);
+            let cmd = anchored_command_from_paths("gemini", &bin_path, &bin_path);
             let volta_full = format!("{}\\volta.exe", sub.to_string_lossy());
-            // codex 自 5092fe51 起不在 prefers_official_update：直接锚定包管理器，无 `codex update ||` 前缀。
-            let expected = format!("{} install @openai/codex", expect_quoted_path(&volta_full));
+            let expected = format!(
+                "{} install @google/gemini-cli",
+                expect_quoted_path(&volta_full)
+            );
             assert_eq!(cmd.as_deref(), Some(expected.as_str()));
         }
 
         #[test]
-        fn pnpm_windows_uses_pnpm_add() {
-            // bin_path 落 `%LOCALAPPDATA%\pnpm\codex.cmd`,sibling 有 `pnpm.cmd` → 锚定到
-            // `<dir>\pnpm.cmd add -g @openai/codex@latest`。用 add+@latest 而非 update,
+        fn pnpm_windows_uses_pnpm_add_for_gemini() {
+            // bin_path 落 `%LOCALAPPDATA%\pnpm\gemini.cmd`,sibling 有 `pnpm.cmd` → 锚定到
+            // `<dir>\pnpm.cmd add -g @google/gemini-cli@latest`。用 add+@latest 而非 update,
             // 兼容"之前没通过 pnpm 装过"的幂等性场景。
-            let (_dir, sub, bin_path) = setup_sibling("pnpm", "codex.cmd", &["pnpm.cmd"]);
-            let cmd = anchored_command_from_paths("codex", &bin_path, &bin_path);
+            let (_dir, sub, bin_path) = setup_sibling("pnpm", "gemini.cmd", &["pnpm.cmd"]);
+            let cmd = anchored_command_from_paths("gemini", &bin_path, &bin_path);
             let pnpm_full = format!("{}\\pnpm.cmd", sub.to_string_lossy());
-            // codex 自 5092fe51 起不在 prefers_official_update：直接锚定包管理器，无 `codex update ||` 前缀。
             let expected = format!(
-                "{} add -g @openai/codex@latest",
+                "{} add -g @google/gemini-cli@latest",
                 expect_quoted_path(&pnpm_full)
             );
             assert_eq!(cmd.as_deref(), Some(expected.as_str()));
@@ -4016,15 +4014,14 @@ mod tests {
         }
 
         #[test]
-        fn npm_windows_default_branch() {
+        fn npm_windows_default_branch_for_gemini() {
             // 任意 system 类路径(不命中 volta/pnpm)→ 兜底 sibling npm.cmd 锚定。
-            // 模拟 nvm-windows 的实际形态:`<NVM_HOME>\v22.0.0\codex.cmd`。
-            let (_dir, sub, bin_path) = setup_sibling("v22.0.0", "codex.cmd", &["npm.cmd"]);
-            let cmd = anchored_command_from_paths("codex", &bin_path, &bin_path);
+            // 模拟 nvm-windows 的实际形态:`<NVM_HOME>\v22.0.0\gemini.cmd`。
+            let (_dir, sub, bin_path) = setup_sibling("v22.0.0", "gemini.cmd", &["npm.cmd"]);
+            let cmd = anchored_command_from_paths("gemini", &bin_path, &bin_path);
             let npm_full = format!("{}\\npm.cmd", sub.to_string_lossy());
-            // codex 自 5092fe51 起不在 prefers_official_update：直接锚定包管理器，无 `codex update ||` 前缀。
             let expected = format!(
-                "{} i -g @openai/codex@latest",
+                "{} i -g @google/gemini-cli@latest",
                 expect_quoted_path(&npm_full)
             );
             assert_eq!(cmd.as_deref(), Some(expected.as_str()));
@@ -4150,12 +4147,11 @@ mod tests {
             // 含空格的路径(`C:\Program Files\...`)在生成命令时必须用双引号包,否则
             // bat / cmd /C 解析会把第一个空格当 token 分隔符,后续参数串错。**精确等值断言
             // 锁定引号位置**(starts_with+contains 会放过"双引号位置错了但仍能命中"的回归)。
-            let (_dir, sub, bin_path) = setup_sibling("Program Files", "codex.cmd", &["npm.cmd"]);
-            let cmd = anchored_command_from_paths("codex", &bin_path, &bin_path);
+            let (_dir, sub, bin_path) = setup_sibling("Program Files", "gemini.cmd", &["npm.cmd"]);
+            let cmd = anchored_command_from_paths("gemini", &bin_path, &bin_path);
             let npm_full = format!("{}\\npm.cmd", sub.to_string_lossy());
-            // codex 走 npm 锚定(5092fe51),含空格的 npm 全路径仍必须被双引号包裹。
             let expected = format!(
-                "{} i -g @openai/codex@latest",
+                "{} i -g @google/gemini-cli@latest",
                 expect_quoted_path(&npm_full)
             );
             assert_eq!(cmd.as_deref(), Some(expected.as_str()));
@@ -4168,8 +4164,8 @@ mod tests {
             // 二轮再还原为 `%foo%` 字面。helper 单测验证的是 `win_quote_path_for_batch`
             // 内部转义,这条 integration 测验证 anchored_command_from_paths 输出 + call
             // 包装后,**最终落到 .bat 的字符串**仍然闭合两轮 expansion。
-            let (_dir, sub, bin_path) = setup_sibling("path%foo%", "codex.cmd", &["npm.cmd"]);
-            let anchored = anchored_command_from_paths("codex", &bin_path, &bin_path).unwrap();
+            let (_dir, sub, bin_path) = setup_sibling("path%foo%", "gemini.cmd", &["npm.cmd"]);
+            let anchored = anchored_command_from_paths("gemini", &bin_path, &bin_path).unwrap();
             // build_tool_action_line Windows 分支最终拼的就是 `call <anchored>`(中间
             // 没有其他变换),这里直接用 format! 复刻那一步,无需暴露内部 API。
             let batch_line = format!("call {anchored}");
@@ -4177,10 +4173,10 @@ mod tests {
             // 含空格的环境**(否则 sub 本身含空格 + 子目录 `path%foo%` 触发 4 倍 `%` 转义
             // 会让 expected 漏引号、假失败)。
             let npm_full = format!("{}\\npm.cmd", sub.to_string_lossy());
-            // codex 走 npm 锚定(5092fe51)：batch 行 = `call <npm 全路径> i -g ...`，
-            // 含字面 `%` 的 npm 路径仍须 4 倍转义。
+            // Gemini 走 npm 锚定：batch 行 = `call <npm 全路径> i -g ...`，含字面 `%` 的
+            // npm 路径仍须 4 倍转义。
             let expected = format!(
-                "call {} i -g @openai/codex@latest",
+                "call {} i -g @google/gemini-cli@latest",
                 expect_quoted_path(&npm_full)
             );
             assert_eq!(batch_line, expected);
@@ -4388,10 +4384,6 @@ mod tests {
             );
             assert!(!opencode.contains("| bash"));
 
-            let codex =
-                wsl_tool_action_shell_command("codex", ToolLifecycleAction::Install).unwrap();
-            assert_eq!(codex, "npm i -g @openai/codex@latest");
-
             let grok = wsl_tool_action_shell_command("grok", ToolLifecycleAction::Install).unwrap();
             assert!(
                 grok.starts_with(
@@ -4556,18 +4548,6 @@ mod tests {
         }
 
         #[test]
-        fn codex_homebrew_formula_uses_brew_not_self_update() {
-            // Homebrew formula 归 brew 管理;即使 Codex 有 self-update,也不先改动
-            // Cellar 内的安装内容。
-            let cmd = anchored_command_from_paths(
-                "codex",
-                "/opt/homebrew/bin/codex",
-                "/opt/homebrew/Cellar/codex/1.2.3/bin/codex",
-            );
-            assert_eq!(cmd.as_deref(), Some("/opt/homebrew/bin/brew upgrade codex"));
-        }
-
-        #[test]
         fn gemini_nvm_anchors_to_npm_without_cli_update() {
             let cmd = anchored_command_from_paths(
                 "gemini",
@@ -4598,22 +4578,6 @@ mod tests {
         }
 
         #[test]
-        fn codex_nvm_anchors_to_that_npm() {
-            // Codex 不走 self-update（`codex update` 在 npm 安装上只是裸 `npm install -g`，
-            // 却会假成功掩盖平台二进制漏装）——直接锚定到同一个 node 的 npm，而非 PATH
-            // 第一个 npm。损坏时的 uninstall+install 自愈见 codex_missing_platform_binary_*。
-            let cmd = anchored_command_from_paths(
-                "codex",
-                "/Users/me/.nvm/versions/node/v22.14.0/bin/codex",
-                "/Users/me/.nvm/versions/node/v22.14.0/lib/node_modules/@openai/codex/bin/codex.js",
-            );
-            assert_eq!(
-                cmd.as_deref(),
-                Some("PATH='/Users/me/.nvm/versions/node/v22.14.0/bin':\"$PATH\" /Users/me/.nvm/versions/node/v22.14.0/bin/npm i -g @openai/codex@latest")
-            );
-        }
-
-        #[test]
         fn homebrew_npm_global_package_anchors_not_brew() {
             // openclaw 装在 Homebrew node 的全局目录(lib/node_modules，非 Cellar)：
             // 是 npm 全局包，官方 update 失败后走 npm 锚定而非 brew upgrade。
@@ -4632,8 +4596,7 @@ mod tests {
         fn volta_self_update_chain_anchors_to_volta() {
             // `~/.volta/bin` 通常不在 GUI 非登录 `bash -c` 的 PATH 里,且用户可能
             // PATH 上还有另一份 volta → 必须绝对路径锚定到命令行命中的这一份。
-            // 用 openclaw（仍在 prefers_official_update）覆盖 volta 分支的 self-update 链;
-            // codex 已改为不 self-update（见 codex_volta_anchors_to_volta_install）。
+            // 用 openclaw（仍在 prefers_official_update）覆盖 volta 分支的 self-update 链。
             let cmd = anchored_command_from_paths(
                 "openclaw",
                 "/Users/me/.volta/bin/openclaw",
@@ -4646,16 +4609,16 @@ mod tests {
         }
 
         #[test]
-        fn codex_volta_anchors_to_volta_install() {
-            // codex 锚定到命令行命中的那份 volta，但不 self-update：纯 `volta install`。
+        fn gemini_volta_anchors_to_volta_install() {
+            // Gemini 锚定到命令行命中的那份 volta，使用纯 `volta install`。
             let cmd = anchored_command_from_paths(
-                "codex",
-                "/Users/me/.volta/bin/codex",
-                "/Users/me/.volta/tools/image/packages/codex/lib/node_modules/@openai/codex",
+                "gemini",
+                "/Users/me/.volta/bin/gemini",
+                "/Users/me/.volta/tools/image/packages/gemini/lib/node_modules/@google/gemini-cli",
             );
             assert_eq!(
                 cmd.as_deref(),
-                Some("/Users/me/.volta/bin/volta install @openai/codex")
+                Some("/Users/me/.volta/bin/volta install @google/gemini-cli")
             );
         }
 
@@ -4677,13 +4640,13 @@ mod tests {
         fn volta_path_with_space_is_quoted() {
             // volta 分支用 `<dir>/volta`,目录含空格时同样要 POSIX 引号包裹。
             let cmd = anchored_command_from_paths(
-                "codex",
-                "/Users/my name/.volta/bin/codex",
-                "/Users/my name/.volta/tools/image/packages/codex/lib/node_modules/@openai/codex",
+                "gemini",
+                "/Users/my name/.volta/bin/gemini",
+                "/Users/my name/.volta/tools/image/packages/gemini/lib/node_modules/@google/gemini-cli",
             );
             assert_eq!(
                 cmd.as_deref(),
-                Some("'/Users/my name/.volta/bin/volta' install @openai/codex")
+                Some("'/Users/my name/.volta/bin/volta' install @google/gemini-cli")
             );
         }
 
@@ -4741,17 +4704,17 @@ mod tests {
         }
 
         #[test]
-        fn fnm_install_anchors_to_that_npm() {
+        fn fnm_install_anchors_to_that_npm_for_gemini() {
             // fnm 是自带同级 npm 的 node 管理器 → 锚定到那处的 npm。
             let cmd = anchored_command_from_paths(
-                "codex",
-                "/Users/me/.local/share/fnm_multishells/12345_abc/bin/codex",
-                "/Users/me/.local/share/fnm_multishells/12345_abc/lib/node_modules/@openai/codex/bin/codex.js",
+                "gemini",
+                "/Users/me/.local/share/fnm_multishells/12345_abc/bin/gemini",
+                "/Users/me/.local/share/fnm_multishells/12345_abc/lib/node_modules/@google/gemini-cli/dist/index.js",
             );
             assert_eq!(
                 cmd.as_deref(),
                 Some(
-                    "PATH='/Users/me/.local/share/fnm_multishells/12345_abc/bin':\"$PATH\" /Users/me/.local/share/fnm_multishells/12345_abc/bin/npm i -g @openai/codex@latest"
+                    "PATH='/Users/me/.local/share/fnm_multishells/12345_abc/bin':\"$PATH\" /Users/me/.local/share/fnm_multishells/12345_abc/bin/npm i -g @google/gemini-cli@latest"
                 )
             );
         }
@@ -4759,13 +4722,13 @@ mod tests {
         #[test]
         fn path_with_space_is_quoted() {
             let cmd = anchored_command_from_paths(
-                "codex",
-                "/Users/my name/.nvm/versions/node/v22/bin/codex",
-                "/Users/my name/.nvm/versions/node/v22/lib/node_modules/@openai/codex/bin/codex.js",
+                "gemini",
+                "/Users/my name/.nvm/versions/node/v22/bin/gemini",
+                "/Users/my name/.nvm/versions/node/v22/lib/node_modules/@google/gemini-cli/dist/index.js",
             );
             assert_eq!(
                 cmd.as_deref(),
-                Some("PATH='/Users/my name/.nvm/versions/node/v22/bin':\"$PATH\" '/Users/my name/.nvm/versions/node/v22/bin/npm' i -g @openai/codex@latest")
+                Some("PATH='/Users/my name/.nvm/versions/node/v22/bin':\"$PATH\" '/Users/my name/.nvm/versions/node/v22/bin/npm' i -g @google/gemini-cli@latest")
             );
         }
 
@@ -4799,14 +4762,14 @@ mod tests {
                     .expect("fake executable should be executable");
             }
 
-            let codex = bin.join("codex").to_string_lossy().into_owned();
+            let gemini = bin.join("gemini").to_string_lossy().into_owned();
             let real = temp
                 .path()
-                .join("home dir/.nvm/versions/node/v22.14.0/lib/node_modules/@openai/codex/bin/codex.js")
+                .join("home dir/.nvm/versions/node/v22.14.0/lib/node_modules/@google/gemini-cli/dist/index.js")
                 .to_string_lossy()
                 .into_owned();
-            let command = anchored_command_from_paths("codex", &codex, &real)
-                .expect("nvm codex should produce an anchored npm command");
+            let command = anchored_command_from_paths("gemini", &gemini, &real)
+                .expect("nvm gemini should produce an anchored npm command");
             let output = Command::new("/bin/bash")
                 .args(["-c", &command])
                 .env("PATH", "/usr/bin:/bin")
@@ -4918,78 +4881,6 @@ mod tests {
         }
 
         #[test]
-        fn codex_missing_platform_binary_self_heals_via_uninstall_install() {
-            // 平台二进制缺失 → `codex --version` 报 "Missing optional dependency" 退出非 0
-            // → enumerate 标记 runnable=false。此状态下普通 `npm i -g @latest` 是 no-op 修不好,
-            // 升级路径改用 uninstall+install 重装补回平台二进制（`|| true` 让 uninstall 在
-            // set -e 下对半损坏包返回非 0 时仍继续 install）。
-            let mut broken = inst("/Users/me/.nvm/versions/node/v22.14.0/bin/codex", true);
-            broken.runnable = false;
-            assert_eq!(
-                installs_anchored_command("codex", &[broken]).as_deref(),
-                Some("PATH='/Users/me/.nvm/versions/node/v22.14.0/bin':\"$PATH\" /Users/me/.nvm/versions/node/v22.14.0/bin/npm uninstall -g @openai/codex || true; PATH='/Users/me/.nvm/versions/node/v22.14.0/bin':\"$PATH\" /Users/me/.nvm/versions/node/v22.14.0/bin/npm i -g @openai/codex@latest")
-            );
-        }
-
-        #[test]
-        fn codex_runnable_uses_plain_npm_not_self_heal() {
-            // 正常（runnable=true）的 codex 升级：锚定 npm，既不重装、也不跑会假成功
-            // 掩盖损坏的 `codex update`。
-            let healthy = inst("/Users/me/.nvm/versions/node/v22.14.0/bin/codex", true);
-            let cmd = installs_anchored_command("codex", &[healthy]);
-            assert_eq!(
-                cmd.as_deref(),
-                Some("PATH='/Users/me/.nvm/versions/node/v22.14.0/bin':\"$PATH\" /Users/me/.nvm/versions/node/v22.14.0/bin/npm i -g @openai/codex@latest")
-            );
-            assert!(!cmd.unwrap().contains("uninstall"));
-        }
-
-        #[test]
-        fn codex_broken_homebrew_formula_uses_brew_not_npm_repair() {
-            // brew formula 装的坏 codex（real 在 Cellar）：自愈门控必须收窄放行，回落到
-            // `brew upgrade codex`——若误走 npm 重装，npm 够不到 Cellar 那份、反而旁路
-            // 装第二份 npm 全局 codex 制造双安装。
-            let broken = ToolInstallation {
-                path: "/opt/homebrew/bin/codex".to_string(),
-                version: None,
-                runnable: false,
-                error: None,
-                source: "homebrew".to_string(),
-                is_path_default: true,
-                real: std::path::PathBuf::from("/opt/homebrew/Cellar/codex/1.2.3/bin/codex"),
-            };
-            assert_eq!(
-                installs_anchored_command("codex", &[broken]).as_deref(),
-                Some("/opt/homebrew/bin/brew upgrade codex")
-            );
-        }
-
-        #[test]
-        fn codex_broken_volta_uses_volta_install_not_npm_repair() {
-            // volta 装的坏 codex：回落到 `volta install`，不走 npm 重装。
-            let mut broken = inst("/Users/me/.volta/bin/codex", true);
-            broken.runnable = false;
-            assert_eq!(
-                installs_anchored_command("codex", &[broken]).as_deref(),
-                Some("/Users/me/.volta/bin/volta install @openai/codex")
-            );
-        }
-
-        #[test]
-        fn codex_broken_bun_uses_bun_add_not_phantom_npm() {
-            // bun 装的坏 codex：回落到 `bun add`，且**绝不**拼出 `~/.bun/bin/npm`
-            // （bun 目录下没有 npm，那条路径不存在、执行会直接失败）。
-            let mut broken = inst("/Users/me/.bun/bin/codex", true);
-            broken.runnable = false;
-            let cmd = installs_anchored_command("codex", &[broken]);
-            assert_eq!(
-                cmd.as_deref(),
-                Some("/Users/me/.bun/bin/bun add -g @openai/codex@latest")
-            );
-            assert!(!cmd.unwrap().contains("npm"));
-        }
-
-        #[test]
         fn first_abs_path_line_skips_shell_noise() {
             // 交互式 .zshrc 先打印欢迎语（如 powerlevel10k / 自定义提示），
             // command -v 的真实路径在其后 → 跳过噪音取真路径。
@@ -5086,14 +4977,6 @@ mod tests {
         }
 
         #[test]
-        fn codex_install_keeps_static_npm() {
-            // OpenAI 暂无独立 native installer,保持原裸 npm,不引入兜底链(无东西可兜底)。
-            let cmd = install_command_for("codex");
-            assert_eq!(cmd, "npm i -g @openai/codex@latest");
-            assert!(!cmd.contains("||"));
-        }
-
-        #[test]
         fn gemini_install_keeps_static_npm() {
             // Google 文档同时支持 brew/npm,但本表保持与 update fallback 一致的 npm。
             // 用户若已装 brew gemini-cli,update 路径的锚定会识别 formula → brew upgrade,
@@ -5135,11 +5018,6 @@ mod tests {
                 static_fallback_command("claude"),
                 "claude update || npm i -g @anthropic-ai/claude-code@latest"
             );
-            assert_eq!(
-                static_fallback_command("codex"),
-                "npm i -g @openai/codex@latest"
-            );
-            assert!(!static_fallback_command("codex").contains("codex update"));
             assert_eq!(
                 static_fallback_command("gemini"),
                 "npm i -g @google/gemini-cli@latest"

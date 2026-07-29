@@ -1,0 +1,5 @@
+{"file":"docs/fyagent/dev/v1/13-AUTOMATED-TEST-PLAN.md","reason":"全量质量门、静态审计和禁止自动化行为"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"前端集成质量与可运行检查基准"}
+{"file":".trellis/spec/backend/index.md","reason":"跨层最终检查必须加载后端规范索引"}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"安装器完整性、生命周期与错误契约"}
+{"file":".trellis/spec/frontend/index.md","reason":"跨层最终检查必须加载前端规范索引"}

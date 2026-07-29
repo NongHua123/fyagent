@@ -16,6 +16,16 @@ static GLOBAL_CLIENT: OnceCell<RwLock<Client>> = OnceCell::new();
 /// 当前代理 URL（用于日志和状态查询）
 static CURRENT_PROXY_URL: OnceCell<RwLock<Option<String>>> = OnceCell::new();
 
+/// Proxy choice copied by security-sensitive scoped clients. This type is
+/// crate-private so an explicit URL (which may include credentials) cannot
+/// reach logs, IPC, or a renderer-facing DTO.
+#[derive(Clone)]
+pub(crate) enum InstallerProxyConfiguration {
+    Explicit(url::Url),
+    System,
+    Direct,
+}
+
 /// CC Switch 代理服务器当前监听的端口
 static CC_SWITCH_PROXY_PORT: OnceCell<RwLock<u16>> = OnceCell::new();
 
@@ -206,6 +216,38 @@ pub fn get_current_proxy_url() -> Option<String> {
         .and_then(|url| url.clone())
 }
 
+/// Returns the current global proxy policy for a short-lived scoped client.
+///
+/// Installer clients must not reuse `GLOBAL_CLIENT` because that client has a
+/// different redirect and timeout policy. Reading this configuration per
+/// request preserves the existing proxy hot-update behavior while keeping the
+/// caller responsible for its own client hardening.
+pub(crate) fn installer_proxy_configuration() -> Result<InstallerProxyConfiguration, ()> {
+    installer_proxy_configuration_from(
+        get_current_proxy_url().as_deref(),
+        system_proxy_points_to_loopback(),
+    )
+}
+
+fn installer_proxy_configuration_from(
+    explicit_proxy_url: Option<&str>,
+    system_proxy_points_to_self: bool,
+) -> Result<InstallerProxyConfiguration, ()> {
+    let Some(value) = explicit_proxy_url else {
+        return Ok(if system_proxy_points_to_self {
+            InstallerProxyConfiguration::Direct
+        } else {
+            InstallerProxyConfiguration::System
+        });
+    };
+
+    let parsed = url::Url::parse(value).map_err(|_| ())?;
+    if !["http", "https", "socks5", "socks5h"].contains(&parsed.scheme()) {
+        return Err(());
+    }
+    Ok(InstallerProxyConfiguration::Explicit(parsed))
+}
+
 /// 检查是否正在使用代理
 #[allow(dead_code)]
 pub fn is_proxy_enabled() -> bool {
@@ -390,6 +432,30 @@ mod tests {
         // 使用明确无效的 scheme 来触发错误
         let result = build_client(Some("invalid-scheme://127.0.0.1:7890"));
         assert!(result.is_err(), "Should reject invalid proxy scheme");
+    }
+
+    #[test]
+    fn installer_proxy_configuration_preserves_explicit_proxy_and_self_loop_policy() {
+        let explicit = installer_proxy_configuration_from(
+            Some("socks5://user:secret@proxy.example.com:1080"),
+            false,
+        )
+        .expect("a supported explicit proxy is accepted");
+        assert!(matches!(
+            explicit,
+            InstallerProxyConfiguration::Explicit(url)
+                if url.scheme() == "socks5" && url.host_str() == Some("proxy.example.com")
+        ));
+
+        assert!(matches!(
+            installer_proxy_configuration_from(None, false).unwrap(),
+            InstallerProxyConfiguration::System
+        ));
+        assert!(matches!(
+            installer_proxy_configuration_from(None, true).unwrap(),
+            InstallerProxyConfiguration::Direct
+        ));
+        assert!(installer_proxy_configuration_from(Some("file:///not-a-proxy"), false).is_err());
     }
 
     #[test]

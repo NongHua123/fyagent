@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Anonymized identity-only fixture, recorded on 2026-07-29.
+  Source package: OpenAI.Codex_26.721.4979.0_x64__2p2nqsd0c76g0.Msix
+  SHA-256: f0c1d75045952a11a581d34f28f595d1d110fb13f8f7e5c5201802ed2bbd7093
+  This is not a signed MSIX archive and cannot stand in for Windows trust validation.
+-->
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+  <Identity
+    Name="OpenAI.Codex"
+    Publisher="CN=50BDFD77-8903-4850-9FFE-6E8522F64D5B"
+    Version="26.721.4979.0"
+    ProcessorArchitecture="x64" />
+  <Dependencies>
+    <TargetDeviceFamily
+      Name="Windows.Desktop"
+      MinVersion="10.0.19041.0"
+      MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Applications>
+    <Application
+      Id="App"
+      Executable="app/ChatGPT.exe"
+      EntryPoint="Windows.FullTrustApplication" />
+  </Applications>
+</Package>

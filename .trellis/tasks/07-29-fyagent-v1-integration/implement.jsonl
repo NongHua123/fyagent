@@ -1,0 +1,3 @@
+{"file":"docs/fyagent/dev/v1/11-REPOSITORY-CHANGE-MAP.md","reason":"共享注册、CLI、updater、品牌和静态审计的路径边界"}
+{"file":"docs/fyagent/dev/v1/12-IMPLEMENTATION-SEQUENCE.md","reason":"集成顺序、原子提交、质量门和回滚点"}
+{"file":"docs/fyagent/dev/v1/14-MANUAL-ACCEPTANCE.md","reason":"人工验收资料与不自动执行真实安装的边界"}

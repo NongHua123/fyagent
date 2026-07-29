@@ -13,6 +13,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
+// This is a persisted import/export wire marker, not product UI. Keep the
+// legacy value so a V1 export remains importable by an earlier CC Switch build.
 const CC_SWITCH_SQL_EXPORT_HEADER: &str = "-- CC Switch SQLite 导出";
 
 /// Tables whose data rows are skipped when exporting for WebDAV sync.
@@ -171,8 +173,8 @@ impl Database {
 
         Err(AppError::localized(
             "backup.sql.invalid_format",
-            "仅支持导入由 CC Switch 导出的 SQL 备份文件。",
-            "Only SQL backups exported by CC Switch are supported.",
+            "仅支持导入由 FyAgent 导出的 SQL 备份文件。",
+            "Only SQL backups exported by FyAgent are supported.",
         ))
     }
 
@@ -392,7 +394,7 @@ impl Database {
             .unwrap_or(0);
 
         output.push_str(&format!(
-            "-- CC Switch SQLite 导出\n-- 生成时间: {timestamp}\n-- user_version: {user_version}\n"
+            "{CC_SWITCH_SQL_EXPORT_HEADER}\n-- 生成时间: {timestamp}\n-- user_version: {user_version}\n"
         ));
         output.push_str("PRAGMA foreign_keys=OFF;\n");
         output.push_str(&format!("PRAGMA user_version={user_version};\n"));
@@ -689,10 +691,31 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
-    use super::Database;
+    use super::{Database, CC_SWITCH_SQL_EXPORT_HEADER};
     use crate::error::AppError;
     use crate::settings::{update_settings, AppSettings};
     use serial_test::serial;
+
+    #[test]
+    fn sql_import_keeps_the_legacy_wire_header_for_downgrade_compatibility() {
+        assert_eq!(CC_SWITCH_SQL_EXPORT_HEADER, "-- CC Switch SQLite 导出");
+        assert!(Database::validate_cc_switch_sql_export(CC_SWITCH_SQL_EXPORT_HEADER).is_ok());
+    }
+
+    #[test]
+    fn sql_import_validation_error_uses_the_fyagent_brand() {
+        let error = Database::validate_cc_switch_sql_export("-- untrusted export")
+            .expect_err("an untrusted export must be rejected");
+
+        match error {
+            AppError::Localized { key, zh, en } => {
+                assert_eq!(key, "backup.sql.invalid_format");
+                assert_eq!(zh, "仅支持导入由 FyAgent 导出的 SQL 备份文件。");
+                assert_eq!(en, "Only SQL backups exported by FyAgent are supported.");
+            }
+            other => panic!("expected a localized validation error, got {other:?}"),
+        }
+    }
 
     #[test]
     fn sync_import_preserves_local_only_tables() -> Result<(), AppError> {

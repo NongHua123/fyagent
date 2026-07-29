@@ -10,8 +10,9 @@ is no Zustand or Jotai dependency in `package.json`.
   and refs. `App.tsx` keeps the selected application and view locally, then
   persists those UI preferences in `localStorage`.
 - **Small cross-tree UI state:** Context providers own values used by unrelated
-  descendants. `ThemeProvider` owns the selected theme and its persistence;
-  `UpdateProvider` owns update-check state. Both are composed in `main.tsx`.
+  descendants. `ThemeProvider` owns the selected theme and its persistence and
+  is composed in `main.tsx`. The host updater is intentionally not renderer
+  state: V1 has no `UpdateProvider`, updater query, or updater capability.
 - **Backend/resource state:** TanStack Query owns results obtained through
   `src/lib/api/*`. The shared `queryClient` provides the renderer defaults;
   feature query and mutation hooks live under both `src/lib/query/` and
@@ -45,17 +46,26 @@ key factory.
 
 ## Persistence Boundary
 
-`localStorage` is currently used for renderer preferences such as theme, last
-view, and dismissed update versions. Most feature data reaches native commands
-through typed Tauri API facades and is frequently represented in the Query
-cache; `main.tsx` retains a bootstrap-time direct `invoke` call. Keep the
-renderer-preference boundary distinct from native configuration data when
-extending existing behavior.
+`localStorage` is currently used for renderer preferences such as theme and
+last view. Most feature data reaches native commands through typed Tauri API
+facades and is frequently represented in the Query cache; `main.tsx` retains a
+bootstrap-time direct `invoke` call. Keep the renderer-preference boundary
+distinct from native configuration data when extending existing behavior.
+
+## Host Updater Boundary
+
+FyAgent V1 removes the host application's upstream updater end to end. Do not
+add a global update context, update-check query, background download action, or
+DatabaseUpgrade-to-updater bridge. `main.tsx` may render `DatabaseUpgrade` when
+the native host reports `db_version_too_new`, but that recovery surface must
+remain a local, no-network support or controlled-distribution prompt and must
+not mutate the database.
 
 ## Evidence
 
-- [src/main.tsx](../../../src/main.tsx) composes `QueryClientProvider`,
-  `ThemeProvider`, and `UpdateProvider` at the renderer root.
+- [src/main.tsx](../../../src/main.tsx) composes `QueryClientProvider` and
+  `ThemeProvider` at the renderer root and renders the database-too-new
+  recovery branch without an updater provider.
 - [src/lib/query/queryClient.ts](../../../src/lib/query/queryClient.ts)
   defines the shared TanStack Query defaults.
 - [src/hooks/useOpenClaw.ts](../../../src/hooks/useOpenClaw.ts) centralizes

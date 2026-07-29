@@ -235,6 +235,13 @@
 - 普通 UI不受影响；
 - 不阻断 V1。
 
+### WALL-05 本地路径与重解析点边界（HIL）
+
+- 将 `TEMP`/job root 指向 mapped network drive，确认 hidden all-users 流程在 `GetDriveTypeW != DRIVE_FIXED` 时 fail closed；
+- 在 parent 创建 job 后，将 source file 或中间目录替换为 junction/reparse，确认 elevated child 的 final-handle path guard 拒绝；
+- 确认 ProgramData protected staging 仅允许 SYSTEM/Administrators 写入，且 PackageManager 只接收该复制件；
+- 该项需要真实 Windows 管理员/UAC 环境，不由 fake 自动化签收。
+
 ## 8. macOS Apple Silicon 阻断性矩阵
 
 ### M-01 未安装 → `/Applications`
@@ -346,6 +353,7 @@
 - 无 ccswitch.io/上游 GitHub可见跳转；
 - 无启动自动检查 FyAgent更新；
 - 网络抓取无 CC Switch GitHub latest请求；
+- 真实 GitHub Actions release 仅生成 FyAgent 手动安装资产；不生成 updater `.tar.gz`/`latest.json`，release 标题、资产名和 macOS DMG 卷名均不显示旧品牌或旧官网；
 - 当前应用版本仍显示；
 - LICENSE仍存在；
 - identifier/data dir仍保持。

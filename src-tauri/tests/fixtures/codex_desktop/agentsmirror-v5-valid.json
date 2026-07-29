@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 5,
+  "generatedAt": "2026-07-29T00:00:00Z",
+  "codexVersion": "26.721.41059",
+  "publishedAt": "2026-07-29T00:00:00Z",
+  "sources": {
+    "windows": {
+      "architectures": {
+        "x64": {
+          "architecture": "x64",
+          "status": "downloadable",
+          "downloadable": true,
+          "version": "1.2.3.4",
+          "packageMoniker": "OpenAI.Codex_1.2.3.4_x64__fixture",
+          "contentLength": 1048576,
+          "url": "https://untrusted.example.test/windows-x64?token=must-not-cross-source",
+          "deltas": [{ "url": "https://untrusted.example.test/delta" }],
+          "futureWindowsField": "ignored"
+        },
+        "arm64": {
+          "architecture": "arm64",
+          "status": "downloadable",
+          "downloadable": true,
+          "version": "1.2.3.4",
+          "packageMoniker": "OpenAI.Codex_1.2.3.4_arm64__fixture",
+          "contentLength": 2097152,
+          "url": "https://untrusted.example.test/windows-arm64?token=must-not-cross-source"
+        }
+      }
+    },
+    "macos": {
+      "arm64": {
+        "contentLength": 593861752,
+        "bundleShortVersion": "26.721.41059",
+        "bundleVersion": "5848",
+        "bundleIdentifier": "com.openai.codex",
+        "teamIdentifier": "2DC432GLL2",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "downloadable": true,
+        "status": "downloadable",
+        "url": "https://untrusted.example.test/macos-arm64?token=must-not-cross-source",
+        "deltas": [],
+        "futureMacField": { "ignored": true }
+      }
+    }
+  },
+  "derived": {
+    "latestChecksums": {
+      "OpenAI.Codex_1.2.3.4_x64__fixture.Msix": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "OpenAI.Codex_1.2.3.4_arm64__fixture.Msix": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "Codex-mac-arm64.dmg": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  },
+  "futureRootField": {
+    "mustBeIgnoredForSchemaV5": true
+  }
+}

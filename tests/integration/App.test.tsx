@@ -128,12 +128,6 @@ vi.mock("@/components/AppSwitcher", () => ({
   ),
 }));
 
-vi.mock("@/components/UpdateBadge", () => ({
-  UpdateBadge: ({ onClick }: any) => (
-    <button onClick={onClick}>update-badge</button>
-  ),
-}));
-
 vi.mock("@/components/mcp/McpPanel", () => ({
   default: ({ open, onOpenChange }: any) =>
     open ? (

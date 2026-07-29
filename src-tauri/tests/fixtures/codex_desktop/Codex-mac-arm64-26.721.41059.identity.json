@@ -1,0 +1,44 @@
+{
+  "fixtureKind": "macos-arm64-identity-and-provenance",
+  "recordedAt": "2026-07-29",
+  "source": {
+    "manifestEndpoint": "https://codexapp.agentsmirror.com/latest/manifest",
+    "manifestSchemaVersion": 5,
+    "manifestGeneratedAt": "2026-07-24T21:24:48Z",
+    "manifestPublishedAt": "2026-07-24T21:33:02Z",
+    "mirrorArtifactFileName": "Codex-mac-arm64.dmg",
+    "upstreamArtifactFileName": "ChatGPT-26.721.41059-arm64.dmg",
+    "upstreamArtifactHost": "persistent.oaistatic.com",
+    "artifactByteLength": 593861752,
+    "artifactSha256": "ae864e2def7db56d0bb77a876a5cbe4e4c2f554ccc654cec921b946892583c0a",
+    "artifactDownloadedAndHashedOn": "Windows development host",
+    "hashMatchesCurrentManifest": true
+  },
+  "bundle": {
+    "containerPath": "ChatGPT Installer/ChatGPT.app",
+    "bundleIdentifier": "com.openai.codex",
+    "bundleShortVersion": "26.721.41059",
+    "bundleVersion": "5848",
+    "bundleExecutable": "ChatGPT",
+    "bundleName": "ChatGPT",
+    "minimumSystemVersion": "12.0",
+    "launcherMachO": {
+      "path": "ChatGPT Installer/ChatGPT.app/Contents/MacOS/ChatGPT",
+      "magicLittleEndian": "cffaedfe",
+      "cpuTypeLittleEndian": "0x0100000c",
+      "architecture": "arm64"
+    }
+  },
+  "signature": {
+    "expectedTeamIdentifier": "2DC432GLL2",
+    "teamIdentifierEvidence": "current manifest metadata",
+    "mirrorSparkleArchiveIdentityVerified": true,
+    "nativeVerification": {
+      "status": "pending_macos_hil",
+      "authorityChain": "not captured on the Windows development host",
+      "codesign": "not executed on the Windows development host",
+      "spctl": "not executed on the Windows development host"
+    }
+  },
+  "boundary": "Identity-only audit fixture derived from the downloaded current DMG and the fixed manifest. It contains no production archive, redirect URL, query string, or personal path. It is not a substitute for native macOS codesign or Gatekeeper validation."
+}

@@ -89,6 +89,9 @@ macOS：
 - terminal不可更新；
 - stale job update拒绝；
 - event sink失败不终止任务。
+- settings restart 与 start_install 对同一 job 槽的互斥；默认 capability 不得包含
+  `process:allow-restart`，使渲染层不能绕过 `restart_app` 的 restart claim；已有显式
+  退出路径保留最窄的 `process:allow-exit`，并继续走应用 exit guard。
 
 ## 6. Source 测试
 
@@ -130,6 +133,10 @@ macOS：
 - userinfo URL拒绝；
 - relative Location；
 - query不写日志。
+- 固定 manifest/checksum 的合规 HTTPS redirect（当前 R2 跳转）可达；不安全、缺失
+  `Location` 或第 6 跳在请求前被拒绝，且最终 URL 不进入 DTO/日志 query。
+- metadata 的 redirect-policy 拒绝必须映射为不可重试的 `REDIRECT_REJECTED` 和
+  `OpenLogs`，不能降级为可重试的 `SOURCE_UNAVAILABLE`。
 
 如果本地 TLS fixture成本过高，将 redirect policy抽成纯函数测试，并对 Client builder做构造测试；不降低生产策略。
 
@@ -159,6 +166,8 @@ macOS：
 - SHA match/mismatch；
 - expected hash格式；
 - size mismatch；
+- 包解析/平台验证后、实际 Windows deploy 或 macOS mount 前替换同长度 artifact：重新
+  校验必须失败，且 fake deploy/attach 不得被调用；
 - `size * 3` checked arithmetic；
 - temp/target同卷去重；
 - 两卷任一不足；
@@ -209,7 +218,8 @@ Fake scenarios：
 - identity changed；
 - stage fail；
 - provision unsupported；
-- result file ACL/path validation；
+- elevated child不写入 user-temp 结果文件；
+- fixed drive / reparse source handle / protected staging 的 Windows HIL 验证；
 - ordinary IPC cannot invoke all-users。
 
 Windows runner只运行 fake，不改变系统 package inventory。
@@ -226,6 +236,11 @@ Windows runner只运行 fake，不改变系统 package inventory。
 - min OS；
 - build version；
 - unreadable plist。
+- malformed unrelated `.app` 不阻断 valid Stable，且单独存在时为 NotInstalled；
+- probe 已识别为 Stable 后，严格字段缺失/损坏仍为 fail closed；
+- 记录的 ARM64 identity/provenance fixture 与 exact Bundle ID、Team allowlist、版本、
+  DMG hash 和 launcher 架构一致；fixture 必须明确 native `codesign`/`spctl` 尚未在
+  Windows 上取证，且不得成为运行时信任输入。
 
 ### 10.2 Scan matrix
 
@@ -269,7 +284,7 @@ Windows runner只运行 fake，不改变系统 package inventory。
 
 1. install happy path；
 2. update happy path；
-3. local newer no start allowed? `start_install`应验证 action并拒绝降级；
+3. local same/newer direct `start_install`：服务端重新检测并只启动可信 Stable 应用；断言零下载、零 preflight、零安装、零临时目录，绝不重装或降级；
 4. metadata changed；
 5. disk fail；
 6. download retry then success；
@@ -281,7 +296,8 @@ Windows runner只运行 fake，不改变系统 package inventory。
 12. event sequence；
 13. temp cleanup；
 14. remote fail local launch；
-15. job already running。
+15. job already running；
+16. source/platform flow panic：发布 `Failed(INTERNAL_ERROR)`、清理已创建的受控临时目录，且旧 job 不再阻塞新的 `start_install` 或 `claim_restart()`。
 
 断言每条路径的 terminal state和稳定错误码。
 
@@ -305,6 +321,7 @@ Windows runner只运行 fake，不改变系统 package inventory。
 - unmount不cancel；
 - success Toast一次；
 - terminal invalidation；
+- retained `Succeeded` + force refresh 的不同 release ID：重新派生 `ready_update`、以新的 expected release ID start，且不误 launch 旧安装；
 - copy error；
 - refresh true；
 - remote failure local preserved。
@@ -333,6 +350,7 @@ Windows runner只运行 fake，不改变系统 package inventory。
 - 无 UpdateProvider自动调用；
 - 无上游 update banner/button；
 - FyAgent标题；
+- release workflow 无 Tauri updater signing key、updater artifact、`latest.json` 或旧品牌/旧官网发布面；仅发布 FyAgent 手动安装资产；
 - 不测试许可证文本被删除。
 
 ## 14. 静态审计测试

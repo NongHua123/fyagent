@@ -1,0 +1,32 @@
+{
+  "id": "fyagent-v1",
+  "name": "fyagent-v1",
+  "title": "完成 FyAgent V1 开发",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-07-29",
+  "completedAt": null,
+  "branch": "feature/fyagent-v1",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "07-29-fyagent-v1-core",
+    "07-29-fyagent-v1-windows",
+    "07-29-fyagent-v1-macos",
+    "07-29-fyagent-v1-ui",
+    "07-29-fyagent-v1-integration"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
