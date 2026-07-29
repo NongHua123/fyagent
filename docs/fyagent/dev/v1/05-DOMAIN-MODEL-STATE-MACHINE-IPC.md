@@ -70,7 +70,8 @@ pub enum PlatformVersion {
 
 - Windows 比较 `Package.Id.Version`/MSIX Identity 的四段无符号整数；
 - macOS 比较 `CFBundleVersion`，解析器必须根据真实官方格式实现确定性比较；
-- `CFBundleShortVersionString` 和镜像展示版本只用于 UI；
+- `CFBundleShortVersionString` 和镜像展示版本只用于 UI；但当前平台卡片的展示版本必须来自同一平台/架构已校验的 artifact 分支。Windows 使用该架构 MSIX `version`，macOS 使用已校验的
+  `CFBundleShortVersionString`；不得把 root 聚合版本当作 Windows 的“最新版本”；
 - 无法可靠比较时返回结构化错误，不允许按普通字典序猜测；
 - 本地版本与镜像相同或高于镜像版本时只允许启动，不自动重装或降级；该裁决必须由 Rust 服务端在下载前执行，不能只依赖前端按钮状态。
 
@@ -159,6 +160,10 @@ pub struct RemoteReleaseStatus {
 ```
 
 不得把 S3/R2 最终预签名 URL 或 query 参数返回前端。
+
+`display_version` 仅用于当前平台卡片的版本文案，必须对应同一
+`platform_version` 所属的已校验分支；前端用 `platform_version` 推导安装、更新、同版启动或本地较新，绝不比较展示字符串。manifest 的 root 聚合版本可以作为非操作性的参考元数据，
+但当其与当前平台分支不同步时，不能出现在该平台的“最新版本”位置。
 
 ## 3. `release_id` 规范
 

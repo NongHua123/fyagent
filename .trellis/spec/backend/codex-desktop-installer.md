@@ -6,8 +6,8 @@ The Codex desktop installer spans Rust domain/source/platform code, seven Tauri
 commands, TypeScript query/hook/card consumers, and platform-specific
 verification. The frozen product requirements are in docs/fyagent/dev/v1/;
 this specification preserves the executable cross-layer boundary so later work
-does not reintroduce user-controlled installer inputs or drift the wire
-format.
+does not reintroduce user-controlled installer inputs, drift the wire format,
+or label a platform card with a version from another platform's release.
 
 ## 2. Signatures
 
@@ -29,6 +29,20 @@ No ordinary command accepts a URL, path, hash, identity, installer scope, or
 validation-bypass flag. The hidden Windows all-users experiment is a
 pre-runtime headless boundary, never one of these commands.
 
+The safe remote status exposed by `codex_desktop_check_latest` is:
+
+    RemoteReleaseStatus {
+        releaseId: string,
+        displayVersion: string,
+        platformVersion: PlatformVersion,
+        expectedSize: number,
+        checkedAt: string,
+    }
+
+For the active platform/architecture, `displayVersion` is the same
+branch-validated release's UI label; `platformVersion` remains the authoritative
+comparison value.
+
 ## 3. Contracts
 
 ### Source to service
@@ -44,6 +58,11 @@ pre-runtime headless boundary, never one of these commands.
 - The release descriptor is valid only after manifest checksum, derived
   checksum, checksum-file, architecture, size, and platform-version checks
   agree.
+- A platform card's `displayVersion` must come from the validated branch it can
+  install: Windows uses that architecture's MSIX `version`; macOS uses the
+  validated bundle short version. A manifest-wide aggregate version may
+  describe another platform and must not be returned as the active Windows
+  card's latest version.
 - Windows derives the MSIX name from its validated package moniker. macOS
   derives the single safe .dmg name from the validated branch/derived checksum
   records; a missing or ambiguous match fails closed.
@@ -126,6 +145,7 @@ pre-runtime headless boundary, never one of these commands.
 | Condition                                                                                              | Required result                                                                                                                              |
 | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | Remote metadata has a changed release ID                                                               | METADATA_CHANGED, suggested action refresh; do not install the new release implicitly.                                                       |
+| Manifest-wide aggregate version differs from the active platform branch                               | Expose the branch's validated displayVersion and platformVersion; never derive an active-card latest label or update state from the aggregate. |
 | Locked metadata's artifact checksum mismatches and the refresh changes release ID                      | METADATA_CHANGED; delete the artifact and require an explicit refreshed action.                                                              |
 | Trusted local Stable version is equal to or newer than the descriptor                                  | Launch only; no preflight, download, temporary directory, package validation, or install.                                                    |
 | Another job is active or cancellation cleanup is pending                                               | JOB_ALREADY_RUNNING; retain the single-job slot.                                                                                             |
@@ -149,6 +169,11 @@ installer command lines to the renderer.
 The renderer observes release A, calls start_install with expectedReleaseId A,
 and the service re-resolves A before it downloads through the fixed platform
 endpoint. A complete snapshot event lets the renderer show progress.
+
+If the manifest's aggregate version differs from the Windows artifact version,
+the Windows card displays that artifact's version and compares the canonical
+four-part MSIX tuple. It does not imply that a macOS release is installable on
+Windows.
 
 ### Base
 
@@ -176,8 +201,9 @@ such controls.
   macOS malformed-unrelated-bundle scan regressions alongside known-Stable
   fail-closed fixtures,
   service metadata-drift and checksum-reanchor behavior, direct same/newer
-  local-version launch-only behavior, platform fixture/fake tests, and DTO
-  fixture equality.
+  local-version launch-only behavior, platform fixture/fake tests, DTO fixture
+  equality, and a fixture whose manifest-wide aggregate version differs from
+  the Windows branch and proves `displayVersion` remains branch-specific.
 - TypeScript: import and parse tests/fixtures/codexDesktopDtoContract.v1.json;
   enumerate every frozen enum/tag branch and consume the complete snapshot.
 - Integration: static audit that ordinary IPC has no all-users or custom-input
@@ -207,6 +233,23 @@ such controls.
 
 The filename is data used to cross-check integrity metadata, not a path or
 remote URL capability.
+
+### Wrong
+
+```rust
+// A root aggregate can describe a different platform release.
+display_version: manifest.codex_version.to_owned(),
+```
+
+### Correct
+
+```rust
+// The card can only label the version its active architecture can install.
+display_version: validated_windows_artifact.version.to_owned(),
+```
+
+Keep update-state comparison on the canonical `platformVersion`, not on either
+display string.
 
 ### Wrong
 

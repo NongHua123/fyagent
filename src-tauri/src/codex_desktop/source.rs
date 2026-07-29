@@ -655,7 +655,10 @@ fn validate_windows_release(
         } else {
             RawTarget::WindowsArm64
         },
-        display_version: manifest.codex_version.to_owned(),
+        // The manifest-wide codexVersion may describe a different platform's
+        // release. The Windows card must display the validated MSIX version
+        // that this architecture can actually install.
+        display_version: version.to_owned(),
         platform_version,
         artifact_file_name,
         expected_sha256,
@@ -1709,6 +1712,7 @@ mod tests {
         );
         assert_eq!(windows.expected_sha256, "a".repeat(64));
         assert_eq!(windows.expected_size, 1_048_576);
+        assert_eq!(windows.display_version, "1.2.3.4");
         assert_eq!(
             windows.platform_version,
             ValidatedPlatformVersion::WindowsMsix("1.2.3.4".to_owned())

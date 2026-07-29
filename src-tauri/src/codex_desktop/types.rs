@@ -931,6 +931,12 @@ mod tests {
         assert!(windows
             .is_at_least(&PlatformVersion::parse_windows_msix("1.2.3.3").unwrap())
             .unwrap());
+        let windows_current = PlatformVersion::parse_windows_msix("26.721.4979.0").unwrap();
+        let windows_newer = PlatformVersion::parse_windows_msix("26.721.41059.0").unwrap();
+        assert_eq!(
+            windows_current.compare(&windows_newer).unwrap(),
+            Ordering::Less
+        );
         assert!(PlatformVersion::parse_windows_msix("1.2.3").is_err());
         assert!(PlatformVersion::parse_windows_msix("1.2.3.65536").is_err());
 
