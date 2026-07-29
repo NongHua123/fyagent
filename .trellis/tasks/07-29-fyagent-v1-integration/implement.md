@@ -84,6 +84,31 @@ OOM 或异常文件系统对象的运行时证据。
   `main.wxs` 不含 `cc_switch_lib.dll`。本地 MSI 的 Authenticode 状态为 `NotSigned`，不应
   视为发布签名或真实安装成功。
 
+### Windows x64 生产包 ZIP64 兼容修复
+
+- 2026-07-29 的 Windows 10 22H2 x64 人工尝试在 `verifying_download` 阶段返回
+  `PACKAGE_PARSE_FAILED`，诊断为 `multi-disk or ZIP64 MSIX archives are unsupported`。
+  该失败发生在 FyAgent 自有预检器，尚未调用 Windows PackageManager；设备唯一标识不属于
+  故障条件，也不写入仓库记录。
+- 对固定 `win-x64` 端点只执行 HEAD 与精确 Range 取证，没有下载完整 744,080,244-byte
+  MSIX。包是单磁盘 ZIP64：classic EOCD 使用 sentinel；ZIP64 EOCD 为固定 56 bytes，
+  `record size=44`、`entries=9548`、`cdSize=1295228`、`cdOffset=742784918`、
+  `recordOffset=744080146`，locator 声明 disk 0 / total disks 1。中央目录 9,548 条完整扫描
+  恰好消费 1,295,228 bytes，未发现非零 disk-start、ZIP64 local-header offset、加密条目、
+  不安全或重复名称。
+- Range 读取的根 manifest 标识为 `OpenAI.Codex` x64 `26.721.4979.0`，
+  `TargetDeviceFamily MinVersion=10.0.19041.0`；报告设备 build 19045 高于此门槛。中央目录
+  声明压缩总量 741,413,378 bytes、解压总量 1,948,467,324 bytes，因此旧 512 MiB 聚合
+  声明上限会在 ZIP64 修复后形成第二个串联阻断。
+- 解析器现接受严格有界的单磁盘 ZIP64，同时继续拒绝多磁盘、缺失/错位/可扩展 ZIP64
+  记录、classic/ZIP64 双元数据冲突、目录间隙/越界/超限与条目级非零 disk-start。聚合声明
+  上限调整为与现有 MSIX 文件上限一致的 4 GiB；实际仍只解压最多 512 KiB 的根 manifest，
+  哈希、签名、身份、架构、最低系统版本和 PackageManager 信任边界均未绕过。
+- 独立复审后的证据：`cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`、
+  `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings`、manifest tests 7/7、
+  Windows platform tests 23/23 与 `git diff --check` 均退出码 0。尚未用修复后的 FyAgent
+  完整下载生产包或执行 PackageManager 部署，所以 Windows x64 人工矩阵仍是 Pending human。
+
 ### 未闭合的人工/外部证据
 
 - `aarch64-pc-windows-msvc` target 已安装，但本机 ARM64 check 在 `aws-lc-sys` C 阶段因

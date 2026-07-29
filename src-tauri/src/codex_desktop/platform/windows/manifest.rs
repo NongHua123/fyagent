@@ -26,7 +26,9 @@ use crate::codex_desktop::{
 
 const MAX_MSIX_FILE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 const MAX_ZIP_ENTRY_COUNT: usize = 16_384;
-const MAX_ZIP_UNCOMPRESSED_BYTES: u64 = 512 * 1024 * 1024;
+// Only the separately bounded root manifest is decompressed here. Keep the
+// aggregate declaration bounded without rejecting valid production payloads.
+const MAX_ZIP_UNCOMPRESSED_BYTES: u64 = MAX_MSIX_FILE_BYTES;
 const MAX_MANIFEST_BYTES: u64 = 512 * 1024;
 const MAX_CENTRAL_DIRECTORY_BYTES: u64 = 32 * 1024 * 1024;
 const ROOT_MANIFEST_NAME: &str = "AppxManifest.xml";
@@ -154,19 +156,51 @@ fn audit_zip_central_directory(file: &mut File, file_size: u64) -> Result<(), In
             .ok_or_else(|| package_parse_error("MSIX ZIP end record is truncated"))?,
     );
 
-    if disk_number != 0
-        || central_directory_disk != 0
-        || entries_on_disk != entry_count
-        || entry_count == u16::MAX
-        || central_directory_size == u64::from(u32::MAX)
-        || central_directory_offset == u64::from(u32::MAX)
-    {
+    if disk_number != 0 || central_directory_disk != 0 {
         return Err(package_parse_error(
-            "multi-disk or ZIP64 MSIX archives are unsupported",
+            "multi-disk MSIX archives are unsupported",
         ));
     }
-    let entry_count = usize::from(entry_count);
-    if entry_count == 0 || entry_count > MAX_ZIP_ENTRY_COUNT {
+
+    let uses_zip64 = entries_on_disk == u16::MAX
+        || entry_count == u16::MAX
+        || central_directory_size == u64::from(u32::MAX)
+        || central_directory_offset == u64::from(u32::MAX);
+    let (entry_count, central_directory_size, central_directory_offset, end_record_offset) =
+        if uses_zip64 {
+            let zip64 = read_zip64_end_record(file, eocd_file_offset)?;
+            if (entries_on_disk != u16::MAX && u64::from(entries_on_disk) != zip64.entries_on_disk)
+                || (entry_count != u16::MAX && u64::from(entry_count) != zip64.entry_count)
+                || (central_directory_size != u64::from(u32::MAX)
+                    && central_directory_size != zip64.central_directory_size)
+                || (central_directory_offset != u64::from(u32::MAX)
+                    && central_directory_offset != zip64.central_directory_offset)
+            {
+                return Err(package_parse_error(
+                    "MSIX ZIP64 end records are inconsistent",
+                ));
+            }
+            (
+                zip64.entry_count,
+                zip64.central_directory_size,
+                zip64.central_directory_offset,
+                zip64.record_offset,
+            )
+        } else {
+            if entries_on_disk != entry_count {
+                return Err(package_parse_error(
+                    "multi-disk MSIX archives are unsupported",
+                ));
+            }
+            (
+                u64::from(entry_count),
+                central_directory_size,
+                central_directory_offset,
+                eocd_file_offset,
+            )
+        };
+
+    if entry_count == 0 || entry_count > MAX_ZIP_ENTRY_COUNT as u64 {
         return Err(package_parse_error(
             "MSIX ZIP entry count is outside parser bounds",
         ));
@@ -179,7 +213,13 @@ fn audit_zip_central_directory(file: &mut File, file_size: u64) -> Result<(), In
     let central_directory_end = central_directory_offset
         .checked_add(central_directory_size)
         .ok_or_else(|| package_parse_error("MSIX ZIP central directory overflowed"))?;
-    if central_directory_end > eocd_file_offset || central_directory_end > file_size {
+    if central_directory_end > file_size
+        || if uses_zip64 {
+            central_directory_end != end_record_offset
+        } else {
+            central_directory_end > end_record_offset
+        }
+    {
         return Err(package_parse_error("MSIX ZIP central directory is invalid"));
     }
 
@@ -189,6 +229,8 @@ fn audit_zip_central_directory(file: &mut File, file_size: u64) -> Result<(), In
     file.read_exact(&mut central_directory)
         .map_err(|_| package_parse_error("MSIX ZIP central directory could not be read"))?;
 
+    let entry_count = usize::try_from(entry_count)
+        .map_err(|_| package_parse_error("MSIX ZIP entry count is outside parser bounds"))?;
     let mut names = HashSet::with_capacity(entry_count);
     let mut cursor = 0_usize;
     for _ in 0..entry_count {
@@ -219,12 +261,15 @@ fn audit_zip_central_directory(file: &mut File, file_size: u64) -> Result<(), In
                 package_parse_error("MSIX ZIP central directory entry is truncated")
             })?,
         );
+        let disk_start = read_zip_u16(&central_directory, cursor + 34)
+            .ok_or_else(|| package_parse_error("MSIX ZIP central directory entry is truncated"))?;
         let local_header_offset = u64::from(
             read_zip_u32(&central_directory, cursor + 42).ok_or_else(|| {
                 package_parse_error("MSIX ZIP central directory entry is truncated")
             })?,
         );
-        if flags & 0x0001 != 0 || local_header_offset >= central_directory_offset {
+        if flags & 0x0001 != 0 || disk_start != 0 || local_header_offset >= central_directory_offset
+        {
             return Err(package_parse_error(
                 "MSIX ZIP central directory entry is unsafe",
             ));
@@ -257,6 +302,97 @@ fn audit_zip_central_directory(file: &mut File, file_size: u64) -> Result<(), In
     Ok(())
 }
 
+struct Zip64EndRecord {
+    record_offset: u64,
+    entries_on_disk: u64,
+    entry_count: u64,
+    central_directory_size: u64,
+    central_directory_offset: u64,
+}
+
+fn read_zip64_end_record(
+    file: &mut File,
+    eocd_file_offset: u64,
+) -> Result<Zip64EndRecord, InstallerError> {
+    const ZIP64_END_RECORD_SIGNATURE: [u8; 4] = [0x50, 0x4B, 0x06, 0x06];
+    const ZIP64_END_RECORD_SIZE: u64 = 56;
+    const ZIP64_END_RECORD_BODY_SIZE: u64 = 44;
+    const ZIP64_END_LOCATOR_SIGNATURE: [u8; 4] = [0x50, 0x4B, 0x06, 0x07];
+    const ZIP64_END_LOCATOR_SIZE: u64 = 20;
+
+    let locator_offset = eocd_file_offset
+        .checked_sub(ZIP64_END_LOCATOR_SIZE)
+        .ok_or_else(|| package_parse_error("MSIX ZIP64 end locator is missing"))?;
+    file.seek(SeekFrom::Start(locator_offset))
+        .map_err(|_| package_parse_error("MSIX ZIP64 end locator could not be read"))?;
+    let mut locator = [0_u8; ZIP64_END_LOCATOR_SIZE as usize];
+    file.read_exact(&mut locator)
+        .map_err(|_| package_parse_error("MSIX ZIP64 end locator could not be read"))?;
+    if locator[..4] != ZIP64_END_LOCATOR_SIGNATURE {
+        return Err(package_parse_error("MSIX ZIP64 end locator is missing"));
+    }
+
+    let locator_disk = read_zip_u32(&locator, 4)
+        .ok_or_else(|| package_parse_error("MSIX ZIP64 end locator is truncated"))?;
+    let record_offset = read_zip_u64(&locator, 8)
+        .ok_or_else(|| package_parse_error("MSIX ZIP64 end locator is truncated"))?;
+    let total_disks = read_zip_u32(&locator, 16)
+        .ok_or_else(|| package_parse_error("MSIX ZIP64 end locator is truncated"))?;
+    if locator_disk != 0 || total_disks != 1 {
+        return Err(package_parse_error(
+            "multi-disk MSIX archives are unsupported",
+        ));
+    }
+    if record_offset.checked_add(ZIP64_END_RECORD_SIZE) != Some(locator_offset) {
+        return Err(package_parse_error("MSIX ZIP64 end record is misplaced"));
+    }
+
+    file.seek(SeekFrom::Start(record_offset))
+        .map_err(|_| package_parse_error("MSIX ZIP64 end record could not be read"))?;
+    let mut record = [0_u8; ZIP64_END_RECORD_SIZE as usize];
+    file.read_exact(&mut record)
+        .map_err(|_| package_parse_error("MSIX ZIP64 end record could not be read"))?;
+    if record[..4] != ZIP64_END_RECORD_SIGNATURE {
+        return Err(package_parse_error("MSIX ZIP64 end record is missing"));
+    }
+    if read_zip_u64(&record, 4) != Some(ZIP64_END_RECORD_BODY_SIZE) {
+        return Err(package_parse_error(
+            "MSIX ZIP64 extensible data is unsupported",
+        ));
+    }
+
+    let disk_number = read_zip_u32(&record, 16)
+        .ok_or_else(|| package_parse_error("MSIX ZIP64 end record is truncated"))?;
+    let central_directory_disk = read_zip_u32(&record, 20)
+        .ok_or_else(|| package_parse_error("MSIX ZIP64 end record is truncated"))?;
+    let entries_on_disk = read_zip_u64(&record, 24)
+        .ok_or_else(|| package_parse_error("MSIX ZIP64 end record is truncated"))?;
+    let entry_count = read_zip_u64(&record, 32)
+        .ok_or_else(|| package_parse_error("MSIX ZIP64 end record is truncated"))?;
+    let central_directory_size = read_zip_u64(&record, 40)
+        .ok_or_else(|| package_parse_error("MSIX ZIP64 end record is truncated"))?;
+    let central_directory_offset = read_zip_u64(&record, 48)
+        .ok_or_else(|| package_parse_error("MSIX ZIP64 end record is truncated"))?;
+    if disk_number != 0 || central_directory_disk != 0 {
+        return Err(package_parse_error(
+            "multi-disk MSIX archives are unsupported",
+        ));
+    }
+    if entries_on_disk != entry_count {
+        return Err(package_parse_error(
+            "MSIX ZIP64 end records are inconsistent",
+        ));
+    }
+
+    Ok(Zip64EndRecord {
+        record_offset,
+        entries_on_disk,
+        entry_count,
+        central_directory_size,
+        central_directory_offset,
+    })
+}
+
 fn read_zip_u16(bytes: &[u8], offset: usize) -> Option<u16> {
     let bytes: [u8; 2] = bytes.get(offset..offset.checked_add(2)?)?.try_into().ok()?;
     Some(u16::from_le_bytes(bytes))
@@ -265,6 +401,11 @@ fn read_zip_u16(bytes: &[u8], offset: usize) -> Option<u16> {
 fn read_zip_u32(bytes: &[u8], offset: usize) -> Option<u32> {
     let bytes: [u8; 4] = bytes.get(offset..offset.checked_add(4)?)?.try_into().ok()?;
     Some(u32::from_le_bytes(bytes))
+}
+
+fn read_zip_u64(bytes: &[u8], offset: usize) -> Option<u64> {
+    let bytes: [u8; 8] = bytes.get(offset..offset.checked_add(8)?)?.try_into().ok()?;
+    Some(u64::from_le_bytes(bytes))
 }
 
 fn read_root_manifest<R: Read + std::io::Seek>(
@@ -302,14 +443,7 @@ fn read_root_manifest<R: Read + std::io::Seek>(
             ));
         }
 
-        uncompressed_total = uncompressed_total
-            .checked_add(entry.size())
-            .ok_or_else(|| package_parse_error("MSIX ZIP uncompressed size overflowed"))?;
-        if uncompressed_total > MAX_ZIP_UNCOMPRESSED_BYTES {
-            return Err(package_parse_error(
-                "MSIX ZIP uncompressed size exceeds parser bounds",
-            ));
-        }
+        uncompressed_total = checked_zip_uncompressed_total(uncompressed_total, entry.size())?;
 
         match raw_name {
             ROOT_MANIFEST_NAME => {
@@ -351,6 +485,18 @@ fn read_root_manifest<R: Read + std::io::Seek>(
         ));
     }
     Ok(manifest)
+}
+
+fn checked_zip_uncompressed_total(current: u64, entry_size: u64) -> Result<u64, InstallerError> {
+    let total = current
+        .checked_add(entry_size)
+        .ok_or_else(|| package_parse_error("MSIX ZIP uncompressed size overflowed"))?;
+    if total > MAX_ZIP_UNCOMPRESSED_BYTES {
+        return Err(package_parse_error(
+            "MSIX ZIP uncompressed size exceeds parser bounds",
+        ));
+    }
+    Ok(total)
 }
 
 fn is_safe_zip_name(name: &str) -> bool {
@@ -682,6 +828,52 @@ mod tests {
         archive.finish().unwrap();
     }
 
+    fn write_zip64_msix(path: &Path, entries: &[(&str, String)]) {
+        write_msix(path, entries);
+        let mut archive = std::fs::read(path).unwrap();
+        let eocd_offset = archive.len().checked_sub(22).unwrap();
+        assert_eq!(read_zip_u32(&archive, eocd_offset), Some(0x0605_4B50));
+        assert_eq!(read_zip_u16(&archive, eocd_offset + 20), Some(0));
+
+        let entry_count = u64::from(read_zip_u16(&archive, eocd_offset + 10).unwrap());
+        let central_directory_size = u64::from(read_zip_u32(&archive, eocd_offset + 12).unwrap());
+        let central_directory_offset = u64::from(read_zip_u32(&archive, eocd_offset + 16).unwrap());
+        archive.truncate(eocd_offset);
+
+        let zip64_record_offset = u64::try_from(archive.len()).unwrap();
+        write_u32(&mut archive, 0x0606_4B50);
+        write_u64(&mut archive, 44);
+        write_u16(&mut archive, 45);
+        write_u16(&mut archive, 45);
+        write_u32(&mut archive, 0);
+        write_u32(&mut archive, 0);
+        write_u64(&mut archive, entry_count);
+        write_u64(&mut archive, entry_count);
+        write_u64(&mut archive, central_directory_size);
+        write_u64(&mut archive, central_directory_offset);
+
+        write_u32(&mut archive, 0x0706_4B50);
+        write_u32(&mut archive, 0);
+        write_u64(&mut archive, zip64_record_offset);
+        write_u32(&mut archive, 1);
+
+        write_u32(&mut archive, 0x0605_4B50);
+        write_u16(&mut archive, 0);
+        write_u16(&mut archive, 0);
+        write_u16(&mut archive, u16::MAX);
+        write_u16(&mut archive, u16::MAX);
+        write_u32(&mut archive, u32::MAX);
+        write_u32(&mut archive, u32::MAX);
+        write_u16(&mut archive, 0);
+        std::fs::write(path, archive).unwrap();
+    }
+
+    fn audit_msix(path: &Path) -> Result<(), InstallerError> {
+        let metadata = std::fs::metadata(path).unwrap();
+        let mut file = File::open(path).unwrap();
+        audit_zip_central_directory(&mut file, metadata.len())
+    }
+
     /// `ZipWriter` correctly refuses duplicate filenames, so this fixture
     /// writes a minimal stored ZIP by hand to prove the parser also rejects a
     /// package that arrived with a duplicated root manifest central entry.
@@ -757,6 +949,22 @@ mod tests {
         output.extend_from_slice(&value.to_le_bytes());
     }
 
+    fn write_u64(output: &mut Vec<u8>, value: u64) {
+        output.extend_from_slice(&value.to_le_bytes());
+    }
+
+    fn replace_u16(output: &mut [u8], offset: usize, value: u16) {
+        output[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn replace_u32(output: &mut [u8], offset: usize, value: u32) {
+        output[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn replace_u64(output: &mut [u8], offset: usize, value: u64) {
+        output[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+    }
+
     fn crc32(contents: &[u8]) -> u32 {
         let mut crc = 0xFFFF_FFFF_u32;
         for byte in contents {
@@ -797,6 +1005,143 @@ mod tests {
             assert_eq!(
                 parsed.minimum_os_version(),
                 &PlatformVersion::parse_windows_msix("10.0.19041.0").unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn parses_single_disk_zip64_msix() {
+        let directory = tempdir().unwrap();
+        let package = directory.path().join("single-disk-zip64.msix");
+        write_zip64_msix(
+            &package,
+            &valid_entries(manifest("x64", "OpenAI.Codex", PUBLISHER, app())),
+        );
+
+        let parsed = parse_msix_manifest(&package).unwrap();
+        assert_eq!(parsed.identity_name(), "OpenAI.Codex");
+        assert_eq!(parsed.architecture(), CpuArchitecture::X86_64);
+    }
+
+    #[test]
+    fn bounds_declared_uncompressed_total_without_rejecting_production_scale() {
+        const PRODUCTION_SCALE_TOTAL: u64 = 1_948_467_324;
+
+        assert_eq!(
+            checked_zip_uncompressed_total(0, PRODUCTION_SCALE_TOTAL).unwrap(),
+            PRODUCTION_SCALE_TOTAL
+        );
+
+        let oversized = checked_zip_uncompressed_total(MAX_ZIP_UNCOMPRESSED_BYTES, 1).unwrap_err();
+        assert_eq!(
+            oversized.to_dto().details.redacted_message.as_deref(),
+            Some("MSIX ZIP uncompressed size exceeds parser bounds")
+        );
+
+        let overflowed = checked_zip_uncompressed_total(u64::MAX, 1).unwrap_err();
+        assert_eq!(
+            overflowed.to_dto().details.redacted_message.as_deref(),
+            Some("MSIX ZIP uncompressed size overflowed")
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_or_unsafe_zip64_boundaries() {
+        let directory = tempdir().unwrap();
+        let valid_package = directory.path().join("valid-zip64.msix");
+        write_zip64_msix(
+            &valid_package,
+            &valid_entries(manifest("x64", "OpenAI.Codex", PUBLISHER, app())),
+        );
+        let valid = std::fs::read(valid_package).unwrap();
+        let eocd_offset = valid.len() - 22;
+        let locator_offset = eocd_offset - 20;
+        let record_offset = locator_offset - 56;
+        let central_directory_size = read_zip_u64(&valid, record_offset + 40).unwrap();
+        let central_directory_offset =
+            usize::try_from(read_zip_u64(&valid, record_offset + 48).unwrap()).unwrap();
+
+        let mutations: [(&str, &str, Box<dyn Fn(&mut [u8])>); 11] = [
+            (
+                "missing-locator",
+                "MSIX ZIP64 end locator is missing",
+                Box::new(move |bytes| replace_u32(bytes, locator_offset, 0)),
+            ),
+            (
+                "misplaced-record",
+                "MSIX ZIP64 end record is misplaced",
+                Box::new(move |bytes| {
+                    replace_u64(bytes, locator_offset + 8, record_offset as u64 + 1)
+                }),
+            ),
+            (
+                "missing-record",
+                "MSIX ZIP64 end record is missing",
+                Box::new(move |bytes| replace_u32(bytes, record_offset, 0)),
+            ),
+            (
+                "extensible-record",
+                "MSIX ZIP64 extensible data is unsupported",
+                Box::new(move |bytes| replace_u64(bytes, record_offset + 4, 45)),
+            ),
+            (
+                "multiple-disks",
+                "multi-disk MSIX archives are unsupported",
+                Box::new(move |bytes| replace_u32(bytes, locator_offset + 16, 2)),
+            ),
+            (
+                "entry-on-another-disk",
+                "MSIX ZIP central directory entry is unsafe",
+                Box::new(move |bytes| replace_u16(bytes, central_directory_offset + 34, 1)),
+            ),
+            (
+                "entry-count-mismatch",
+                "MSIX ZIP64 end records are inconsistent",
+                Box::new(move |bytes| replace_u64(bytes, record_offset + 24, 2)),
+            ),
+            (
+                "classic-record-mismatch",
+                "MSIX ZIP64 end records are inconsistent",
+                Box::new(move |bytes| {
+                    bytes[eocd_offset + 10..eocd_offset + 12].copy_from_slice(&2_u16.to_le_bytes())
+                }),
+            ),
+            (
+                "central-directory-too-large",
+                "MSIX ZIP central directory is outside parser bounds",
+                Box::new(move |bytes| {
+                    replace_u64(bytes, record_offset + 40, MAX_CENTRAL_DIRECTORY_BYTES + 1)
+                }),
+            ),
+            (
+                "central-directory-out-of-bounds",
+                "MSIX ZIP central directory is invalid",
+                Box::new(move |bytes| replace_u64(bytes, record_offset + 48, record_offset as u64)),
+            ),
+            (
+                "data-between-directory-and-record",
+                "MSIX ZIP central directory is invalid",
+                Box::new(move |bytes| {
+                    replace_u64(bytes, record_offset + 40, central_directory_size - 1)
+                }),
+            ),
+        ];
+
+        for (name, expected_diagnostic, mutate) in mutations {
+            let package = directory.path().join(format!("{name}.msix"));
+            let mut archive = valid.clone();
+            mutate(&mut archive);
+            std::fs::write(&package, archive).unwrap();
+            let error = audit_msix(&package).unwrap_err();
+            assert_eq!(
+                error.code(),
+                InstallerErrorCode::PackageParseFailed,
+                "{name} should fail closed"
+            );
+            assert_eq!(
+                error.to_dto().details.redacted_message.as_deref(),
+                Some(expected_diagnostic),
+                "{name} should reach its intended check"
             );
         }
     }

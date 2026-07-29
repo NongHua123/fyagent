@@ -67,6 +67,24 @@ comparison value.
   derives the single safe .dmg name from the validated branch/derived checksum
   records; a missing or ambiguous match fails closed.
 
+### Windows package inspection
+
+- The bounded manifest preflight accepts classic ZIP and single-disk ZIP64.
+  A ZIP64 locator must be adjacent to the classic EOCD, identify exactly one
+  disk, and point to a fixed 56-byte ZIP64 EOCD with no extensible data. Any
+  non-sentinel classic field must agree with the ZIP64 value, and the central
+  directory must end exactly where the ZIP64 EOCD begins.
+- Raw central-directory inspection remains mandatory before `ZipArchive`:
+  every entry must start on disk zero, use a unique safe UTF-8 name, be
+  unencrypted, point to a local header before the central directory, and fit
+  the exact bounded entry count and directory size. Multi-disk metadata at the
+  EOCD, locator, ZIP64 EOCD, or entry level fails closed.
+- The parser bounds aggregate declared uncompressed size to 4 GiB but only
+  decompresses the root `AppxManifest.xml`, which remains independently
+  limited to 512 KiB. Increasing the aggregate declaration bound must never
+  remove the manifest read bound or replace Windows PackageManager as the
+  signature and package-trust authority.
+
 ### Rust to renderer
 
 - Rust serializes camelCase DTO fields and snake_case tagged enum values where
@@ -142,21 +160,24 @@ comparison value.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                                              | Required result                                                                                                                              |
-| ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Remote metadata has a changed release ID                                                               | METADATA_CHANGED, suggested action refresh; do not install the new release implicitly.                                                       |
-| Manifest-wide aggregate version differs from the active platform branch                               | Expose the branch's validated displayVersion and platformVersion; never derive an active-card latest label or update state from the aggregate. |
-| Locked metadata's artifact checksum mismatches and the refresh changes release ID                      | METADATA_CHANGED; delete the artifact and require an explicit refreshed action.                                                              |
-| Trusted local Stable version is equal to or newer than the descriptor                                  | Launch only; no preflight, download, temporary directory, package validation, or install.                                                    |
-| Another job is active or cancellation cleanup is pending                                               | JOB_ALREADY_RUNNING; retain the single-job slot.                                                                                             |
-| Settings restart races with a start request                                                            | Exactly one may claim the same mutex; a running/cancellation-pending job blocks restart, and a successful restart claim blocks later starts. |
-| Hash sources disagree or an artifact name is unsafe/ambiguous                                          | CHECKSUM_MISMATCH, CHECKSUM_MISSING, or RELEASE_METADATA_INVALID; never guess an artifact.                                                   |
-| Metadata or download redirect leaves HTTPS/allowlist policy                                            | REDIRECT_REJECTED.                                                                                                                           |
-| Artifact changes after package verification but before a platform consumes it                          | CHECKSUM_MISMATCH or a stable artifact-validation error; do not call deploy or attach.                                                       |
-| Download is cancelled before installation                                                              | Worker cleans temp data, then publishes cancelled.                                                                                           |
-| Platform verification, signature, identity, architecture, or post-check fails                          | Stable platform/package error; do not launch or downgrade.                                                                                   |
-| Ordinary renderer tries to provide scope/URL/path/extra request field                                  | DTO deserialization or validation rejects it.                                                                                                |
-| Elevated all-users job control is empty, oversized, reparse-backed, remote, or changes capability path | WINDOWS_ELEVATION_FAILED before the fresh anchor, validator, Stage, or Provision adapter runs.                                               |
+| Condition                                                                                                 | Required result                                                                                                                                |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Remote metadata has a changed release ID                                                                  | METADATA_CHANGED, suggested action refresh; do not install the new release implicitly.                                                         |
+| Manifest-wide aggregate version differs from the active platform branch                                   | Expose the branch's validated displayVersion and platformVersion; never derive an active-card latest label or update state from the aggregate. |
+| Locked metadata's artifact checksum mismatches and the refresh changes release ID                         | METADATA_CHANGED; delete the artifact and require an explicit refreshed action.                                                                |
+| Trusted local Stable version is equal to or newer than the descriptor                                     | Launch only; no preflight, download, temporary directory, package validation, or install.                                                      |
+| Another job is active or cancellation cleanup is pending                                                  | JOB_ALREADY_RUNNING; retain the single-job slot.                                                                                               |
+| Settings restart races with a start request                                                               | Exactly one may claim the same mutex; a running/cancellation-pending job blocks restart, and a successful restart claim blocks later starts.   |
+| Hash sources disagree or an artifact name is unsafe/ambiguous                                             | CHECKSUM_MISMATCH, CHECKSUM_MISSING, or RELEASE_METADATA_INVALID; never guess an artifact.                                                     |
+| Metadata or download redirect leaves HTTPS/allowlist policy                                               | REDIRECT_REJECTED.                                                                                                                             |
+| Artifact changes after package verification but before a platform consumes it                             | CHECKSUM_MISMATCH or a stable artifact-validation error; do not call deploy or attach.                                                         |
+| Download is cancelled before installation                                                                 | Worker cleans temp data, then publishes cancelled.                                                                                             |
+| A Windows MSIX uses bounded, internally consistent, single-disk ZIP64 metadata                            | Continue raw central-directory and `ZipArchive` inspection; do not reject ZIP64 solely because classic EOCD fields contain sentinels.          |
+| ZIP/ZIP64 disk fields disagree, ZIP64 records are missing/misplaced/extensible, or directory bounds drift | PACKAGE_PARSE_FAILED before manifest parsing or PackageManager deployment.                                                                     |
+| Declared ZIP uncompressed total exceeds 4 GiB or its checked sum overflows                                | PACKAGE_PARSE_FAILED; do not weaken the separately bounded 512 KiB root-manifest read.                                                         |
+| Platform verification, signature, identity, architecture, or post-check fails                             | Stable platform/package error; do not launch or downgrade.                                                                                     |
+| Ordinary renderer tries to provide scope/URL/path/extra request field                                     | DTO deserialization or validation rejects it.                                                                                                  |
+| Elevated all-users job control is empty, oversized, reparse-backed, remote, or changes capability path    | WINDOWS_ELEVATION_FAILED before the fresh anchor, validator, Stage, or Provision adapter runs.                                                 |
 
 Diagnostics may contain only the structured, redacted fields of
 InstallerErrorDto; never pass raw credential-bearing URLs, paths, cookies, or
@@ -204,6 +225,11 @@ such controls.
   local-version launch-only behavior, platform fixture/fake tests, DTO fixture
   equality, and a fixture whose manifest-wide aggregate version differs from
   the Windows branch and proves `displayVersion` remains branch-specific.
+  Windows manifest fixtures must also cover a valid single-disk ZIP64 footer,
+  classic/ZIP64 metadata disagreement, missing or misplaced records, inserted
+  data between the central directory and ZIP64 EOCD, entry-level non-zero disk
+  start, bounded production-scale uncompressed declarations, the 4 GiB limit,
+  and checked-sum overflow.
 - TypeScript: import and parse tests/fixtures/codexDesktopDtoContract.v1.json;
   enumerate every frozen enum/tag branch and consume the complete snapshot.
 - Integration: static audit that ordinary IPC has no all-users or custom-input
