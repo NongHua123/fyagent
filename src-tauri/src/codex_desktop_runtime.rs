@@ -10,13 +10,15 @@ use std::sync::Arc;
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::codex_desktop::platform::UnavailablePlatformAdapter;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+use crate::codex_desktop::types::DesktopPlatform;
 use crate::codex_desktop::{
     download::HttpTransport,
     platform::CodexDesktopPlatform,
     runtime::{InstallerMetadataFetcher, InstallerTransportPurpose, RuntimeInstallerTransport},
     source::{AgentsMirrorSource, ReleaseSource},
     temp::JobTempDir,
-    types::{CpuArchitecture, DesktopPlatform},
+    types::CpuArchitecture,
     verify::DiskSpaceProbe,
 };
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]

@@ -103,7 +103,7 @@ pub fn maybe_run_codex_desktop_headless() -> Option<i32> {
             HeadlessInvocation::PrepareAllUsers | HeadlessInvocation::ElevatedProvision { .. } => {
                 Some(HEADLESS_EXIT_UNSUPPORTED)
             }
-        };
+        }
     }
 }
 
