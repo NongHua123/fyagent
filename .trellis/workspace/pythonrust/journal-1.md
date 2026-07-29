@@ -71,3 +71,36 @@ Corrected Windows RemoteReleaseStatus.displayVersion to use the validated archit
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: 修复安装阶段字节进度误显示
+
+**Date**: 2026-07-29
+**Task**: 修复安装阶段字节进度误显示
+**Branch**: `feature/fyagent-v1`
+
+### Summary
+
+安装器卡片仅在下载态显示字节对，安装态只显示百分比；新增下载/安装回归测试并通过完整前端单元测试。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3eb91b2d` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
