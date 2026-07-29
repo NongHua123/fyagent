@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - "feature/fyagent-v1"
     tags:
       - "v*"
 
@@ -18,15 +20,7 @@ jobs:
     environment: release
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: windows-2022
-          - os: windows-11-arm
-            arch: arm64
-          - os: ubuntu-22.04
-          - os: ubuntu-22.04-arm
-            arch: arm64
-          - os: macos-14
+      matrix: ${{ fromJSON(github.ref_type == 'tag' && '{"include":[{"os":"windows-2022"},{"os":"windows-11-arm","arch":"arm64"},{"os":"ubuntu-22.04"},{"os":"ubuntu-22.04-arm","arch":"arm64"},{"os":"macos-14"}]}' || '{"include":[{"os":"macos-14"}]}') }}
 
     steps:
       - name: Checkout
@@ -224,7 +218,11 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p release-assets
-          VERSION="${GITHUB_REF_NAME}"  # e.g., v3.5.0
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME}"  # e.g., v3.5.0
+          else
+            VERSION=$(printf '%s' "${GITHUB_REF_NAME}" | sed 's/[^A-Za-z0-9._-]/-/g')
+          fi
 
           # Locate bundle artifacts
           APP_PATH=""
@@ -503,6 +501,7 @@ jobs:
 
   publish-release:
     name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
     needs: release
     permissions:
