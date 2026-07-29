@@ -613,7 +613,7 @@ fn install_at_target(
                 "existing Stable application could not be moved to its backup",
             ))
         })?;
-        if let Err(_) = filesystem.rename(&staging, &target_path) {
+        if filesystem.rename(&staging, &target_path).is_err() {
             let _ = restore_backup(runner, filesystem, host, &parent, &target_path, &backup);
             let _ = remove_generated_path(
                 filesystem,
@@ -632,8 +632,8 @@ fn install_at_target(
             Some(2),
             Some(3),
         ));
-        if let Err(_) =
-            verify_installed_replacement(runner, filesystem, host, &target_path, &staging_bundle)
+        if verify_installed_replacement(runner, filesystem, host, &target_path, &staging_bundle)
+            .is_err()
         {
             let restored = restore_backup(runner, filesystem, host, &parent, &target_path, &backup);
             return Err(InstallAttemptError::terminal(if restored.is_ok() {
@@ -651,7 +651,7 @@ fn install_at_target(
         remove_generated_path(filesystem, &parent, &backup, BACKUP_PREFIX, BACKUP_SUFFIX)
             .map_err(InstallAttemptError::terminal)?;
     } else {
-        if let Err(_) = filesystem.rename(&staging, &target_path) {
+        if filesystem.rename(&staging, &target_path).is_err() {
             let _ = remove_generated_path(
                 filesystem,
                 &parent,
@@ -669,8 +669,8 @@ fn install_at_target(
             Some(2),
             Some(3),
         ));
-        if let Err(_) =
-            verify_installed_replacement(runner, filesystem, host, &target_path, &staging_bundle)
+        if verify_installed_replacement(runner, filesystem, host, &target_path, &staging_bundle)
+            .is_err()
         {
             let _ = remove_verified_stable_target(runner, filesystem, host, &parent, &target_path);
             return Err(InstallAttemptError::terminal(error(

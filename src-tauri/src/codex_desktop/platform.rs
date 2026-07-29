@@ -74,6 +74,7 @@ impl PlatformInstallPlan {
     /// Creates a plan containing target-volume paths in addition to the
     /// downloader's temporary directory.  Platform implementations should add
     /// only stable target roots required for free-space preflight.
+    #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
     pub(crate) fn new(additional_disk_paths: Vec<PathBuf>) -> Self {
         Self {
             additional_disk_paths,
@@ -104,6 +105,7 @@ impl fmt::Debug for PlatformInstallPlan {
 /// this module or one of its child adapters may create it through
 /// `from_completed_validation`; installers then receive a reference without
 /// accepting a caller-controlled path.
+#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 #[derive(Clone)]
 pub struct VerifiedPackage {
     artifact_path: PathBuf,
@@ -114,6 +116,7 @@ pub struct VerifiedPackage {
     artifact: Option<DownloadedArtifact>,
 }
 
+#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 impl VerifiedPackage {
     fn from_completed_validation(
         release: &ReleaseDescriptor,
@@ -375,6 +378,7 @@ impl CodexDesktopPlatform for UnsupportedPlatformAdapter {
 /// open the existing log directory, while every local inspection, download
 /// preflight, install, and launch operation still fails with that same stable
 /// error. It must never be used as a successful fallback for a supported host.
+#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 #[derive(Debug, Clone)]
 pub(crate) struct UnavailablePlatformAdapter {
     platform: DesktopPlatform,
@@ -382,6 +386,7 @@ pub(crate) struct UnavailablePlatformAdapter {
     error: InstallerError,
 }
 
+#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 impl UnavailablePlatformAdapter {
     pub(crate) fn new(
         platform: DesktopPlatform,

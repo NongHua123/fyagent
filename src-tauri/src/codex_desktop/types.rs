@@ -268,6 +268,7 @@ pub struct ReleaseDescriptor {
     pub(crate) expected_sha256: String,
     pub(crate) expected_size: u64,
     pub(crate) download_endpoint: TrustedDownloadEndpoint,
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     pub(crate) minimum_os_version: Option<String>,
 }
 

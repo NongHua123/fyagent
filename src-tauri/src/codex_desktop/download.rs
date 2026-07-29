@@ -315,6 +315,7 @@ impl fmt::Debug for DownloadedArtifact {
 }
 
 impl DownloadedArtifact {
+    #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
     pub(crate) fn path(&self) -> &Path {
         &self.path
     }
@@ -324,6 +325,7 @@ impl DownloadedArtifact {
     /// canonical root/direct-child containment, while
     /// `validate_existing_artifact` rejects links, reparse points, and
     /// non-regular files before SHA-256 is calculated.
+    #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
     pub(crate) fn revalidate_against(
         &self,
         release: &ReleaseDescriptor,
