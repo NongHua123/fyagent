@@ -125,7 +125,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Import Apple signing certificate
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && github.ref_type == 'tag'
         shell: bash
         run: |
           set -euo pipefail
@@ -167,7 +167,7 @@ jobs:
           rm -f "$CERT_PATH"
 
       - name: Build Tauri App (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && github.ref_type == 'tag'
         shell: bash
         timeout-minutes: 60
         env:
@@ -195,6 +195,15 @@ jobs:
             sleep "$sleep_seconds"
           done
 
+      - name: Build unsigned Tauri App (macOS branch)
+        if: runner.os == 'macOS' && github.ref_type != 'tag'
+        shell: bash
+        timeout-minutes: 60
+        run: |
+          set -euo pipefail
+          pnpm tauri build --target universal-apple-darwin --bundles app
+          echo "Unsigned macOS branch app build succeeded; no signing or notarization was requested."
+
       - name: Build Tauri App (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -213,7 +222,7 @@ jobs:
         run: pnpm tauri build --bundles appimage,deb,rpm
 
       - name: Prepare macOS Assets
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && github.ref_type == 'tag'
         shell: bash
         run: |
           set -euxo pipefail
@@ -281,8 +290,71 @@ jobs:
           rm -rf "$DMG_STAGE_DIR"
           echo "✅ Styled DMG created: $NEW_DMG"
 
+      - name: Prepare and verify unsigned macOS branch assets
+        if: runner.os == 'macOS' && github.ref_type != 'tag'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          VERSION=$(printf '%s' "${GITHUB_REF_NAME}" | sed 's/[^A-Za-z0-9._-]/-/g')
+          if [ -z "$VERSION" ]; then
+            echo "Unable to derive a safe branch asset name" >&2
+            exit 1
+          fi
+
+          APP_PATH=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos \
+            -maxdepth 1 -name "FyAgent.app" -type d | head -1 || true)
+          if [ -z "$APP_PATH" ]; then
+            echo "No FyAgent.app found in the unsigned macOS bundle output" >&2
+            exit 1
+          fi
+
+          NEW_ZIP="FyAgent-${VERSION}-macOS-unsigned.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "release-assets/$NEW_ZIP"
+
+          DMG_STAGE_DIR="$RUNNER_TEMP/unsigned-dmg-stage"
+          MOUNT_POINT="$RUNNER_TEMP/unsigned-dmg-mount"
+          rm -rf "$DMG_STAGE_DIR" "$MOUNT_POINT"
+          mkdir -p "$DMG_STAGE_DIR" "$MOUNT_POINT"
+          detach_required=false
+          cleanup() {
+            exit_code=$?
+            trap - EXIT
+            set +e
+            if [ "$detach_required" = true ]; then
+              hdiutil detach "$MOUNT_POINT"
+              if [ "$?" -ne 0 ]; then
+                echo "Failed to detach unsigned DMG from $MOUNT_POINT" >&2
+                exit_code=1
+              fi
+            fi
+            rm -rf "$DMG_STAGE_DIR" "$MOUNT_POINT"
+            if [ "$?" -ne 0 ]; then
+              echo "Failed to clean unsigned DMG temporary directories" >&2
+              exit_code=1
+            fi
+            exit "$exit_code"
+          }
+          trap cleanup EXIT
+
+          ditto "$APP_PATH" "$DMG_STAGE_DIR/FyAgent.app"
+
+          NEW_DMG="FyAgent-${VERSION}-macOS-unsigned.dmg"
+          DMG_PATH="release-assets/$NEW_DMG"
+          hdiutil create -volname "FyAgent unsigned" -srcfolder "$DMG_STAGE_DIR" \
+            -ov -format UDZO "$DMG_PATH"
+          hdiutil verify "$DMG_PATH"
+
+          detach_required=true
+          hdiutil attach "$DMG_PATH" -readonly -nobrowse -noautoopen -mountpoint "$MOUNT_POINT"
+          if [ ! -d "$MOUNT_POINT/FyAgent.app" ]; then
+            echo "Mounted unsigned DMG does not contain FyAgent.app" >&2
+            exit 1
+          fi
+          echo "Unsigned DMG verified and mounted with FyAgent.app present; no signing, notarization, or Gatekeeper claim is made."
+
       - name: Notarize macOS DMG
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && github.ref_type == 'tag'
         shell: bash
         timeout-minutes: 30
         env:
@@ -324,7 +396,7 @@ jobs:
           done
 
       - name: Verify macOS code signing and notarization
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && github.ref_type == 'tag'
         shell: bash
         run: |
           set -euo pipefail
