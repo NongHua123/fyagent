@@ -10,3 +10,4 @@ test that enforces it.
 | Guide                                                   | Use it for                                                                         |
 | ------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | [Codex Desktop Installer](./codex-desktop-installer.md) | The fixed-source installer service, IPC DTOs, job events, and platform boundaries. |
+| [GitHub Release Workflow](./github-release-workflow.md) | Branch-only unsigned macOS artifacts and signed tag release boundaries.            |
