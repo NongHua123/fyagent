@@ -92,6 +92,13 @@ comparison value.
 - JobSnapshot is a complete authoritative snapshot. The renderer merges events
   by jobId and monotonic sequence; it does not implement installer state
   transitions itself.
+- The renderer may format `completedBytes / totalBytes` as a byte pair only
+  while the view state is `job_downloading`. Installation progress reuses those
+  numeric DTO fields for platform-native progress units: Windows reports a
+  `0..100 / 100` deployment ratio and macOS reports `0..3 / 3` installation
+  steps. Download verification and installation states may still render the
+  derived percentage or an indeterminate progress bar, but must not label their
+  counters as bytes.
 - The canonical fixture tests/fixtures/codexDesktopDtoContract.v1.json is
   produced-equivalent to Rust DTO serialization and parsed by the TypeScript
   contract test.
@@ -172,6 +179,7 @@ comparison value.
 | Metadata or download redirect leaves HTTPS/allowlist policy                                               | REDIRECT_REJECTED.                                                                                                                             |
 | Artifact changes after package verification but before a platform consumes it                             | CHECKSUM_MISMATCH or a stable artifact-validation error; do not call deploy or attach.                                                         |
 | Download is cancelled before installation                                                                 | Worker cleans temp data, then publishes cancelled.                                                                                             |
+| Renderer receives `completedBytes` / `totalBytes` after `job_downloading`                                  | Keep percentage/indeterminate progress, but do not render the numeric pair with byte units.                                                    |
 | A Windows MSIX uses bounded, internally consistent, single-disk ZIP64 metadata                            | Continue raw central-directory and `ZipArchive` inspection; do not reject ZIP64 solely because classic EOCD fields contain sentinels.          |
 | ZIP/ZIP64 disk fields disagree, ZIP64 records are missing/misplaced/extensible, or directory bounds drift | PACKAGE_PARSE_FAILED before manifest parsing or PackageManager deployment.                                                                     |
 | Declared ZIP uncompressed total exceeds 4 GiB or its checked sum overflows                                | PACKAGE_PARSE_FAILED; do not weaken the separately bounded 512 KiB root-manifest read.                                                         |
@@ -232,6 +240,9 @@ such controls.
   and checked-sum overflow.
 - TypeScript: import and parse tests/fixtures/codexDesktopDtoContract.v1.json;
   enumerate every frozen enum/tag branch and consume the complete snapshot.
+  Component coverage must prove `job_downloading` retains percentage plus the
+  formatted current/total byte pair, while `job_installing` with non-null
+  current/total values renders the percentage without any byte label.
 - Integration: static audit that ordinary IPC has no all-users or custom-input
   surface, and each command remains registered exactly once.
 - All-users: inject a bounded control reader; assert oversized JSON rejects
@@ -296,3 +307,22 @@ let bytes = job_control_reader.read_job_control(expected_job_path, 16 * 1024)?;
 Likewise, do not merely inspect the installer job before a delayed restart:
 claim the shared job-store mutex first, so a new worker cannot start during the
 response/re-exec window.
+
+### Wrong
+
+```tsx
+// Installation counters are not necessarily byte counts.
+const completedText = formatBytes(progress?.current);
+const totalText = formatBytes(progress?.total);
+```
+
+### Correct
+
+```tsx
+// Only the download stage owns byte-labelled progress in the card.
+const showDownloadBytes = state === "job_downloading";
+const completedText = showDownloadBytes
+  ? formatBytes(progress?.current)
+  : null;
+const totalText = showDownloadBytes ? formatBytes(progress?.total) : null;
+```

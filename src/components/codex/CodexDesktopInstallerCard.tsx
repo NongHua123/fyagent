@@ -113,8 +113,11 @@ export function CodexDesktopInstallerCard() {
     progress?.percent == null
       ? null
       : Math.max(0, Math.min(100, Math.round(progress.percent)));
-  const completedText = formatBytes(progress?.current);
-  const totalText = formatBytes(progress?.total);
+  const showDownloadBytes = state === "job_downloading";
+  const completedText = showDownloadBytes
+    ? formatBytes(progress?.current)
+    : null;
+  const totalText = showDownloadBytes ? formatBytes(progress?.total) : null;
   const primaryPending = installer.primaryDisabled && Boolean(primaryAction);
   const errorMessage =
     error &&

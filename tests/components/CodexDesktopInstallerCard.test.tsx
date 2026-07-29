@@ -79,11 +79,28 @@ describe("CodexDesktopInstallerCard", () => {
         name: "codexDesktop.details.progress",
       }),
     ).toHaveAttribute("aria-valuenow", "50");
+    expect(screen.getByText("50% · 512 B / 1 KB")).toBeVisible();
     const cancelButton = screen.getByRole("button", {
       name: "codexDesktop.actions.cancel",
     });
     fireEvent.click(cancelButton);
     expect(installer.cancel).toHaveBeenCalledOnce();
+  });
+
+  it("shows percentage without completed download bytes while installing", () => {
+    mocks.useInstaller.mockReturnValue(
+      createViewModel({
+        state: "job_installing",
+        primaryAction: null,
+        primaryDisabled: true,
+        progress: { current: 1024, total: 1024, percent: 100 },
+      }),
+    );
+
+    render(<CodexDesktopInstallerCard />);
+
+    expect(screen.getByText("100%")).toBeVisible();
+    expect(screen.queryByText(/1 KB/)).not.toBeInTheDocument();
   });
 
   it.each([
