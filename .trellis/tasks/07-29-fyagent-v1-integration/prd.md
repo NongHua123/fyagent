@@ -34,26 +34,30 @@ updater 全层禁用、应用品牌图标替换、自动化质量门与人工验
   不重绘、改色或改构图，也不修改 provider/partner 图标、截图或 DMG 背景。
 - 汇总所有质量命令、Windows ARM64 target evidence、静态安全审计、fixture/mock 证据和
   `14` 人工验收记录模板；不执行真实安装或声称人工验收完成。
+- ChatGPT 客户端安装包处于实际下载阶段时，在既有进度信息旁持续显示直观的下载速度；
+  首个样本、异常或倒退样本不得显示误导性速度，离开下载阶段或开始新任务后不得残留旧值。
 
 ## Acceptance Criteria
 
-- [ ] 七个 commands、AppState、service、event、scoped proxy 与 temp cleanup 接入但不让
+- [x] 七个 commands、AppState、service、event、scoped proxy 与 temp cleanup 接入但不让
   commands/App 变成业务层；既有 unit/support 可构造 AppState，不需要真实 Tauri runtime。
-- [ ] 下载/校验态关闭按既有 exit coordinator 提示取消；install/后验态提示等待，不强杀
+- [x] 下载/校验态关闭按既有 exit coordinator 提示取消；install/后验态提示等待，不强杀
   平台操作；无 active Job 正常退出。
-- [ ] 直接调用 Codex lifecycle IPC 被拒绝，UI/批量/复制安装命令均排除 Codex，其他工具
+- [x] 直接调用 Codex lifecycle IPC 被拒绝，UI/批量/复制安装命令均排除 Codex，其他工具
   的行为有回归测试。
-- [ ] updater 在 config、capability、Cargo/npm、plugin、handler、frontend、DatabaseUpgrade
+- [x] updater 在 config、capability、Cargo/npm、plugin、handler、frontend、DatabaseUpgrade
   和 release workflow 中无生产残留；database-too-new 分支保持安全、无网络。
-- [ ] 当前产品、运行时、构建、安装、落盘和协议身份只使用 FyAgent/fyagent；旧身份不再
+- [x] 当前产品、运行时、构建、安装、落盘和协议身份只使用 FyAgent/fyagent；旧身份不再
   迁移或兼容读取。旧字符串仅允许存在于真实仓库 URL、历史记录、许可证/版权、必要上游
   归因以及用于证明无生产残留的负向测试/审计模式中；installer 生产路径只含
   agentsmirror 常量。
-- [ ] 所有既有应用品牌图标路径均由同一 FyAgent 源图重新生成，`64x64.png` 保留，About
+- [x] 所有既有应用品牌图标路径均由同一 FyAgent 源图重新生成，`64x64.png` 保留，About
   与生成的 32×32 图标一致；macOS tray template 尺寸、黑色 RGB、透明度和 18pt 内容框
   满足约束，DMG 背景及 provider/partner 等非应用品牌资产未变。
-- [ ] 全量前后端/Rust质量门与静态审计均记录 command、OS、exit code、summary；Windows
+- [x] 全量前后端/Rust质量门与静态审计均记录 command、OS、exit code、summary；Windows
   ARM64 有独立 build/target evidence；Windows/macOS 图标视觉验收明确 Pending human。
+- [x] 下载阶段同时显示百分比、已下载/总字节和有限的每秒下载速度；非下载阶段不显示
+  字节速度，且聚焦前端测试覆盖有效采样、首样本/无效样本和阶段重置。
 
 ## Dependencies and Boundaries
 

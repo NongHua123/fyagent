@@ -12,9 +12,10 @@
    脚本、测试夹具、locale、Header/About/README/发布文本；不添加旧身份迁移或兼容读取。
    保存精确 FyAgent 图标源，使用既有生成资产，并搜索核验无关图像未被机械替换。真实
    仓库 URL、历史记录、LICENSE/版权和必要上游归因按事实保留。
-7. 在本地只运行非编译静态审计与 review；不运行 build、Cargo/TypeScript 编译、测试或
-   打包。提交并推送后，以 Draft PR CI 和 feature 分支 macOS Release 构建作为编译、测试
-   与安装包证据。
+7. 在既有下载进度事件与卡片上增加下载速度派生和展示，限定在 downloading 阶段，
+   对首样本、任务/阶段切换、时间或字节倒退做安全重置，并补聚焦 hook/component 测试。
+8. 归档前运行适用的前端与 Rust 全量质量门、静态审计和 review；不重复真实生产包下载、
+   原生安装或发布打包。以本轮精确命令结果、既有构建证据和用户人工签收共同完成归档门禁。
 
 ## Required Static Audit
 
@@ -165,3 +166,43 @@ OOM 或异常文件系统对象的运行时证据。
 - 真实 macOS `codesign`、`spctl`、Gatekeeper、DMG 挂载/替换，以及 GitHub Actions 的
   签名、公证、打包产物尚无成功外部证据。任务保持 `in_progress`，自动化不等同于平台
   验收完成。
+
+## 2026-07-30 下载速度增量与最终归档记录
+
+### 用户人工签收
+
+用户明确确认 FyAgent V1 人工真机测试已全部验证通过，并授权在完成下载速度展示后归档
+Trellis 任务并提交推送。该确认关闭上述历史 `Pending human` 门禁；仓库不补造未提供的
+设备型号、截图或逐项附件。下载速度增量发生在该确认之后，本轮未再次执行真实安装包下载
+或原生视觉验收，因此其运行时观感由自动化与静态审查支撑，不冒充新增真机证据。
+
+### 下载速度实现
+
+- renderer 复用已接受 `JobSnapshot` 的 `jobId`、`sequence`、`updatedAt` 与累计下载字节，
+  只对同一任务相邻的正向时间/字节增量计算每秒速度；不扩展 Rust、IPC 或 wire DTO。
+- 首样本、无效或非递增样本、任务/阶段/phase 切换和 progress 消失都会清空速度并安全
+  重建基线；测量值绑定当前 `jobId + sequence`，避免新快照短暂显示旧速度。
+- 卡片仅在 `job_downloading` 显示 `B/s`、`KB/s`、`MB/s` 或 `GB/s`；安装/校验阶段继续
+  只显示其既有百分比语义。
+
+### 归档前最终质量门（Windows，2026-07-30）
+
+| 命令 | Exit code | Summary |
+| ---- | --------- | ------- |
+| `pnpm exec vitest run tests/hooks/useCodexDesktopInstaller.test.tsx tests/components/CodexDesktopInstallerCard.test.tsx` | 0 | 2 files / 44 tests 通过，覆盖计算、重置、恢复、旧值防护、非法格式化与非下载阶段隐藏 |
+| `pnpm typecheck` | 0 | `tsc --noEmit` 通过 |
+| `pnpm format:check` | 0 | renderer 源文件全部符合 Prettier |
+| `pnpm test:unit` | 0 | 85 files / 575 tests 全部通过；仅既有 browsers data、`punycode` 与预期 mock/error 输出 |
+| `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` | 0 | Rust 格式检查通过 |
+| `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings` | 0 | Clippy 在 warnings-as-errors 下通过 |
+| `cargo test --manifest-path src-tauri/Cargo.toml` | 0 | 主 library 2355 tests 及全部 integration binaries 通过；仅既有 test-target `dead_code` warnings |
+| `git diff --check` | 0 | 无 whitespace error；仅现有 `Cargo.lock` LF/CRLF 提示 |
+
+独立最终审查未留下 P0/P1/P2/P3 finding。`src-tauri/Cargo.lock` 的 76/76 行差异只是把内容
+完全相同的 `fyagent 3.18.0` package block 移到规范字母序位置，没有依赖或语义变化。
+
+### 已知展示边界
+
+速度是相邻权威进度快照之间的区间值，不额外平滑。后端没有下载 heartbeat；若网络完全
+停滞且没有新快照，界面会保留最近一次速度，直到下一事件或阶段切换。本轮不为该边界引入
+timer、协议字段或新依赖。
