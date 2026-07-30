@@ -137,3 +137,38 @@ Regenerated all application-brand icons from the approved FyAgent source, added 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: FyAgent V1 下载速度与归档
+
+**Date**: 2026-07-30
+**Task**: FyAgent V1 下载速度与归档
+**Branch**: `feature/fyagent-v1`
+
+### Summary
+
+为 ChatGPT 客户端下载阶段增加 renderer-only 实时速度展示与完整回归；全量前后端质量门通过；记录用户真机签收并归档 FyAgent V1 父任务及全部子任务。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b326a009` | (see git log) |
+| `2037f52b` | (see git log) |
+| `58e890a5` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
