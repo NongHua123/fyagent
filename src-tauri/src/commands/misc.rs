@@ -233,7 +233,7 @@ fn run_tool_lifecycle_silently(command_line: &str, label: &str) -> Result<(), St
     use std::process::Command;
 
     let bat_file =
-        std::env::temp_dir().join(format!("cc_switch_{}_{}.bat", label, std::process::id()));
+        std::env::temp_dir().join(format!("fyagent_{}_{}.bat", label, std::process::id()));
     std::fs::write(&bat_file, command_line).map_err(|e| format!("写入批处理文件失败: {e}"))?;
 
     let output = Command::new("cmd")
@@ -968,7 +968,7 @@ async fn fetch_github_latest_version(client: &reqwest::Client, repo: &str) -> Op
     let url = format!("https://api.github.com/repos/{repo}/releases/latest");
     match client
         .get(&url)
-        .header("User-Agent", "cc-switch")
+        .header("User-Agent", "fyagent")
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
@@ -2290,7 +2290,7 @@ fn package_manager_anchored_command_from_paths(
 /// 已展示给用户"将写回原生那处"——欺骗性故障。
 ///
 /// 判定顺序（命中即返回）：
-/// ① Hermes → `<bin_path 绝对> update`;Hermes CLI 自己知道安装环境,避免 cc-switch
+/// ① Hermes → `<bin_path 绝对> update`;Hermes CLI 自己知道安装环境,避免 fyagent
 ///    猜系统 `python3`/`python` 时撞上 Python 版本或 pyenv shim 问题。
 /// ② Claude / Grok 原生安装器 → `<bin_path 绝对> update`；
 ///    bin_path 指向 launcher,launcher 内部 dispatch update 子命令。它不归 npm 管,
@@ -2836,7 +2836,7 @@ fn launch_macos_terminal(config_file: &std::path::Path, cwd: Option<&Path>) -> R
     let final_cd_command = build_final_shell_cd_command(&shell, cwd);
 
     let temp_dir = std::env::temp_dir();
-    let script_file = temp_dir.join(format!("cc_switch_launcher_{}.sh", std::process::id()));
+    let script_file = temp_dir.join(format!("fyagent_launcher_{}.sh", std::process::id()));
     let config_path = config_file.to_string_lossy();
     let provider_command = build_provider_command_line(&shell, &config_path, cwd);
 
@@ -3169,7 +3169,7 @@ fn launch_linux_terminal(config_file: &std::path::Path, cwd: Option<&Path>) -> R
 
     // Create temp script file
     let temp_dir = std::env::temp_dir();
-    let script_file = temp_dir.join(format!("cc_switch_launcher_{}.sh", std::process::id()));
+    let script_file = temp_dir.join(format!("fyagent_launcher_{}.sh", std::process::id()));
     let config_path = config_file.to_string_lossy();
     let provider_command = build_provider_command_line(&shell, &config_path, cwd);
 
@@ -3270,7 +3270,7 @@ fn launch_windows_terminal(
     let preferred = crate::settings::get_preferred_terminal();
     let terminal = preferred.as_deref().unwrap_or("cmd");
 
-    let bat_file = temp_dir.join(format!("cc_switch_claude_{}.bat", std::process::id()));
+    let bat_file = temp_dir.join(format!("fyagent_claude_{}.bat", std::process::id()));
     let config_path_for_batch = escape_windows_batch_value(&config_file.to_string_lossy());
     let cwd_command = build_windows_cwd_command(cwd);
 
@@ -3396,15 +3396,15 @@ pub(crate) fn launch_terminal_running(command_line: &str, label: &str) -> Result
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     let (script_file, script_content) = {
-        let file = temp_dir.join(format!("cc_switch_{}_{}.sh", label, pid));
+        let file = temp_dir.join(format!("fyagent_{}_{}.sh", label, pid));
         let content = format!(
             r#"#!/usr/bin/env sh
 trap 'rm -f "{script_path}"' EXIT
-echo "[cc-switch] Starting: {label}"
+echo "[fyagent] Starting: {label}"
 echo ""
 {cmd}
 echo ""
-echo "[cc-switch] Command exited. Press Enter to close."
+echo "[fyagent] Command exited. Press Enter to close."
 read -r _
 "#,
             script_path = file.display(),
@@ -3522,9 +3522,9 @@ read -r _
         let preferred = crate::settings::get_preferred_terminal();
         let terminal = preferred.as_deref().unwrap_or("cmd");
 
-        let bat_file = temp_dir.join(format!("cc_switch_{}_{}.bat", label, pid));
+        let bat_file = temp_dir.join(format!("fyagent_{}_{}.bat", label, pid));
         let content = format!(
-            "@echo off\r\necho [cc-switch] Starting: {label}\r\necho.\r\n{cmd}\r\necho.\r\necho [cc-switch] Command exited. Press any key to close.\r\npause >nul\r\ndel \"%~f0\" >nul 2>&1\r\n",
+            "@echo off\r\necho [fyagent] Starting: {label}\r\necho.\r\n{cmd}\r\necho.\r\necho [fyagent] Command exited. Press any key to close.\r\npause >nul\r\ndel \"%~f0\" >nul 2>&1\r\n",
             label = label,
             cmd = command_line,
         );
@@ -4667,7 +4667,7 @@ mod tests {
 
         #[test]
         fn hermes_uses_cli_update_anchor() {
-            // Hermes 自带 `hermes update`;锚定到命令行默认那处 CLI,避免 cc-switch 猜
+            // Hermes 自带 `hermes update`;锚定到命令行默认那处 CLI,避免 fyagent 猜
             // 系统 Python/pip 时撞上 Python >=3.11 或 pyenv shim 问题。
             let cmd = anchored_command_from_paths(
                 "hermes",
@@ -5040,7 +5040,7 @@ mod tests {
 
         #[test]
         fn hermes_install_uses_official_installer() {
-            // Hermes 官方 installer 会处理 Python 3.11+/uv 等运行时;不要再从 cc-switch
+            // Hermes 官方 installer 会处理 Python 3.11+/uv 等运行时;不要再从 fyagent
             // 里走 `python3 || python` pip 链。
             let cmd = install_command_for("hermes");
             assert!(
@@ -5330,7 +5330,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .expect("clock should be after epoch")
             .as_nanos();
-        let missing = std::env::temp_dir().join(format!("cc-switch-missing-{unique}"));
+        let missing = std::env::temp_dir().join(format!("fyagent-missing-{unique}"));
 
         let error = resolve_launch_cwd(Some(missing.to_string_lossy().into_owned()))
             .expect_err("missing directory should fail");
@@ -5341,7 +5341,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn iterm2_applescript_cold_start_avoids_current_window_before_one_exists() {
-        let script = build_macos_iterm2_applescript(Path::new("/tmp/cc_switch_launcher.sh"));
+        let script = build_macos_iterm2_applescript(Path::new("/tmp/fyagent_launcher.sh"));
 
         let cold_start_branch = script
             .split("else\n        activate")
@@ -5360,7 +5360,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn iterm2_applescript_keeps_new_tab_behavior_for_existing_windows() {
-        let script = build_macos_iterm2_applescript(Path::new("/tmp/cc_switch_launcher.sh"));
+        let script = build_macos_iterm2_applescript(Path::new("/tmp/fyagent_launcher.sh"));
 
         let running_branch = script
             .split("if was_running then")
@@ -5379,7 +5379,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn terminal_applescript_cold_start_uses_launch_before_do_script() {
-        let script = build_macos_terminal_applescript(Path::new("/tmp/cc_switch_launcher.sh"));
+        let script = build_macos_terminal_applescript(Path::new("/tmp/fyagent_launcher.sh"));
 
         assert!(
             script.contains(r#"set was_running to application "Terminal" is running"#),
@@ -5400,7 +5400,7 @@ mod tests {
             "already-running branch should use bare do script:\n{script}"
         );
         assert!(
-            script.contains(r#"set launcher_script to "exec sh '/tmp/cc_switch_launcher.sh'""#),
+            script.contains(r#"set launcher_script to "exec sh '/tmp/fyagent_launcher.sh'""#),
             "Terminal should replace the auto-created shell:\n{script}"
         );
     }
@@ -5409,7 +5409,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn terminal_applescript_does_not_hijack_restored_windows() {
-        let script = build_macos_terminal_applescript(Path::new("/tmp/cc_switch_launcher.sh"));
+        let script = build_macos_terminal_applescript(Path::new("/tmp/fyagent_launcher.sh"));
         assert!(
             !script.contains(" in window 1"),
             "should not inject into an existing/restored Terminal window:\n{script}"
@@ -5424,11 +5424,11 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn ghostty_applescript_cold_start_uses_initial_command() {
-        let script = build_macos_ghostty_applescript(Path::new("/tmp/cc_switch_launcher.sh"));
+        let script = build_macos_ghostty_applescript(Path::new("/tmp/fyagent_launcher.sh"));
 
         // Warm launches execute through the AppleScript command property, not `open -na ... -e`.
         assert!(
-            script.contains(r#"set launcher_command to "sh '/tmp/cc_switch_launcher.sh'""#),
+            script.contains(r#"set launcher_command to "sh '/tmp/fyagent_launcher.sh'""#),
             "missing launcher_command:\n{script}"
         );
         assert!(script.contains("if was_running then"));
@@ -5467,8 +5467,8 @@ mod tests {
     #[test]
     fn dash_c_command_wraps_script_path_inside_quoted_arg() {
         // The script path must stay inside the `-c` string, not as a bare argv.
-        let s = build_macos_dash_c_command(Path::new("/tmp/cc_switch_launcher_1.sh"));
-        assert_eq!(s, "exec sh '/tmp/cc_switch_launcher_1.sh'");
+        let s = build_macos_dash_c_command(Path::new("/tmp/fyagent_launcher_1.sh"));
+        assert_eq!(s, "exec sh '/tmp/fyagent_launcher_1.sh'");
 
         // Spaces and single quotes must stay shell-safe too.
         let s2 = build_macos_dash_c_command(Path::new("/Users/me/it's dir/x.sh"));

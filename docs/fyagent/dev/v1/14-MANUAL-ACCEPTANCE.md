@@ -1,5 +1,7 @@
 # 人工验收计划
 
+> 2026-07-30 clean-break 决策：当前构建使用 `com.fyagent.desktop`、`fyagent://`、`~/.fyagent/fyagent.db` 与 `fyagent` 二进制，不迁移、不读取旧应用身份。历史设备记录仍按执行当时事实保留。
+
 ## 1. 原则
 
 - 真实安装只由人工在明确授权的测试设备执行；
@@ -361,7 +363,7 @@
 - 真实 GitHub Actions release 仅生成 FyAgent 手动安装资产；不生成 updater `.tar.gz`/`latest.json`，release 标题、资产名和 macOS DMG 卷名均不显示旧品牌或旧官网；
 - 当前应用版本仍显示；
 - LICENSE仍存在；
-- identifier/data dir仍保持；
+- identifier 为 `com.fyagent.desktop`，deep-link 只接受 `fyagent://`，默认数据只写入 `~/.fyagent/fyagent.db`；旧身份不被迁移或识别；
 - DMG 背景、provider/partner/Claude/OpenAI 图标和截图未被应用品牌替换波及。
 
 ## 13. 签收规则

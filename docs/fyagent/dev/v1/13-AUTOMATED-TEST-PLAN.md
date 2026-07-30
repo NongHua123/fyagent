@@ -237,6 +237,9 @@ Windows runner只运行 fake，不改变系统 package inventory。
 - build version；
 - unreadable plist。
 - malformed unrelated `.app` 不阻断 valid Stable，且单独存在时为 NotInstalled；
+- 本地 `/Applications` 或 `~/Applications` 的顶层 `.app` 符号链接若逃离当前扫描根，
+  在读取 Bundle ID 前跳过，不阻断同目录的 valid Stable；
+- 下载 DMG 的挂载根仍严格拒绝逃离挂载目录的 `.app` 符号链接；
 - probe 已识别为 Stable 后，严格字段缺失/损坏仍为 fail closed；
 - 记录的 ARM64 identity/provenance fixture 与 exact Bundle ID、Team allowlist、版本、
   DMG hash 和 launcher 架构一致；fixture 必须明确 native `codesign`/`spctl` 尚未在

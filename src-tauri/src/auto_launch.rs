@@ -17,10 +17,9 @@ fn get_macos_app_bundle_path(exe_path: &std::path::Path) -> Option<std::path::Pa
 
 /// 初始化 AutoLaunch 实例
 fn get_auto_launch() -> Result<AutoLaunch, AppError> {
-    // On Windows this becomes the Run-registry value name. Keep it stable so
-    // an existing autostart record remains controllable after the visible
-    // product name changed; macOS derives its login-item name from the bundle.
-    let app_name = "CC Switch";
+    // On Windows this becomes the Run-registry value name; macOS derives its
+    // login-item name from the bundle.
+    let app_name = "FyAgent";
     let exe_path =
         std::env::current_exe().map_err(|e| AppError::Message(format!("无法获取应用路径: {e}")))?;
 
@@ -102,7 +101,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn test_get_macos_app_bundle_path_not_in_bundle() {
-        let exe_path = std::path::Path::new("/usr/local/bin/cc-switch");
+        let exe_path = std::path::Path::new("/usr/local/bin/fyagent");
         let result = get_macos_app_bundle_path(exe_path);
         assert_eq!(result, None);
     }
@@ -111,7 +110,7 @@ mod tests {
     #[test]
     fn test_get_macos_app_bundle_path_dev_build() {
         // 开发环境下的路径通常不在 .app bundle 内
-        let exe_path = std::path::Path::new("/Users/dev/project/target/debug/cc-switch");
+        let exe_path = std::path::Path::new("/Users/dev/project/target/debug/fyagent");
         let result = get_macos_app_bundle_path(exe_path);
         assert_eq!(result, None);
     }

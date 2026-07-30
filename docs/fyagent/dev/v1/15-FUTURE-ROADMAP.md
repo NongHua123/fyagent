@@ -2,22 +2,17 @@
 
 > 本文只记录已讨论但明确不进入 V1 的目标。Agent 不得在 V1 顺手实现。
 
-## 1. 品牌与共存
+## 1. Clean break 后续边界
 
 ### V1.x / V2 候选
 
-- 独立 Tauri Identifier；
-- 独立 Windows AppUserModelID；
-- 独立 macOS Bundle ID；
-- `fyagent://` deep-link；
-- `~/.fyagent` 数据目录；
-- 从 `~/.cc-switch` 一次性迁移；
-- 数据库/日志/主题 key迁移；
-- 与原 CC Switch并行安装；
-- 新图标与完整品牌资产；
-- 内部 crate/package名称重命名。
+- 对新 FyAgent 身份的安装、卸载与数据清理体验；
+- 新旧应用并行存在时的明确人工支持文档；
+- 仅在未来获得独立产品批准时，评估隔离的手动导入/转换工具。
 
-前置：迁移/回滚设计和用户数据备份。
+V1 已采用独立 Identifier、AppUserModelID/Bundle ID、`fyagent://`、
+`~/.fyagent`、FyAgent 数据库/日志/主题 key、图标与内部包名。
+当前合同是 clean break：不对旧目录、协议、自启动值或序列化标记做迁移或兼容读取。
 
 ## 2. FyAgent 自更新
 
@@ -134,7 +129,7 @@ V1只做完整 DMG。
 
 | 优先级 | 候选 |
 |---|---|
-| P1 | FyAgent独立身份/数据迁移、自更新、中国大陆分发、代码签名 |
+| P1 | FyAgent自更新、中国大陆分发、代码签名 |
 | P2 | 断点续传、诊断 ZIP、正式 all-users、修复/卸载 |
 | P3 | 多源、历史版本、rollback、Sparkle delta、Intel Mac |
 | P4 | 授权系统、Provider联动、安装中心 |
@@ -157,6 +152,5 @@ source selector
 telemetry
 license server
 hardware key
-new bundle id
 migration wizard
 ```

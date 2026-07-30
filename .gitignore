@@ -12,14 +12,14 @@ AGENTS.md
 GEMINI.md
 /.claude
 /.gemini
-/.cc-switch
+/.fyagent
 /.idea
 /.vscode
 vitest-report.json
 nul
 
 # Flatpak build artifacts
-flatpak/cc-switch.deb
+flatpak/fyagent.deb
 flatpak-build/
 flatpak-repo/
 .worktrees/

@@ -9,8 +9,8 @@ background assets.
 
 The application icon crosses renderer, Tauri bundle, Flatpak, Windows shell,
 and macOS menu-bar boundaries. A valid change updates every consumer from one
-approved source while preserving compatibility identifiers and unrelated
-artwork.
+approved source while preserving the established FyAgent application identity
+and unrelated artwork.
 
 ## 2. Signatures
 
@@ -26,7 +26,7 @@ The direct consumers are:
 
 ```text
 src-tauri/tauri.conf.json                         Tauri bundle icon list
-flatpak/com.ccswitch.desktop.yml                  128x128 Flatpak icon
+flatpak/com.fyagent.desktop.yml                  128x128 Flatpak icon
 src/assets/icons/app-icon.png                     renderer About icon
 src-tauri/src/lib.rs                              embedded macOS 3x tray template
 src-tauri/icons/tray/macos/statusTemplate.png     1x template
@@ -51,8 +51,10 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
   48, and 72 pixels. Preserve antialiased alpha; Tauri/macOS supplies the
   light/dark rendered color.
 - Do not change `src-tauri/icons/dmg-background.png`, provider or partner
-  artwork, screenshots, `identifier`, deep-link schemes, data directories,
-  internal package names, or `LICENSE` as part of an icon update.
+  artwork, screenshots, the established FyAgent `identifier`, deep-link
+  schemes, data directories, internal package names, or `LICENSE` as part of a
+  future icon-only update. The 2026 clean-break rename is an application
+  identity change, not an icon-generation rule.
 
 ## 4. Validation & Error Matrix
 

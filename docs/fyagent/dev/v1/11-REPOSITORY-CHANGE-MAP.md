@@ -2,6 +2,8 @@
 
 > 基线：上传的 CC Switch `3.18.0` 快照。行号会漂移，以下以路径、符号和职责定位。实际 Agent 开始时必须用 `rg` 重新确认。
 
+> 2026-07-30 clean-break 决策：下文中“保留旧 identifier、协议、数据目录或内部包名”的早期边界已被取代。当前身份统一为 `com.fyagent.desktop`、`fyagent://`、`~/.fyagent`、`fyagent.db`、`fyagent`/`fyagent_lib`，不迁移或兼容读取旧身份；历史基线与执行记录仍按当时事实保留。
+
 ## 1. 新增后端文件
 
 | 路径                                             | Owner   | 作用                                    |
@@ -182,7 +184,7 @@ Codex CLI lifecycle management is disabled in FyAgent V1; version detection rema
 - `productName`: `FyAgent`；
 - `bundle.createUpdaterArtifacts`: `false`；
 - 删除 `plugins.updater` endpoint/pubkey；
-- 保留 identifier、deep-link、minimum system version（宿主本身）不变；图标按下节替换。
+- identifier 改为 `com.fyagent.desktop`，deep-link 仅注册 `fyagent`；minimum system version 保持不变；图标按下节替换。
 
 ### 4.2 应用品牌图标
 
@@ -194,8 +196,9 @@ Codex CLI lifecycle management is disabled in FyAgent V1; version detection rema
 - `src-tauri/icons/tray/macos/` 的 `statusTemplate.png`、`statusTemplate@2x.png` 和
   `statusbar_template_3x.png` 分别为 24×24、48×48、72×72；从源图 alpha 的非透明边界
   等比缩放到 18pt 内容框并居中，RGB 全黑、alpha 保留抗锯齿，不使用彩色 bitmap；
-- 不修改 `src-tauri/icons/dmg-background.png`、provider/partner/Claude/OpenAI 图标、截图、
-  identifier、deep-link、数据目录、crate/npm 名或 LICENSE。
+- 不修改 `src-tauri/icons/dmg-background.png`、provider/partner/Claude/OpenAI 图标、截图或
+  LICENSE。identifier、deep-link、数据目录、crate/npm 名由本次 clean-break 身份切换统一修改，
+  不把这些改动伪装成图标生成结果。
 
 ### 4.3 `src-tauri/src/lib.rs`
 
@@ -282,7 +285,7 @@ Linux隐藏逻辑可由 Card/Hook根据后端 support返回 null；避免 App自
 - 一键命令移除 Codex；
 - 可见品牌改 FyAgent；
 - About 图标使用由同一 FyAgent 源生成的 `src/assets/icons/app-icon.png`；
-- 移除 ccswitch.io/GitHub/updater区域；
+- 移除 ccswitch.io、过时上游运营路由与 updater 区域；真实仓库 URL 与必要上游引用按事实保留；
 - 保留版本信息与其他工具管理。
 
 不要把新桌面安装器塞入 AboutSection。
@@ -302,8 +305,8 @@ Linux隐藏逻辑可由 Card/Hook根据后端 support返回 null；避免 App自
 ### 6.9 窗口/标题
 
 - `src-tauri/tauri.windows.conf.json` title → FyAgent；
-- 搜索 UI `CC Switch` 文案；
-- 不批量替换内部 key、路径、协议、crate。
+- 搜索 UI 旧品牌文案；
+- 按冻结映射同步内部 key、路径、协议、crate、测试和发布消费者，并逐项审查残留；不得改写真实仓库 URL、历史记录、许可证、必要上游归因或第三方推广码。
 
 ## 7. 可能涉及退出行为的文件
 
@@ -341,9 +344,9 @@ MCP/Skill/Prompt/Usage domain
 Provider form/data model
 ```
 
-品牌清理的窄例外：若上述既有文件中仍有用户可见的 `CC Switch` 品牌字面量，允许仅将该
-字面量替换为 `FyAgent` 并补针对性测试；不得借此修改 provider form 的状态、数据模型、
-请求或业务流，也不得修改 proxy 的协议语义、结构化错误码或控制流。
+身份清理的窄例外：允许在上述既有文件中把应用自有的旧品牌、命名空间、协议标记和结构化
+错误码按冻结映射改为 FyAgent，并补针对性测试；不得借此修改 provider form 的状态、数据
+模型、请求或其他业务流。第三方推广参数和必要上游归因不属于应用自有身份，必须保留事实值。
 
 ## 10. 搜索审计清单
 
@@ -374,7 +377,7 @@ rg -n "agentsmirror|github.com|oaistatic|apps.microsoft.com" \
 - 新领域模块可多文件；
 - 共享文件每个只做必要最小 patch；
 - 不重命名整个仓库；
-- 不迁移配置目录；
-- 不变更数据库；
+- 新安装只使用 `~/.fyagent/fyagent.db`，不迁移或读取旧配置目录；
+- 不修改数据库 schema；仅切换数据库文件身份；
 - 不重新设计 About页面；
 - 不把旧 VibeKey后端/硬件模块复制进来。

@@ -1,5 +1,5 @@
 [package]
-name = "cc-switch"
+name = "fyagent"
 version = "3.18.0"
 description = "All-in-One Assistant for Claude Code, Codex & Gemini CLI"
 authors = ["Jason Young"]
@@ -10,7 +10,7 @@ rust-version = "1.85.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-name = "cc_switch_lib"
+name = "fyagent_lib"
 # V1 targets desktop only. Tauri's WiX bundler packages every release DLL as a
 # resource with a file KeyPath, which violates ICE38 for this per-user MSI.
 # Keep the Rust/static library outputs used by the desktop host and tests; add

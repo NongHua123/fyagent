@@ -1,10 +1,10 @@
 //! Hermes MCP sync and import module
 //!
-//! Handles conversion between CC Switch unified MCP format and Hermes config.yaml format.
+//! Handles conversion between FyAgent unified MCP format and Hermes config.yaml format.
 //!
 //! ## Format mapping
 //!
-//! | CC Switch unified (JSON)                        | Hermes config.yaml (YAML)       |
+//! | FyAgent unified (JSON)                        | Hermes config.yaml (YAML)       |
 //! |-------------------------------------------------|---------------------------------|
 //! | `{"type":"stdio","command":"npx","args":[...],"env":{}}` | `command: npx`, `args: [...]`, `env: {}` |
 //! | `{"type":"sse"/"http","url":"...","headers":{}}` | `url: "..."`, `headers: {}`    |
@@ -27,7 +27,7 @@ use super::validation::validate_server_spec;
 /// Update this list when Hermes adds new per-server config fields.
 ///
 /// `auth` ("oauth" / absent) is an OAuth-type declaration read by Hermes —
-/// CC Switch has no OAuth UI, but losing the field on round-trip downgrades
+/// FyAgent has no OAuth UI, but losing the field on round-trip downgrades
 /// the server to unauthenticated calls.
 const HERMES_EXTRA_FIELDS: &[&str] = &[
     "enabled",
@@ -49,10 +49,10 @@ fn should_sync_hermes_mcp() -> bool {
 }
 
 // ============================================================================
-// Format Conversion: CC Switch -> Hermes
+// Format Conversion: FyAgent -> Hermes
 // ============================================================================
 
-/// Convert CC Switch unified format to Hermes format
+/// Convert FyAgent unified format to Hermes format
 ///
 /// Conversion rules:
 /// - `stdio`: output `command`, `args`, `env` (strip `type` field)
@@ -105,10 +105,10 @@ fn convert_to_hermes_format(spec: &Value) -> Result<Value, AppError> {
 }
 
 // ============================================================================
-// Format Conversion: Hermes -> CC Switch
+// Format Conversion: Hermes -> FyAgent
 // ============================================================================
 
-/// Convert Hermes format to CC Switch unified format
+/// Convert Hermes format to FyAgent unified format
 ///
 /// Conversion rules:
 /// - If `command` exists: set `type: "stdio"`, extract `command`, `args`, `env`
@@ -205,7 +205,7 @@ pub fn sync_single_server_to_hermes(
 ///
 /// Core fields (command, args, env, url, headers) come from `new_spec`.
 /// Hermes-specific fields (enabled, tools, sampling, etc.) are kept from
-/// `existing` — this prevents CC Switch from overwriting user customizations.
+/// `existing` — this prevents FyAgent from overwriting user customizations.
 fn merge_hermes_spec(existing: &Value, new_spec: &Value) -> Value {
     let mut result = serde_json::Map::new();
 
@@ -532,7 +532,7 @@ mod tests {
         assert_eq!(merged["headers"]["X-Trace"], "abc");
         assert_eq!(
             merged["auth"], "oauth",
-            "auth declaration must survive CC Switch round-trip"
+            "auth declaration must survive FyAgent round-trip"
         );
     }
 

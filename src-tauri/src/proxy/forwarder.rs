@@ -1961,7 +1961,7 @@ impl RequestForwarder {
                 || key_str.eq_ignore_ascii_case("x-goog-api-key")
             {
                 // The built-in Codex official provider deliberately has no
-                // credential in CC Switch. `requires_openai_auth = true` makes
+                // credential in FyAgent. `requires_openai_auth = true` makes
                 // Codex send its native ChatGPT authorization, which must reach
                 // the fixed official upstream unchanged. Other credential
                 // headers are still discarded.

@@ -7,11 +7,14 @@
 4. 使 Codex CLI backend/UI/bulk/manual command 全部只读，补其他工具回归。
 5. 移除 updater 的 config/capability/plugin/commands/frontend/DatabaseUpgrade/release workflow
    产物，补 no-network recovery test。
-6. 完成 FyAgent 可见品牌、locale、Header/About/README/发布文本的分类清理；保存精确
-   FyAgent 图标源，使用 Tauri CLI 生成应用品牌图标，单独生成 macOS tray template，并
-   搜索核验兼容性路径及无关图像未被机械替换。
-7. 运行 frontend/Rust 全量质量门、Windows ARM64 target evidence、静态审计与 review；
-   记录每一项结果并准备人工验收表，不执行真实安装。
+6. 完成 FyAgent 当前产品与底层身份 clean break：同步 Tauri identifier/deep-link、
+   Rust/npm/bin、默认数据目录/数据库/日志、内部序列化标记、Flatpak、安装/自启动、发布
+   脚本、测试夹具、locale、Header/About/README/发布文本；不添加旧身份迁移或兼容读取。
+   保存精确 FyAgent 图标源，使用既有生成资产，并搜索核验无关图像未被机械替换。真实
+   仓库 URL、历史记录、LICENSE/版权和必要上游归因按事实保留。
+7. 在本地只运行非编译静态审计与 review；不运行 build、Cargo/TypeScript 编译、测试或
+   打包。提交并推送后，以 Draft PR CI 和 feature 分支 macOS Release 构建作为编译、测试
+   与安装包证据。
 
 ## Required Static Audit
 
@@ -50,12 +53,16 @@ macOS Dock/菜单栏的视觉正确性保留给人工验收。
 上述仅证明源文件与生成资产的静态一致性。Windows 安装器/快捷方式/任务栏和 macOS
 Finder/Dock/应用切换器/menu bar 的实际观感仍为 `Pending human`。
 
-## 2026-07-29 收尾复验记录
+## 2026-07-29 收尾复验记录（clean-break 身份切换前的历史证据）
 
 分支为 `feature/fyagent-v1`，基线提交为
 `2400031a85f6b45b4db7aec89394b997a88826a8`。以下自动化均在 Windows
 开发主机执行；没有执行真实下载、安装、UAC、PackageManager 部署、DMG 挂载、卸载或
 `/Applications` 写入。
+
+> 本节的命令、测试数量、MSI 大小和哈希只证明上述历史提交，不证明 2026-07-30
+> FyAgent clean-break 身份切换后的工作树。当前身份改动没有在本地编译、测试或打包；
+> 其编译与安装包证据必须来自本次提交对应的远端 CI / Release workflow。
 
 ### 审查修正
 
@@ -67,11 +74,11 @@ Finder/Dock/应用切换器/menu bar 的实际观感仍为 `Pending human`。
   fail-closed cleanup，再发布 `Failed(INTERNAL_ERROR)`，释放后续安装和受控 restart 的
   job 槽；不把 panic payload 写入日志或 DTO。`panic=abort`、进程强制终止、OOM/SEH 和
   该边界外的 runtime 崩溃仍不能由进程内代码结算。
-- Windows Run 注册表 value name 仍使用 `CC Switch`，确保既有自启记录仍可由
-  FyAgent 控制；它不是可见品牌。其余 V1 要求的用户可见品牌、官网和 updater 面已按
-  分类清理，兼容标识、历史数据和注释另行保留。
+- 当时 Windows Run 注册表 value name 仍使用 `CC Switch`，用于控制既有自启记录；
+  该兼容行为已被 2026-07-30 clean-break 决策取代。当前实现只注册 `FyAgent`，不发现、
+  迁移、控制或清理旧自启动值。
 
-### 当前本地证据
+### 该历史提交的本地证据
 
 | 类别             | 命令 / 检查                                                                                                                                                                                                                                                                                                         | 结果                                                                                                                                                                                                            |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -82,10 +89,18 @@ Finder/Dock/应用切换器/menu bar 的实际观感仍为 `Pending human`。
 | Rust panic 回归  | `cargo test --manifest-path src-tauri/Cargo.toml --lib services::codex_desktop::tests -- --nocapture`                                                                                                                                                                                                               | 0；11 tests 通过，覆盖 source/platform fake panic、临时目录 cleanup、restart/start slot release                                                                                                                 |
 | Windows MSI 打包 | 在全新的 `src-tauri/target/v1-msi` 下运行 `pnpm tauri build --bundles msi`                                                                                                                                                                                                                                          | 0；Tauri `candle`/`light` 成功，产物 `FyAgent_3.18.0_x64_en-US.msi`（12,718,080 bytes，SHA-256 `49214C116A9DFE0D1E7FF1CE2A8EA1665FEF3F0961F1A613B6F842D046063948`）；生成 WiX 不含 `cc_switch_lib.dll` resource |
 | 文档包           | `docs/fyagent/dev/v1.zip` 对 `docs/fyagent/dev/v1/*.md` 的逐文件 SHA-256 对比                                                                                                                                                                                                                                       | 19 个源 Markdown、19 个 archive 文件，全部位于 `v1/`，无 hash mismatch                                                                                                                                          |
-| 静态审计         | Required Static Audit 与 capability/旧品牌精确 `rg`                                                                                                                                                                                                                                                                 | 旧 Codex CLI 安装命令、updater 运行链均无命中；仅允许 AgentsMirror 端点；`createUpdaterArtifacts: false`；生产 capability 仅有 `process:allow-exit`。`CC Switch` 字面量仅剩兼容 Run value name 与负向断言       |
+| 静态审计         | Required Static Audit 与 capability/旧品牌精确 `rg`                                                                                                                                                                                                                                                                 | 当时旧 Codex CLI 安装命令、updater 运行链均无命中；仅允许 AgentsMirror 端点；`createUpdaterArtifacts: false`；生产 capability 仅有 `process:allow-exit`。当时 `CC Switch` 字面量仍包含兼容 Run value name；该结论不适用于当前 clean-break 工作树 |
 
 完整 Vitest 和 Rust 测试仍会输出已有的 browsers data、`punycode`、mock 预期错误、测试
 dead-code 等警告；上述命令均成功退出，且 `cargo clippy -D warnings` 已通过。
+
+### 2026-07-30 clean-break 当前工作树验证边界
+
+- 已做：Rust 格式检查、JSON/XML/plist/TOML/YAML/JavaScript 结构解析、身份残留分类、
+  合作方 URL/优惠码与历史版本逐项对比、`git diff --check`，以及 V1 ZIP 19/19
+  逐文件 SHA-256 一致性检查。
+- 未做：本地 lint、type-check、单元/集成测试、Rust/TypeScript 编译、应用构建或安装包
+  构建。当前源码的这些结论必须由本次提交对应的 GitHub Actions 重新建立。
 
 ### P1/P2 修复后的独立复审
 

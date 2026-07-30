@@ -114,7 +114,7 @@ export interface UseCodexOauthQuotaOptions {
 /**
  * Codex OAuth (ChatGPT Plus/Pro 反代) 订阅额度查询 hook
  *
- * 与 `useSubscriptionQuota` 平行：数据走 cc-switch 自管的 OAuth token，
+ * 与 `useSubscriptionQuota` 平行：数据走 fyagent 自管的 OAuth token，
  * 而不是 Codex CLI 的 ~/.codex/auth.json。
  *
  * Query key 包含 accountId，多张卡片绑定到同一账号时会自动去重共享请求。
@@ -143,7 +143,7 @@ export function useCodexOauthQuota(
 /**
  * xAI OAuth (SuperGrok 反代) 订阅额度查询 hook
  *
- * 与 `useCodexOauthQuota` 平行：数据走 cc-switch 自管的 xAI OAuth token，
+ * 与 `useCodexOauthQuota` 平行：数据走 fyagent 自管的 xAI OAuth token，
  * 而不是 Grok CLI 的 ~/.grok/auth.json；后端复用同一个 grok.com 账单端点，
  * 因此与 Grok Build 分区的官方订阅显示同一份额度。
  */

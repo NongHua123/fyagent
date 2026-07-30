@@ -70,7 +70,7 @@ impl Default for AnthropicToResponsesState {
         Self {
             response_started: false,
             completed: false,
-            response_id: "resp_ccswitch".to_string(),
+            response_id: "resp_fyagent".to_string(),
             model: String::new(),
             next_output_index: 0,
             blocks: BTreeMap::new(),

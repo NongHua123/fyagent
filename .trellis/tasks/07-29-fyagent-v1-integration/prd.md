@@ -22,9 +22,13 @@ updater 全层禁用、应用品牌图标替换、自动化质量门与人工验
 - 关闭宿主 upstream updater：移除 config endpoint/artifact、capability、Rust plugin、
   commands、UpdateProvider/API/Badge/About UI 和 release workflow updater 产物。数据库版本
   过新保护须保留，但恢复界面改为无网络、受控分发/支持提示，不能留下死调用或修改 DB。
-- 将用户可见名称、窗口、Header、About、README/发布文本和所有 locale 的可见 CC Switch
-  /官网/上游 GitHub 替换为 FyAgent 或删除；不得改 identifier、deep-link、数据目录、
-  内部 crate/npm 名和 LICENSE。应用品牌图标以用户提供的 1024×1024 RGBA PNG 原始字节
+- 将当前产品和运行时身份彻底切换为 FyAgent：用户可见名称、窗口、Header、About、
+  README/发布文本、locale、Tauri identifier、deep-link、默认数据目录与数据库、日志、
+  Rust crate/lib/bin、npm 包名、Flatpak 标识、安装/自启动与发布产物路径均使用对应的
+  `fyagent` 命名。采用 clean break，不迁移、不读取、不接受旧 `.cc-switch`、
+  `cc-switch.db`、`ccswitch://`、旧自启动值或旧序列化标记。真实仓库 URL
+  `NongHua123/cc-switch`、历史 changelog/release notes、LICENSE/版权与必要上游归因不得
+  伪造或改写。应用品牌图标以用户提供的 1024×1024 RGBA PNG 原始字节
   为唯一视觉源：Tauri 标准桌面/Windows Store/Android/iOS 集合由 CLI 生成，About 使用
   生成的 32×32 图标；macOS tray 仅以源图 alpha 轮廓生成 24/48/72 像素黑色 template。
   不重绘、改色或改构图，也不修改 provider/partner 图标、截图或 DMG 背景。
@@ -41,8 +45,10 @@ updater 全层禁用、应用品牌图标替换、自动化质量门与人工验
   的行为有回归测试。
 - [ ] updater 在 config、capability、Cargo/npm、plugin、handler、frontend、DatabaseUpgrade
   和 release workflow 中无生产残留；database-too-new 分支保持安全、无网络。
-- [ ] 可见 CC Switch/ccswitch.io/上游 GitHub 已按范围审计并处理，legal/internal identity
-  保留；installer 生产路径只含 agentsmirror 常量。
+- [ ] 当前产品、运行时、构建、安装、落盘和协议身份只使用 FyAgent/fyagent；旧身份不再
+  迁移或兼容读取。旧字符串仅允许存在于真实仓库 URL、历史记录、许可证/版权、必要上游
+  归因以及用于证明无生产残留的负向测试/审计模式中；installer 生产路径只含
+  agentsmirror 常量。
 - [ ] 所有既有应用品牌图标路径均由同一 FyAgent 源图重新生成，`64x64.png` 保留，About
   与生成的 32×32 图标一致；macOS tray template 尺寸、黑色 RGB、透明度和 18pt 内容框
   满足约束，DMG 背景及 provider/partner 等非应用品牌资产未变。
@@ -53,4 +59,6 @@ updater 全层禁用、应用品牌图标替换、自动化质量门与人工验
 
 在 Core contract 与至少一个适配实现可编译后接入；按 Core → Windows → macOS → UI 顺序
 合并。若 platform 失败，不能用 stub 伪装支持；保持明确 unsupported，继续修复。所有
-不属于 V1 的大重构、数据迁移、identifier 更改或新 update channel 均被拒绝。
+不属于 V1 的大重构、旧数据迁移或新 update channel 均被拒绝。本次经用户明确批准更改
+identifier 及全部底层身份，并接受 clean break 的数据与升级连续性影响；GitHub 仓库名称
+保持不变。

@@ -1,5 +1,7 @@
 # 实施顺序与原子交付
 
+> 2026-07-30 clean-break 决策已取代早期“仅可见品牌、保留底层身份”的 M8 边界。历史基线和既有执行证据仍按当时事实保留；当前实现必须切换全部应用自有身份且不提供旧数据、协议或标记兼容。
+
 ## 1. 总原则
 
 - Core 契约先于平台实现；
@@ -287,7 +289,7 @@ chore(fyagent): update visible branding and disable self-update
 
 - productName/window title；
 - About可见名称；
-- 移除 ccswitch.io/GitHub可见链接；
+- 移除 ccswitch.io 与过时上游运营链接；真实仓库 URL 与必要上游引用按事实保留；
 - logger启动标题；
 - 移除 UpdateProvider；
 - 移除 updater plugin/endpoint/artifacts；
@@ -297,12 +299,13 @@ chore(fyagent): update visible branding and disable self-update
   Store、Android、iOS 图标并保留 `64x64.png`；
 - 从生成的 32×32 输出替换 About 图标；从源图 alpha 轮廓生成 24/48/72 像素 macOS
   template，按 24pt 画布中的 18pt 内容框等比居中，RGB 全黑并保留抗锯齿 alpha；
-- 保留 LICENSE、identifier、deep-link、data dir、内部包名和 DMG 背景；不修改
-  provider/partner 图标或截图。
+- 保留 LICENSE、DMG 背景、provider/partner 图标和截图；identifier、deep-link、data dir、
+  数据库/日志、Rust/npm/bin 与应用自有标记统一切换为 FyAgent/fyagent，并采用 clean break。
 
 ### 审计
 
-运行 `rg`，逐项判断残留。不得全局替换内部 `cc-switch`。
+运行分类 `rg`，逐项判断残留。应用自有旧身份不得残留；真实仓库 URL、历史记录、许可证、
+必要上游归因和第三方推广码按事实列入明确 allowlist。
 
 ## 12. M9 — 退出保护、诊断和精修
 
@@ -385,5 +388,5 @@ M3/M4可在 M1 后与 M2并行，但最终需和 M2/M5集成。
 - 安装中心新页面；
 - 自动登录；
 - Provider自动配置；
-- 全仓库品牌重命名；
+- 改写历史发布事实、许可证、真实仓库名或第三方推广码；
 - 修复/卸载/rollback UI。

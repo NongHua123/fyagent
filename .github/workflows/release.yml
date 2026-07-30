@@ -471,11 +471,11 @@ jobs:
 
           # 绿色版（portable）：仅可执行文件打 zip。
           $exeCandidates = if ($isArm64) {
-            @('src-tauri/target/aarch64-pc-windows-msvc/release/cc-switch.exe')
+            @('src-tauri/target/aarch64-pc-windows-msvc/release/fyagent.exe')
           } else {
             @(
-              'src-tauri/target/release/cc-switch.exe',
-              'src-tauri/target/x86_64-pc-windows-msvc/release/cc-switch.exe'
+              'src-tauri/target/release/fyagent.exe',
+              'src-tauri/target/x86_64-pc-windows-msvc/release/fyagent.exe'
             )
           }
           $exePath = $exeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1

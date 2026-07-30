@@ -146,11 +146,11 @@ HKCU KeyPath 约束，并在实际 `candle`/`light` 打包中验证；DLL resour
 
 本功能不修改代理数据平面。无需为安装器引入Axum或新HTTP服务。
 
-## 7. 本地源码基线
+## 7. 源码基线
 
-### CC Switch 3.18.0 上传快照
+### CC Switch 3.18.0 历史快照
 
-本地路径（设计时）：`/mnt/data/cc-switch-main/cc-switch-main`
+设计阶段参考了 CC Switch `3.18.0` 的历史源码快照；固定本地副本路径不属于公开契约。
 
 重点：
 
@@ -166,11 +166,11 @@ HKCU KeyPath 约束，并在实际 `candle`/`light` 打包中验证；DLL resour
 - `src/i18n/index.ts`
 - `.github/workflows/ci.yml`
 
-实际开发仓库为私有 `NongHua123/cc-switch`，Agent应记录当前 SHA。本文未声称能读取其未上传的最新内容。
+实际实现以当前 `NongHua123/cc-switch` 仓库 checkout 为准，实施者应记录当前 SHA。历史快照不证明后续提交的状态。
 
-### VibeKey 上传快照
+### VibeKey 历史参考
 
-本地路径（设计时）：`/mnt/data/vibekey_new-dev-yongjie/vibekey_new-dev-yongjie`
+设计阶段还参考了 VibeKey 的历史行为与测试材料；固定本地副本路径不属于公开契约。
 
 参考：
 
@@ -296,5 +296,5 @@ exact allowlist 审计；它不替代 macOS 上的 `codesign`、`spctl` 或 Auth
 - ARM64包长期不可用；
 - PackageManager API最低Windows变化；
 - macOS最低版本变化；
-- 私有仓库升级 Tauri/reqwest/React Query；
+- 后续仓库升级 Tauri/reqwest/React Query；
 - V1进入公开发行。

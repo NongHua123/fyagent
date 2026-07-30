@@ -1,12 +1,12 @@
-# Using GPT Models in Claude Code with CC Switch
+# Using GPT Models in Claude Code with FyAgent
 
-> Applies to CC Switch 3.17.0 and later. (Both integration methods in this guide existed in earlier versions, but the gpt-5.6 preset and the client-identity fix landed in 3.17.0; on older versions, requesting new models like `gpt-5.6-luna` falsely returns 404.) This guide is compiled from the repository's documentation and code, and all sample data has been de-identified.
+> Applies to FyAgent 3.17.0 and later. (Both integration methods in this guide existed in earlier versions, but the gpt-5.6 preset and the client-identity fix landed in 3.17.0; on older versions, requesting new models like `gpt-5.6-luna` falsely returns 404.) This guide is compiled from the repository's documentation and code, and all sample data has been de-identified.
 
 ## Why local routing is needed
 
 Claude Code targets the Anthropic Messages protocol — that is, `/v1/messages` — whereas the upstreams for Codex-family models, whether the OpenAI Responses API exposed by a third-party gateway or the Codex service behind a ChatGPT subscription, all speak the Responses protocol. The two protocols use completely different request bodies, streaming events, and response structures, so putting such an endpoint directly into Claude Code's config leaves the upstream receiving a `/v1/messages` request it doesn't recognize — which can only fail.
 
-CC Switch's approach is to keep Claude Code always connected to the local route and still sending requests as Anthropic Messages; once the route detects that the active provider is Responses-format, it converts the request into Responses for the upstream, then converts the response back into the Messages shape it returns to Claude Code — tool calls, images, PDFs, and thinking configuration are all within the conversion scope.
+FyAgent's approach is to keep Claude Code always connected to the local route and still sending requests as Anthropic Messages; once the route detects that the active provider is Responses-format, it converts the request into Responses for the upstream, then converts the response back into the Messages shape it returns to Claude Code — tool calls, images, PDFs, and thinking configuration are all within the conversion scope.
 
 This guide covers both integration methods:
 
@@ -24,7 +24,7 @@ The chain has four main steps:
 
 ## Prerequisites
 
-- CC Switch installed and able to start (3.17.0 or later; see the version note at the top for why).
+- FyAgent installed and able to start (3.17.0 or later; see the version note at the top for why).
 - Claude Code installed and run at least once.
 - For Method 1: a service endpoint compatible with the OpenAI Responses API and its API Key; follow the gateway's documentation for the endpoint and model names. Note it's the **Responses API**, not Chat Completions; a gateway that only offers the Chat format still works — see the `API Format` note in Step 1.
 - For Method 2: a ChatGPT Plus/Pro subscription account.
@@ -33,10 +33,10 @@ The chain has four main steps:
 
 ### Method 1: Third-party Responses gateway (API Key)
 
-Open CC Switch, switch to the top-level `Claude Code` tab, click the plus button in the upper-right corner to add a provider, keep the default `Custom Configuration`, then fill in:
+Open FyAgent, switch to the top-level `Claude Code` tab, click the plus button in the upper-right corner to add a provider, keep the default `Custom Configuration`, then fill in:
 
 - **Provider Name**: anything you like, e.g. `GPT Gateway`.
-- **API Key**: your gateway key. The real key is stored only in CC Switch and injected by the local route when forwarding.
+- **API Key**: your gateway key. The real key is stored only in FyAgent and injected by the local route when forwarding.
 - **API Endpoint**: just the gateway's service root, e.g. `https://gpt-gateway.example.com`, without a trailing slash — the route sends requests to the gateway's Responses endpoint (`/v1/responses`) automatically. When the gateway path is unusual, turn on the `Full URL` toggle next to it and paste the complete endpoint verbatim.
 
 Then expand `Advanced Options`:
@@ -55,14 +55,14 @@ After saving, a `Needs Routing` marker appears on the card — providers like th
 Again on the `Claude Code` tab, click the plus button and pick the **`Codex`** preset with the OpenAI icon from the preset list — it appearing under the Claude Code tab is not a mistake; this preset is built precisely for "using a ChatGPT subscription inside Claude Code":
 
 - **No API Key and no address needed** — requests always go to ChatGPT's Codex service, so the address field in the form needs no changes.
-- Click **`Sign in with ChatGPT`**. This is a device-code flow: CC Switch opens the browser automatically and copies the verification code to the clipboard; paste the code on the browser page to complete authorization, while the app shows `Waiting for authorization...`.
+- Click **`Sign in with ChatGPT`**. This is a device-code flow: FyAgent opens the browser automatically and copies the verification code to the clipboard; paste the code on the browser page to complete authorization, while the app shows `Waiting for authorization...`.
 - After a successful sign-in, `Auth status` shows the signed-in account (email). Multiple accounts are supported: you can `Add another account`, `Set as default`, or pin a specific account to this provider; day-to-day management can also go through `Settings` → `OAuth Authentication Center`.
 - **FAST mode**: an optional toggle; when on, requests carry `service_tier="priority"` for lower latency but consume ChatGPT quota at a higher rate. Keep it off by default.
 - The model tiers are pre-filled: `Sonnet`/`Opus` map to `gpt-5.6`, and `Haiku` maps to `gpt-5.6-luna` (used for background sub-tasks — faster and lighter on quota).
 
 ![Method 2: ChatGPT login status and account management in the Codex preset](../images/claude-codex-routing/03-codex-oauth-form.png)
 
-The login credentials are stored in `~/.cc-switch/codex_oauth_auth.json` (not `~/.codex/`), independent of the Codex CLI's own login; the token refreshes automatically before it expires.
+The login credentials are stored in `~/.fyagent/codex_oauth_auth.json` (not `~/.codex/`), independent of the Codex CLI's own login; the token refreshes automatically before it expires.
 
 ## Step 2: Enable local routing and take over Claude Code
 
@@ -71,13 +71,13 @@ Go to the `Routing` page in Settings, expand `Local Routing`, and complete two t
 1. Turn on the `Routing Master Switch` to start the local service (the first time you enable it, an explanatory confirmation dialog appears). The default address is `127.0.0.1:15721`.
 2. Turn on `Claude Code` under `Routing Enabled`. If you only want Claude Code to use routing, leave the other apps off.
 
-After takeover, CC Switch points Claude Code's live config at the local route, with only a placeholder in the auth entry; both Method 1's gateway key and Method 2's OAuth token are injected by the local route on forward.
+After takeover, FyAgent points Claude Code's live config at the local route, with only a placeholder in the auth entry; both Method 1's gateway key and Method 2's OAuth token are injected by the local route on forward.
 
 > **Note**: the live config is read when the Claude Code process starts. After you first enable takeover (or disable it to restore a direct connection), if Claude Code is already running, open a new terminal session. Afterward, switching providers in routing mode is a hot switch and needs no further restart.
 
 ## Step 3: Switch providers and verify
 
-Return to the Claude Code provider list and click `Enable` on the target provider. If routing isn't running, CC Switch shows "This provider uses OpenAI Responses API format, requires the routing service to work properly. Start routing first." — this notice doesn't block the switch, but with routing off the request is bound to fail, so go back to Step 2 and turn it on.
+Return to the Claude Code provider list and click `Enable` on the target provider. If routing isn't running, FyAgent shows "This provider uses OpenAI Responses API format, requires the routing service to work properly. Start routing first." — this notice doesn't block the switch, but with routing off the request is bound to fail, so go back to Step 2 and turn it on.
 
 Inside Claude Code you can verify step by step:
 
@@ -104,7 +104,7 @@ First confirm the `Auth Field` in Advanced Options is the default `ANTHROPIC_AUT
 
 **Requesting new models like `gpt-5.6-luna` returns 404 Model not found (Method 2)**
 
-Upgrade to CC Switch 3.17.0 or later. On older versions the client identity wasn't aligned with the official Codex client, so the ChatGPT server resolves new models to a nonexistent engine.
+Upgrade to FyAgent 3.17.0 or later. On older versions the client identity wasn't aligned with the official Codex client, so the ChatGPT server resolves new models to a nonexistent engine.
 
 **The switch didn't take effect, or the `/model` menu still shows old names**
 
@@ -120,7 +120,7 @@ See "Capabilities and known limitations": routed providers are managed against a
 
 **Restoring the official Claude setup**
 
-Switch back to an official provider, or turn off the `Claude Code` routing toggle on the Routing page — CC Switch restores the pre-takeover live config, and the official login credentials are unaffected throughout. After restoring, you'll again need to open a new terminal session.
+Switch back to an official provider, or turn off the `Claude Code` routing toggle on the Routing page — FyAgent restores the pre-takeover live config, and the official login credentials are unaffected throughout. After restoring, you'll again need to open a new terminal session.
 
 **Should you enable FAST mode? (Method 2)**
 
@@ -130,12 +130,12 @@ Leaving it off is fine. Turn it on only if you're especially latency-sensitive a
 
 Method 2 uses ChatGPT subscription quota outside the official Codex client, and this isn't a gray-area hack: Thibault Sottiaux (@thsottiaux), the OpenAI Codex lead, has publicly demonstrated and encouraged pointing Claude Code (the "orange crab", as he jokingly calls it) at GPT-5.6 Sol — using exactly a "local proxy + model alias" approach, the same category as Method 2 here. As the lead of the Codex product line, his active encouragement to use their own model inside a competitor's client shows that running GPT-family models in Claude Code on a subscription is a use the vendor welcomes and encourages people to try.
 
-Two practical reminders are still worth noting: first, this traffic is counted against the same subscription quota as the official Codex client, so heavy use hits the cap sooner; second, CC Switch's authentication center keeps a compliance notice out of caution ("Use your other subscriptions in Claude Code — please be mindful of compliance risks."), and whether this fits the terms that apply to your account is for you to check. When using a third-party gateway in Method 1, separately read the target gateway's terms on billing, compliance, and data retention.
+Two practical reminders are still worth noting: first, this traffic is counted against the same subscription quota as the official Codex client, so heavy use hits the cap sooner; second, FyAgent's authentication center keeps a compliance notice out of caution ("Use your other subscriptions in Claude Code — please be mindful of compliance risks."), and whether this fits the terms that apply to your account is for you to check. When using a third-party gateway in Method 1, separately read the target gateway's terms on billing, compliance, and data retention.
 
 ## References
 
-- [CC Switch User Manual: Add a Provider (incl. Codex OAuth reverse proxy and API formats)](../user-manual/en/2-providers/2.1-add.md)
-- [CC Switch User Manual: Proxy Service](../user-manual/en/4-proxy/4.1-service.md)
-- [CC Switch User Manual: App Routing](../user-manual/en/4-proxy/4.2-routing.md)
-- [CC Switch v3.17.0 Release Notes](../release-notes/v3.17.0-en.md)
+- [FyAgent User Manual: Add a Provider (incl. Codex OAuth reverse proxy and API formats)](../user-manual/en/2-providers/2.1-add.md)
+- [FyAgent User Manual: Proxy Service](../user-manual/en/4-proxy/4.1-service.md)
+- [FyAgent User Manual: App Routing](../user-manual/en/4-proxy/4.2-routing.md)
+- [FyAgent v3.17.0 Release Notes](../release-notes/v3.17.0-en.md)
 - Reverse guide: [Using Claude Models in Codex](./codex-claude-routing-guide-en.md)

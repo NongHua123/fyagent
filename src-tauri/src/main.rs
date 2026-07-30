@@ -4,7 +4,7 @@
 fn main() {
     // The experimental all-users path is parsed before Tauri creates a runtime.
     // It is never registered as an IPC command or UI action.
-    if let Some(exit_code) = cc_switch_lib::maybe_run_codex_desktop_headless() {
+    if let Some(exit_code) = fyagent_lib::maybe_run_codex_desktop_headless() {
         std::process::exit(exit_code);
     }
 
@@ -29,13 +29,13 @@ fn main() {
         // 反而使 WebKitGTK 的 webview 收不到指针事件（标题栏可点、网页内容点不动），
         // resize 后黑屏；改回原生 Wayland 即可解决，且该崩溃在 WebKitGTK 2.52 上已不复现。
         // 由于该钩子会覆盖用户预设的 GDK_BACKEND，这里提供一个钩子不会触碰的逃生开关：
-        // 设置 CC_SWITCH_GDK_BACKEND=wayland 即可强制覆盖，默认行为保持不变（零回归）。
-        if let Ok(backend) = std::env::var("CC_SWITCH_GDK_BACKEND") {
+        // 设置 FYAGENT_GDK_BACKEND=wayland 即可强制覆盖，默认行为保持不变（零回归）。
+        if let Ok(backend) = std::env::var("FYAGENT_GDK_BACKEND") {
             if !backend.is_empty() {
                 std::env::set_var("GDK_BACKEND", backend);
             }
         }
     }
 
-    cc_switch_lib::run();
+    fyagent_lib::run();
 }

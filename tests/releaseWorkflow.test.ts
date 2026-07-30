@@ -32,22 +32,39 @@ describe("FyAgent release workflow", () => {
     expect(normalizedSource).not.toContain(".sig");
     expect(source).toContain("FyAgent-${VERSION}-macOS.dmg");
     expect(source).toContain("FyAgent-$VERSION-Windows$assetSuffix.msi");
+    expect(source).toContain(
+      'NEW_APPIMAGE="FyAgent-${VERSION}-Linux-${ARCH}.AppImage"',
+    );
+    expect(source).toContain(
+      '"release-assets/FyAgent-${VERSION}-Linux-${ARCH}.deb"',
+    );
+    expect(source).toContain(
+      '"release-assets/FyAgent-${VERSION}-Linux-${ARCH}.rpm"',
+    );
   });
 
   it("does not reintroduce old public branding or website links", () => {
     expect(source).not.toContain("CC Switch");
     expect(source).not.toContain("CC-Switch");
     expect(source).not.toContain("ccswitch.io");
+    expect(source).not.toContain("cc-switch.exe");
+    expect(source).toContain("release/fyagent.exe");
     expect(source).toContain("name: FyAgent ${{ github.ref_name }}");
     expect(source).toContain('--volname "FyAgent"');
   });
 
   it("documents manual release delivery rather than an application updater", () => {
-    const readme = fs.readFileSync(README, "utf8").toLowerCase();
+    const readmeSource = fs.readFileSync(README, "utf8");
+    const readme = readmeSource.toLowerCase();
 
     expect(readme).toContain("manual release downloads");
     expect(readme).not.toContain("auto-updater");
     expect(readme).not.toContain("tauri-plugin-updater");
+    expect(readmeSource).toContain(
+      "FyAgent-v{version}-Linux-{arch}.AppImage",
+    );
+    expect(readmeSource).toContain("FyAgent-v{version}-Linux-{arch}.deb");
+    expect(readmeSource).toContain("FyAgent-v{version}-Linux-{arch}.rpm");
   });
 });
 

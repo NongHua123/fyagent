@@ -757,7 +757,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cc-switch"
+name = "fyagent"
 version = "3.18.0"
 dependencies = [
  "anyhow",

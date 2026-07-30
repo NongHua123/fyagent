@@ -344,7 +344,7 @@ fn main() {
     if let Some(exit_code) = maybe_run_codex_desktop_headless() {
         std::process::exit(exit_code);
     }
-    cc_switch_lib::run();
+    fyagent_lib::run();
 }
 ```
 
@@ -414,12 +414,16 @@ V1 只交付桌面宿主，不声明移动端构建支持。因此 `src-tauri/Ca
 原因是 Tauri 的 WiX bundler 会扫描 release 目录中的 DLL 并作为 resource 写入 MSI；对于
 `InstallScope="perUser"`，WiX ICE38 要求组件使用 HKCU registry value 而非文件作为
 KeyPath。自定义 WiX template 已让主程序与未来显式 bundled binary 的 `File` 使用
-`KeyPath="no"`，并以 `Software\\ccswitch\\FyAgent` 下的 HKCU value 作为 KeyPath。不能靠
+`KeyPath="no"`，并以 `Software\\{{manufacturer}}\\{{product_name}}` 下的 HKCU value 作为
+KeyPath；当前构建输入的产品与 bundle 身份均为 FyAgent。渲染后的精确 registry path、
+UpgradeCode 和 AppUserModelID 由 Draft PR CI 生成的 WiX 证据确认。不能靠
 关闭 ICE 验证或忽略链接错误来规避这一约束。
 
 本地 Windows x64 已从全新的、忽略的 `src-tauri/target/v1-msi` 目录运行
 `pnpm tauri build --bundles msi`，并完成 Tauri `candle`/`light` 链接。产物为
 `FyAgent_3.18.0_x64_en-US.msi`，SHA-256 为
 `49214C116A9DFE0D1E7FF1CE2A8EA1665FEF3F0961F1A613B6F842D046063948`；生成的
-`main.wxs` 不含 `cc_switch_lib.dll` resource。该本地产物的 Authenticode 状态为
+`main.wxs` 不含 `cc_switch_lib.dll` resource；这是 clean-break 重命名之前的历史构建证据，
+仅证明当时的 ICE38 边界。重命名后的 `fyagent`/`fyagent_lib` 产物必须以 Draft PR CI
+结果为准。该本地产物的 Authenticode 状态为
 `NotSigned`，不构成发布签名或真实安装验收证据。

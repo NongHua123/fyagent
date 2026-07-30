@@ -3,7 +3,7 @@
 //!
 //! Codex 0.142+ sends `wire_api="responses"` requests carrying a handful of
 //! OpenAI-backend-private fields and tool carriers that xAI's strict
-//! `api.x.ai/v1/responses` serde parser rejects (HTTP 400/422). cc-switch's
+//! `api.x.ai/v1/responses` serde parser rejects (HTTP 400/422). fyagent's
 //! Chat/Anthropic transforms already drop these on the way through, but the
 //! *native* Responses passthrough forwards the body verbatim, so we scrub them
 //! here.

@@ -22,7 +22,7 @@ pub(crate) use super::webdav_sync::archive::{
 
 /// Wire-format identifier stored in remote manifests.
 /// Retains historic "webdav" naming for backward compatibility with existing remotes.
-pub(crate) const PROTOCOL_FORMAT: &str = "cc-switch-webdav-sync";
+pub(crate) const PROTOCOL_FORMAT: &str = "fyagent-webdav-sync";
 pub(crate) const PROTOCOL_VERSION: u32 = 2;
 pub(crate) const DB_COMPAT_VERSION: u32 = 6;
 pub(crate) const LEGACY_DB_COMPAT_VERSION: u32 = 5;
@@ -348,7 +348,7 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 pub(crate) fn detect_system_device_name() -> Option<String> {
-    let env_name = ["CC_SWITCH_DEVICE_NAME", "COMPUTERNAME", "HOSTNAME"]
+    let env_name = ["FYAGENT_DEVICE_NAME", "COMPUTERNAME", "HOSTNAME"]
         .iter()
         .filter_map(|key| std::env::var(key).ok())
         .find_map(|value| normalize_device_name(&value));
@@ -505,6 +505,17 @@ mod tests {
     #[test]
     fn validate_manifest_compat_rejects_wrong_format() {
         let manifest = manifest_with("other-format", PROTOCOL_VERSION, Some(DB_COMPAT_VERSION));
+        assert!(validate_manifest_compat(&manifest, RemoteLayout::Current).is_err());
+    }
+
+    #[test]
+    fn validate_manifest_compat_rejects_former_cc_switch_format() {
+        // Negative contract fixture: clean break does not read the former sync namespace.
+        let manifest = manifest_with(
+            "cc-switch-webdav-sync",
+            PROTOCOL_VERSION,
+            Some(DB_COMPAT_VERSION),
+        );
         assert!(validate_manifest_compat(&manifest, RemoteLayout::Current).is_err());
     }
 

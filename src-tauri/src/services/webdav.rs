@@ -451,7 +451,7 @@ mod tests {
         let url = build_remote_url(
             "https://dav.example.com/remote.php/dav/files/demo/",
             &[
-                "cc switch-sync".to_string(),
+                "FyAgent-sync".to_string(),
                 "v2".to_string(),
                 "db-v6".to_string(),
                 "default profile".to_string(),

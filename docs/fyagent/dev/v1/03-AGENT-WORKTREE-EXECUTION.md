@@ -1,4 +1,4 @@
-# Codex Agent Worktree 并行执行规范
+# Worktree 并行执行规范
 
 ## 1. 目标
 
@@ -21,7 +21,7 @@ main
 
 ```bash
 git switch main
-git pull --ff-only              # 私有仓库有远端时；无远端更新则跳过
+git pull --ff-only              # 当前仓库有远端更新时；无远端更新则跳过
 git switch -c feature/fyagent-v1
 
 mkdir -p ../fyagent-worktrees
@@ -52,7 +52,7 @@ Core 第一提交必须只包含：
 feat(codex-desktop): establish installer domain and IPC contracts
 ```
 
-集成 Agent 将该提交 cherry-pick 到 `feature/fyagent-v1`，再让三个 worker rebase/cherry-pick 此契约后并行。
+集成负责人将该提交 cherry-pick 到 `feature/fyagent-v1`，再让三个并行工作分支 rebase/cherry-pick 此契约后继续。
 
 ## 4. 文件所有权
 

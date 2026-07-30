@@ -324,7 +324,7 @@ fn replace_images_in_gemini_part(part: &mut Value) -> usize {
             .and_then(Value::as_object_mut)
         {
             response.insert(
-                "cc_switch_media".to_string(),
+                "fyagent_media".to_string(),
                 Value::String(UNSUPPORTED_IMAGE_MARKER.to_string()),
             );
         }
@@ -1150,7 +1150,7 @@ mod tests {
             .unwrap()
             .is_empty());
         assert_eq!(
-            body["contents"][0]["parts"][0]["functionResponse"]["response"]["cc_switch_media"],
+            body["contents"][0]["parts"][0]["functionResponse"]["response"]["fyagent_media"],
             UNSUPPORTED_IMAGE_MARKER
         );
         assert!(!body.to_string().contains("GEMINI_FUNCTION_SENTINEL"));

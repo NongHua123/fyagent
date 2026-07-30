@@ -21,7 +21,7 @@ use super::reasoning_bridge::{
     anthropic_block_from_openai_reasoning_item, openai_reasoning_item_from_anthropic_block,
 };
 
-pub(crate) const TOOL_RESULT_ERROR_MARKER: &str = "[cc-switch:tool-result-error]";
+pub(crate) const TOOL_RESULT_ERROR_MARKER: &str = "[fyagent:tool-result-error]";
 
 fn anthropic_image_to_responses_part(block: &Value) -> Option<Value> {
     let source = block.get("source")?;
@@ -399,10 +399,10 @@ pub fn anthropic_to_responses(
     // - max_output_tokens / temperature / top_p: 必须删除
     //   （codex-rs 结构体根本没有这三个字段，OpenAI 自己的客户端不发它们）
     // - instructions / tools / parallel_tool_calls: 必填字段，缺则兜底默认值
-    //   （cc-switch 的 transform 当前是"条件写入"，可能产生缺失）
+    //   （fyagent 的 transform 当前是"条件写入"，可能产生缺失）
     // - service_tier: 仅在 FAST mode 开启时写入 "priority"
     //   （与 OpenAI 官方 codex-rs 当前请求结构保持一致）
-    // - stream: 必须永远 true（codex-rs 硬编码 true，且 cc-switch 的
+    // - stream: 必须永远 true（codex-rs 硬编码 true，且 fyagent 的
     //   SSE 解析层只处理流式响应，强制覆盖避免客户端误传 false）
     if is_codex_oauth {
         result["store"] = json!(false);
@@ -438,7 +438,7 @@ pub fn anthropic_to_responses(
 
             // —— 强制覆盖 stream = true ——
             // 即便客户端误传 stream:false 也要覆盖，因为 codex-rs 永远 true，
-            // 且 cc-switch SSE 解析层只支持流式响应。
+            // 且 fyagent SSE 解析层只支持流式响应。
             obj.insert("stream".to_string(), json!(true));
         }
     }
@@ -1338,7 +1338,7 @@ mod tests {
             .filter_map(|part| part.get("text").and_then(Value::as_str))
             .all(|text| !text.contains("STRING_RESPONSES_SENTINEL")));
         let serialized = result.to_string();
-        assert!(serialized.contains("[cc-switch: omitted 20000 bytes]"));
+        assert!(serialized.contains("[fyagent: omitted 20000 bytes]"));
         assert!(!serialized.contains(&"A".repeat(64)));
     }
 
@@ -1643,7 +1643,7 @@ mod tests {
         assert_eq!(thinking["type"], "thinking");
         assert!(thinking["signature"]
             .as_str()
-            .is_some_and(|value| value.starts_with("ccswitch-openai-reasoning-v1:")));
+            .is_some_and(|value| value.starts_with("fyagent-openai-reasoning-v1:")));
 
         let replay = anthropic_to_responses(
             json!({
@@ -2199,7 +2199,7 @@ mod tests {
     #[test]
     fn test_codex_oauth_forces_stream_true_even_when_client_sends_false() {
         // 即使客户端误传 stream:false，也要强制覆盖为 true
-        // 依据：cc-switch SSE 解析层只支持流式响应
+        // 依据：fyagent SSE 解析层只支持流式响应
         let input = json!({
             "model": "gpt-5-codex",
             "max_tokens": 1024,

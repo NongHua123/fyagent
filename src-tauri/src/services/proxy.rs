@@ -23,7 +23,7 @@ const PROXY_TOKEN_PLACEHOLDER: &str = "PROXY_MANAGED";
 
 /// 代理接管模式下需要从 Claude Live 配置中移除的"模型覆盖"字段。
 ///
-/// 原因：接管模式下 `*_MODEL` 必须由 CC Switch 写成稳定的 Claude 角色别名，
+/// 原因：接管模式下 `*_MODEL` 必须由 FyAgent 写成稳定的 Claude 角色别名，
 /// 再由本地代理映射到当前供应商真实模型；`*_MODEL_NAME` 也需要同步接管，
 /// 否则 Claude Code 模型菜单会残留上一个供应商的显示名称。
 const CLAUDE_MODEL_OVERRIDE_ENV_KEYS: [&str; 12] = [
@@ -3233,11 +3233,11 @@ mod tests {
             let dir = TempDir::new().expect("failed to create temp home");
             let original_home = env::var("HOME").ok();
             let original_userprofile = env::var("USERPROFILE").ok();
-            let original_test_home = env::var("CC_SWITCH_TEST_HOME").ok();
+            let original_test_home = env::var("FYAGENT_TEST_HOME").ok();
 
             env::set_var("HOME", dir.path());
             env::set_var("USERPROFILE", dir.path());
-            env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+            env::set_var("FYAGENT_TEST_HOME", dir.path());
 
             Self {
                 dir,
@@ -3261,8 +3261,8 @@ mod tests {
             }
 
             match &self.original_test_home {
-                Some(value) => env::set_var("CC_SWITCH_TEST_HOME", value),
-                None => env::remove_var("CC_SWITCH_TEST_HOME"),
+                Some(value) => env::set_var("FYAGENT_TEST_HOME", value),
+                None => env::remove_var("FYAGENT_TEST_HOME"),
             }
         }
     }
@@ -5060,7 +5060,7 @@ wire_api = "chat"
         )
         .expect("apply official proxy config");
         let parsed: toml::Value = toml::from_str(&output).expect("valid official route");
-        let route_id = crate::codex_config::CC_SWITCH_CODEX_OFFICIAL_PROXY_PROVIDER_ID;
+        let route_id = crate::codex_config::FYAGENT_CODEX_OFFICIAL_PROXY_PROVIDER_ID;
         let route = &parsed["model_providers"][route_id];
 
         assert_eq!(parsed["model_provider"].as_str(), Some(route_id));
@@ -6448,7 +6448,7 @@ requires_openai_auth = true
         let catalog_path = crate::codex_config::get_codex_model_catalog_path();
         assert!(
             catalog_path.exists(),
-            "cc-switch-model-catalog.json must be created on provider switch"
+            "fyagent-model-catalog.json must be created on provider switch"
         );
         let catalog_text = std::fs::read_to_string(&catalog_path).expect("read catalog json");
         let catalog: serde_json::Value =
@@ -6710,7 +6710,7 @@ requires_openai_auth = true
         let db = Arc::new(Database::memory().expect("init db"));
         let service = ProxyService::new(db.clone());
 
-        // Pre-takeover Live state: config.toml points at the cc-switch generated
+        // Pre-takeover Live state: config.toml points at the fyagent generated
         // catalog file, and that file exists on disk (takeover never touches it).
         let catalog_path = crate::codex_config::get_codex_model_catalog_path();
         if let Some(parent) = catalog_path.parent() {
@@ -6755,7 +6755,7 @@ requires_openai_auth = true
         );
         assert!(
             restored.contains(pointer.as_str()),
-            "restored pointer must still reference the cc-switch generated catalog file"
+            "restored pointer must still reference the fyagent generated catalog file"
         );
     }
 
@@ -6813,7 +6813,7 @@ requires_openai_auth = true
         );
         assert!(
             catalog_path.exists(),
-            "restore must generate the cc-switch catalog file on disk"
+            "restore must generate the fyagent catalog file on disk"
         );
         let catalog: Value = serde_json::from_str(
             &std::fs::read_to_string(&catalog_path).expect("read generated catalog"),
@@ -6882,7 +6882,7 @@ requires_openai_auth = true
         );
         assert!(
             crate::codex_config::get_codex_model_catalog_path().exists(),
-            "empty-auth restore must generate the cc-switch catalog file"
+            "empty-auth restore must generate the fyagent catalog file"
         );
         assert!(
             !crate::codex_config::get_codex_auth_path().exists(),

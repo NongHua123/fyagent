@@ -740,7 +740,7 @@ fn convert_message_content_to_parts(
                     if !media_parts.is_empty() {
                         parts.push(json!({
                             "text": format!(
-                                "[cc-switch: media output of tool call {tool_use_id}]"
+                                "[fyagent: media output of tool call {tool_use_id}]"
                             )
                         }));
                         parts.extend(media_parts);
@@ -1414,7 +1414,7 @@ mod tests {
             .contains("GEMINI_TOOL_IMAGE_SENTINEL"));
         assert_eq!(
             parts[1]["text"],
-            "[cc-switch: media output of tool call call_image]"
+            "[fyagent: media output of tool call call_image]"
         );
         assert_eq!(parts[2]["inlineData"]["mimeType"], "image/png");
         assert_eq!(parts[2]["inlineData"]["data"], "GEMINI_TOOL_IMAGE_SENTINEL");
@@ -1460,7 +1460,7 @@ mod tests {
         let result = anthropic_to_gemini(input).unwrap();
         let serialized = result.to_string();
 
-        assert!(serialized.contains("[cc-switch: omitted 20000 bytes]"));
+        assert!(serialized.contains("[fyagent: omitted 20000 bytes]"));
         assert!(!serialized.contains(&"A".repeat(64)));
         assert_eq!(
             result["contents"][1]["parts"][2]["inlineData"]["data"],

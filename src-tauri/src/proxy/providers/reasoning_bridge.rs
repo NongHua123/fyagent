@@ -8,7 +8,7 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde_json::{json, Value};
 
-pub(crate) const OPENAI_REASONING_ITEM_PREFIX: &str = "ccswitch-openai-reasoning-v1:";
+pub(crate) const OPENAI_REASONING_ITEM_PREFIX: &str = "fyagent-openai-reasoning-v1:";
 
 pub(crate) fn reasoning_summary_text(item: &Value) -> String {
     item.get("summary")
@@ -127,5 +127,23 @@ mod tests {
             openai_reasoning_item_from_anthropic_block(&block),
             Some(item)
         );
+    }
+
+    #[test]
+    fn former_ccswitch_reasoning_envelope_is_not_decoded() {
+        let item = json!({
+            "id": "rs_old",
+            "type": "reasoning",
+            "summary": [],
+            "encrypted_content": "opaque"
+        });
+        let current = encode_openai_reasoning_item(&item).unwrap();
+        let former = current.replacen(
+            OPENAI_REASONING_ITEM_PREFIX,
+            "ccswitch-openai-reasoning-v1:",
+            1,
+        );
+
+        assert!(decode_openai_reasoning_item(&former).is_none());
     }
 }

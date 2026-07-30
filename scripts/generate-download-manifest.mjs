@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Generates the website download manifest (manifest.json) from a directory of
-// downloaded release assets. Consumed by ccswitch.io/download. The manifest
-// schema is mirrored in cc-switch-website/src/lib/downloads.ts — keep both in
-// sync when changing fields or classification rules.
+// downloaded release assets. The deployment consumer and schema mirror must be
+// confirmed from the actual website configuration before changing fields or
+// classification rules; this repository does not define a website hostname.
 //
 // Usage: node scripts/generate-download-manifest.mjs <assets-dir> <tag> <base-url> [output]
 

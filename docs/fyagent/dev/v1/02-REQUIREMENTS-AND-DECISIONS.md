@@ -93,12 +93,12 @@ Agent 只完成自动化单元、fixture、mock 和编译验证；真实安装�
 | D17 | 本地日志与用户主动诊断 |
 | D18 | 最终只交付 Markdown |
 | D19 | 文档基于上传的 CC Switch 3.18.0；开发记录实际基线 SHA |
-| D20 | Codex Agent、worktree 并行；允许联网与安装开发环境 |
+| D20 | 实施者可使用 worktree 并行；允许联网与安装开发环境 |
 | D21 | 最小侵入，不顺带重构核心 |
 | D22 | 多文档，但不拆独立任务卡文件 |
 | D23 | 删除 CLI 生命周期入口，保留 Provider/OAuth/代理/MCP/配置/会话等 |
-| D24 | V1 不要求与原 CC Switch 共存；内部身份/数据目录暂保留 |
-| D25 | 移除界面可见 CC Switch 品牌与链接；法律许可保留 |
+| D24 | FyAgent 采用 clean break：identifier、deep-link、数据目录/数据库、自启动、序列化标记和内部包名全部切换，不迁移或兼容读取旧身份 |
+| D25 | 移除当前产品/运行时的旧品牌；保留真实仓库 URL、历史、法律/版权、必要上游引用和合作方契约值 |
 | D26 | 安装卡片位于 Codex Provider 页顶部 |
 | D27 | 进入页面检查本地与远程；其他页面不后台检查 |
 | D28 | 安装/更新/启动/取消/重试按状态映射；不降级 |
@@ -114,7 +114,7 @@ Agent 只完成自动化单元、fixture、mock 和编译验证；真实安装�
 | D38 | Agent 不做真实 E2E，人工验收 |
 | D39 | `main` 基线、`feature/fyagent-v1` 集成分支、记录工具链 |
 | D40 | Core/Windows/macOS/UI worktree，原子 commit，集成 cherry-pick |
-| D41 | 保留现有图标与内部 crate/package 名 |
+| D41 | 由 D24 取代：V1 更换 FyAgent 图标并重命名 Rust/npm/bin 身份 |
 | D42 | Stable only；排除 Beta 和 Classic |
 | D43 | 使用 manifest、checksums、平台短链 |
 | D44 | 初始 URL 固定 HTTPS；最多五次 HTTPS 重定向；最终严格校验 |

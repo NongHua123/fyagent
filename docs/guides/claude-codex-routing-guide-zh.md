@@ -1,12 +1,12 @@
-# 通过 CC Switch 在 Claude Code 中使用 GPT 模型
+# 通过 FyAgent 在 Claude Code 中使用 GPT 模型
 
-> 适用版本：CC Switch 3.17.0 及以上（更早版本已具备本文两种接入方式，但 gpt-5.6 预设与客户端身份修复自 3.17.0 落地，低版本请求 `gpt-5.6-luna` 这类新模型会误报 404）。本文根据仓库内文档与代码整理，示例数据均已去敏。
+> 适用版本：FyAgent 3.17.0 及以上（更早版本已具备本文两种接入方式，但 gpt-5.6 预设与客户端身份修复自 3.17.0 落地，低版本请求 `gpt-5.6-luna` 这类新模型会误报 404）。本文根据仓库内文档与代码整理，示例数据均已去敏。
 
 ## 为什么需要本地路由
 
 Claude Code 面向的是 Anthropic Messages 协议，也就是 `/v1/messages`；而 Codex 系模型的上游——无论是第三方网关暴露的 OpenAI Responses API，还是 ChatGPT 订阅背后的 Codex 服务——说的都是 Responses 协议。两种协议的请求体、流式事件和返回结构完全不同，把这类地址直接填进 Claude Code 的配置里，上游收到的是它不认识的 `/v1/messages` 请求，结果只能是失败。
 
-CC Switch 的做法是让 Claude Code 始终连本机路由，仍以 Anthropic Messages 发送请求；路由识别当前供应商是 Responses 格式后，把请求转换成 Responses 发给上游，再把响应转换回 Messages 形态返回给 Claude Code——工具调用、图片、PDF、思考配置都在转换范围内。
+FyAgent 的做法是让 Claude Code 始终连本机路由，仍以 Anthropic Messages 发送请求；路由识别当前供应商是 Responses 格式后，把请求转换成 Responses 发给上游，再把响应转换回 Messages 形态返回给 Claude Code——工具调用、图片、PDF、思考配置都在转换范围内。
 
 对应两种接入方式，本文都会覆盖：
 
@@ -24,7 +24,7 @@ CC Switch 的做法是让 Claude Code 始终连本机路由，仍以 Anthropic M
 
 ## 准备工作
 
-- 已安装并能启动的 CC Switch（3.17.0 及以上，原因见开头的版本说明）。
+- 已安装并能启动的 FyAgent（3.17.0 及以上，原因见开头的版本说明）。
 - 已安装 Claude Code，并至少运行过一次。
 - 方式一需要：一个兼容 OpenAI Responses API 的服务端点和对应的 API Key，端点地址与模型名以网关文档为准。注意是 **Responses API**，不是 Chat Completions；网关只提供 Chat 格式时也能走通，见第一步「API 格式」处的说明。
 - 方式二需要：一个 ChatGPT Plus/Pro 订阅账号。
@@ -33,10 +33,10 @@ CC Switch 的做法是让 Claude Code 始终连本机路由，仍以 Anthropic M
 
 ### 方式一：第三方 Responses 网关（API Key）
 
-打开 CC Switch，切到顶部的 `Claude Code` 标签，点击右上角加号添加供应商，保持默认的 `自定义配置`，然后填写：
+打开 FyAgent，切到顶部的 `Claude Code` 标签，点击右上角加号添加供应商，保持默认的 `自定义配置`，然后填写：
 
 - **供应商名称**：随意，例如 `GPT Gateway`。
-- **API Key**：你的网关 Key。真实 Key 只保存在 CC Switch 里，由本地路由转发时注入。
+- **API Key**：你的网关 Key。真实 Key 只保存在 FyAgent 里，由本地路由转发时注入。
 - **请求地址**：填网关服务根地址即可，例如 `https://gpt-gateway.example.com`，不要以斜杠结尾，路由会自动把请求打到该网关的 Responses 端点（`/v1/responses`）。网关路径特殊时，打开旁边的 `完整 URL` 开关原样粘贴完整端点。
 
 然后展开 `高级选项`：
@@ -55,14 +55,14 @@ CC Switch 的做法是让 Claude Code 始终连本机路由，仍以 Anthropic M
 同样在 `Claude Code` 标签点加号，在预设列表里选择带 OpenAI 图标的 **`Codex`** 预设——它出现在 Claude Code 标签下没有选错，这个预设就是为「在 Claude Code 里用 ChatGPT 订阅」准备的：
 
 - **不需要 API Key，也不需要填地址**——请求固定发往 ChatGPT 的 Codex 服务，表单里的地址项无需改动。
-- 点击 **`使用 ChatGPT 登录`**。这是设备码流程：CC Switch 会自动打开浏览器并把验证码复制到剪贴板，在浏览器页面粘贴验证码完成授权即可，期间应用内显示 `等待授权中...`。
+- 点击 **`使用 ChatGPT 登录`**。这是设备码流程：FyAgent 会自动打开浏览器并把验证码复制到剪贴板，在浏览器页面粘贴验证码完成授权即可，期间应用内显示 `等待授权中...`。
 - 登录成功后，`认证状态` 显示已登录账号（邮箱）。支持多账号：可 `添加其他账号`、`设为默认`，或在这个供应商上指定使用某个账号；日常管理也可以走 `设置` → `OAuth 认证中心`。
 - **FAST 模式**：可选开关，开启后请求携带 `service_tier="priority"` 换取更低延迟，但会按更高速率消耗 ChatGPT 配额，默认保持关闭。
 - 模型档位已预填好：`Sonnet`/`Opus` 对应 `gpt-5.6`，`Haiku` 对应 `gpt-5.6-luna`（后台小任务走它，更快更省额度）。
 
 ![方式二：Codex 预设的 ChatGPT 登录状态与账号管理](../images/claude-codex-routing/03-codex-oauth-form.png)
 
-登录凭据保存在 `~/.cc-switch/codex_oauth_auth.json`（不是 `~/.codex/`），与 Codex CLI 自己的登录互不影响；token 会在到期前自动刷新。
+登录凭据保存在 `~/.fyagent/codex_oauth_auth.json`（不是 `~/.codex/`），与 Codex CLI 自己的登录互不影响；token 会在到期前自动刷新。
 
 ## 第二步：开启本地路由并接管 Claude Code
 
@@ -71,13 +71,13 @@ CC Switch 的做法是让 Claude Code 始终连本机路由，仍以 Anthropic M
 1. 打开 `路由总开关`，启动本地服务（首次开启会弹出说明确认框）。默认地址是 `127.0.0.1:15721`。
 2. 在 `路由启用` 中打开 `Claude Code`。只想让 Claude Code 走路由的话，其余应用保持关闭。
 
-接管后，CC Switch 会把 Claude Code 的 live 配置指向本机路由，认证项只有占位符；方式一的网关 Key 和方式二的 OAuth token 都由本地路由在转发时注入。
+接管后，FyAgent 会把 Claude Code 的 live 配置指向本机路由，认证项只有占位符；方式一的网关 Key 和方式二的 OAuth token 都由本地路由在转发时注入。
 
 > **注意**：live 配置是 Claude Code 进程启动时读取的。首次开启接管（或关闭接管恢复直连）后，如果 Claude Code 正在运行，请重开一个终端会话。之后在路由模式下切换供应商就是热切换，无需再重启。
 
 ## 第三步：切换供应商并验证
 
-回到 Claude Code 供应商列表，点击目标供应商的 `启用`。如果路由没有在运行，CC Switch 会提示「此供应商使用 OpenAI Responses 接口格式，需要路由服务才能正常使用，请先启动路由」——这个提示不会拦截切换，但路由未开时请求必然失败，回到第二步打开即可。
+回到 Claude Code 供应商列表，点击目标供应商的 `启用`。如果路由没有在运行，FyAgent 会提示「此供应商使用 OpenAI Responses 接口格式，需要路由服务才能正常使用，请先启动路由」——这个提示不会拦截切换，但路由未开时请求必然失败，回到第二步打开即可。
 
 进入 Claude Code 后可以逐级验证：
 
@@ -104,7 +104,7 @@ CC Switch 的做法是让 Claude Code 始终连本机路由，仍以 Anthropic M
 
 **请求 `gpt-5.6-luna` 等新模型报 404 Model not found（方式二）**
 
-升级到 CC Switch 3.17.0 及以上。旧版本的客户端身份未对齐官方 Codex 客户端，ChatGPT 服务端会把新模型解析到不存在的引擎。
+升级到 FyAgent 3.17.0 及以上。旧版本的客户端身份未对齐官方 Codex 客户端，ChatGPT 服务端会把新模型解析到不存在的引擎。
 
 **切换后没生效，或 `/model` 菜单还是旧名字**
 
@@ -120,7 +120,7 @@ CC Switch 的做法是让 Claude Code 始终连本机路由，仍以 Anthropic M
 
 **想恢复官方 Claude 用法**
 
-切回官方供应商，或在路由页面关闭 `Claude Code` 的路由开关——CC Switch 会恢复接管前的 live 配置，官方登录凭据全程不受影响。恢复后同样需要重开终端会话。
+切回官方供应商，或在路由页面关闭 `Claude Code` 的路由开关——FyAgent 会恢复接管前的 live 配置，官方登录凭据全程不受影响。恢复后同样需要重开终端会话。
 
 **FAST 模式要不要开（方式二）**
 
@@ -130,12 +130,12 @@ CC Switch 的做法是让 Claude Code 始终连本机路由，仍以 Anthropic M
 
 方式二把 ChatGPT 订阅额度用在官方 Codex 客户端之外，这并不是灰色玩法：OpenAI Codex 负责人 Thibault Sottiaux（@thsottiaux）就公开演示并鼓励过把 Claude Code（他戏称的「orange crab」）指向 GPT-5.6 Sol 使用——用的正是「本地代理 + 模型别名」，和本文方式二属于同一类做法。作为 Codex 这条产品线的负责人，他主动鼓励大家在竞品客户端里用自家模型，可见用订阅在 Claude Code 里跑 GPT 系模型，是官方乐见并鼓励尝试的用法。
 
-两点实务提醒仍值得留意：一是这部分流量与官方 Codex 客户端合并计入同一份订阅额度，重度使用会更快触顶；二是 CC Switch 认证中心出于稳妥保留了合规提示（「在 Claude Code 中使用您的其他订阅，请注意合规风险。」），是否符合你账号所适用的条款可自行留意。方式一使用第三方网关时，请另行阅读目标网关关于计费、合规与数据留存的条款。
+两点实务提醒仍值得留意：一是这部分流量与官方 Codex 客户端合并计入同一份订阅额度，重度使用会更快触顶；二是 FyAgent 认证中心出于稳妥保留了合规提示（「在 Claude Code 中使用您的其他订阅，请注意合规风险。」），是否符合你账号所适用的条款可自行留意。方式一使用第三方网关时，请另行阅读目标网关关于计费、合规与数据留存的条款。
 
 ## 参考链接
 
-- [CC Switch 用户手册：添加供应商（含 Codex OAuth 反向代理与 API 格式）](../user-manual/zh/2-providers/2.1-add.md)
-- [CC Switch 用户手册：代理服务](../user-manual/zh/4-proxy/4.1-service.md)
-- [CC Switch 用户手册：应用路由](../user-manual/zh/4-proxy/4.2-routing.md)
-- [CC Switch v3.17.0 发布说明](../release-notes/v3.17.0-zh.md)
+- [FyAgent 用户手册：添加供应商（含 Codex OAuth 反向代理与 API 格式）](../user-manual/zh/2-providers/2.1-add.md)
+- [FyAgent 用户手册：代理服务](../user-manual/zh/4-proxy/4.1-service.md)
+- [FyAgent 用户手册：应用路由](../user-manual/zh/4-proxy/4.2-routing.md)
+- [FyAgent v3.17.0 发布说明](../release-notes/v3.17.0-zh.md)
 - 反方向攻略：[在 Codex 中使用 Claude 模型](./codex-claude-routing-guide-zh.md)

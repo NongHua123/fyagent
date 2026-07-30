@@ -243,7 +243,7 @@ Modern AI-powered coding relies on tools like Claude Code, Claude Desktop, Codex
 ### System & Platform
 
 - **Cloud sync** — Custom config directory (Dropbox, OneDrive, iCloud, NAS) and WebDAV server sync
-- **Deep Link** (`ccswitch://`) — Import providers, MCP servers, prompts, and skills via URL
+- **Deep Link** (`fyagent://`) — Import providers, MCP servers, prompts, and skills via URL
 - Dark / Light / System theme, auto-launch, manual release downloads (no in-app auto-update), atomic writes, auto-backups, i18n (zh/zh-TW/en/ja)
 
 ## FAQ
@@ -293,11 +293,11 @@ Add an official provider from the preset list. After switching to it, run the Lo
 <details>
 <summary><strong>Where is my data stored?</strong></summary>
 
-- **Database**: `~/.cc-switch/cc-switch.db` (SQLite — providers, MCP, prompts, skills)
-- **Local settings**: `~/.cc-switch/settings.json` (device-level UI preferences)
-- **Backups**: `~/.cc-switch/backups/` (auto-rotated, keeps 10 most recent)
-- **Skills**: `~/.cc-switch/skills/` (symlinked to corresponding apps by default)
-- **Skill Backups**: `~/.cc-switch/skill-backups/` (created automatically before uninstall, keeps 20 most recent)
+- **Database**: `~/.fyagent/fyagent.db` (SQLite — providers, MCP, prompts, skills)
+- **Local settings**: `~/.fyagent/settings.json` (device-level UI preferences)
+- **Backups**: `~/.fyagent/backups/` (auto-rotated, keeps 10 most recent)
+- **Skills**: `~/.fyagent/skills/` (symlinked to corresponding apps by default)
+- **Skill Backups**: `~/.fyagent/skill-backups/` (created automatically before uninstall, keeps 20 most recent)
 
 </details>
 
@@ -307,10 +307,10 @@ Add an official provider from the preset list. After switching to it, run the Lo
 The AppImage forces `GDK_BACKEND=x11` (XWayland) to avoid a historical native-Wayland crash. On newer Wayland + NVIDIA setups this can leave the web content area unclickable (the title-bar buttons still work) and black-screen on resize. Launch with the opt-in escape hatch to switch back to native Wayland:
 
 ```bash
-CC_SWITCH_GDK_BACKEND=wayland ./FyAgent-*.AppImage
+FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 ```
 
-If you launch from a desktop icon, add it to the `.desktop` `Exec=` line (e.g. `env CC_SWITCH_GDK_BACKEND=wayland /path/to/AppImage`) or set it in your session environment. The variable is generic: on tiling Wayland compositors (sway/Hyprland) where clicks don't register, try `CC_SWITCH_GDK_BACKEND=x11` instead. Leaving it unset keeps the default behavior.
+If you launch from a desktop icon, add it to the `.desktop` `Exec=` line (e.g. `env FYAGENT_GDK_BACKEND=wayland /path/to/AppImage`) or set it in your session environment. The variable is generic: on tiling Wayland compositors (sway/Hyprland) where clicks don't register, try `FYAGENT_GDK_BACKEND=x11` instead. Leaving it unset keeps the default behavior.
 
 </details>
 
@@ -348,43 +348,21 @@ For detailed guides on every feature, check out the **[User Manual](docs/user-ma
 
 ### Windows Users
 
-Download the latest `FyAgent-v{version}-Windows.msi` installer or `FyAgent-v{version}-Windows-Portable.zip` portable version from the [Releases](../../releases) page.
+Download the latest `FyAgent-v{version}-Windows.msi` installer or `FyAgent-v{version}-Windows-Portable.zip` portable version from the [Releases](https://github.com/NongHua123/cc-switch/releases) page.
 
 ### macOS Users
 
-**Method 1: Install via Homebrew (Recommended)**
-
-```bash
-brew install --cask cc-switch
-```
-
-Update:
-
-```bash
-brew upgrade --cask cc-switch
-```
-
-**Method 2: Manual Download**
-
-Download `FyAgent-v{version}-macOS.dmg` (recommended) or `.zip` from the [Releases](../../releases) page.
+Download `FyAgent-v{version}-macOS.dmg` (recommended) or `.zip` from the [Releases](https://github.com/NongHua123/cc-switch/releases) page.
 
 > **Note**: Signing and notarization are release-specific. Check the evidence published with the exact FyAgent build before expecting macOS to allow a direct install.
 
-### Arch Linux Users
-
-**Install via paru (Recommended)**
-
-```bash
-paru -S cc-switch-bin
-```
-
 ### Linux Users
 
-Download the latest Linux build from the [Releases](../../releases) page:
+Download the latest Linux build, including builds usable on Arch Linux, from the [Releases](https://github.com/NongHua123/cc-switch/releases) page:
 
-- `FyAgent-v{version}-Linux.deb` (Debian/Ubuntu)
-- `FyAgent-v{version}-Linux.rpm` (Fedora/RHEL/openSUSE)
-- `FyAgent-v{version}-Linux.AppImage` (Universal)
+- `FyAgent-v{version}-Linux-{arch}.deb` (Debian/Ubuntu)
+- `FyAgent-v{version}-Linux-{arch}.rpm` (Fedora/RHEL/openSUSE)
+- `FyAgent-v{version}-Linux-{arch}.AppImage` (portable; choose `x86_64` or `arm64` for `{arch}`)
 
 > **Flatpak**: Not included in official releases. You can build it yourself from the `.deb` — see [`flatpak/README.md`](flatpak/README.md) for instructions.
 
@@ -413,7 +391,7 @@ Download the latest Linux build from the [Releases](../../releases) page:
 
 **Core Design Patterns**
 
-- **SSOT** (Single Source of Truth): All data stored in `~/.cc-switch/cc-switch.db` (SQLite)
+- **SSOT** (Single Source of Truth): All data stored in `~/.fyagent/fyagent.db` (SQLite)
 - **Dual-layer Storage**: SQLite for syncable data, JSON for device-level settings
 - **Dual-way Sync**: Write to live files on switch, backfill from live when editing active provider
 - **Atomic Writes**: Temp file + rename pattern prevents config corruption
