@@ -2,10 +2,9 @@ name: Release
 
 on:
   push:
-    branches:
-      - "feature/fyagent-v1"
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -16,6 +15,7 @@ concurrency:
 
 jobs:
   release:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch')
     runs-on: ${{ matrix.os }}
     environment: release
     strategy:
@@ -573,7 +573,7 @@ jobs:
 
   publish-release:
     name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
     needs: release
     permissions:

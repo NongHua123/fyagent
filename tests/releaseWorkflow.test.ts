@@ -22,6 +22,56 @@ const PER_USER_WIX_TEMPLATE = path.resolve(
 describe("FyAgent release workflow", () => {
   const source = fs.readFileSync(RELEASE_WORKFLOW, "utf8");
 
+  it("builds the unsigned macOS branch DMG only by manual dispatch", () => {
+    const normalizedWorkflow = source.replace(/\r\n/g, "\n");
+    const triggerSection = normalizedWorkflow
+      .slice(0, normalizedWorkflow.indexOf("\npermissions:"))
+      .trimEnd();
+    const releaseJobStart = normalizedWorkflow.indexOf("\n  release:\n");
+    const publishJobStart = normalizedWorkflow.indexOf(
+      "\n  publish-release:\n",
+    );
+    expect(releaseJobStart).toBeGreaterThan(-1);
+    expect(publishJobStart).toBeGreaterThan(releaseJobStart);
+    const releaseJobSection = normalizedWorkflow.slice(
+      releaseJobStart,
+      publishJobStart,
+    );
+    const publishJobSection = normalizedWorkflow.slice(publishJobStart);
+    const releaseJobHeader = releaseJobSection
+      .slice(1, releaseJobSection.indexOf("\n    steps:"))
+      .trimEnd();
+
+    expect(triggerSection).toBe(
+      [
+        "name: Release",
+        "",
+        "on:",
+        "  push:",
+        "    tags:",
+        '      - "v*"',
+        "  workflow_dispatch:",
+      ].join("\n"),
+    );
+    expect(releaseJobHeader).toBe(
+      [
+        "  release:",
+        "    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch')",
+        "    runs-on: ${{ matrix.os }}",
+        "    environment: release",
+        "    strategy:",
+        "      fail-fast: false",
+        '      matrix: ${{ fromJSON(github.ref_type == \'tag\' && \'{"include":[{"os":"windows-2022"},{"os":"windows-11-arm","arch":"arm64"},{"os":"ubuntu-22.04"},{"os":"ubuntu-22.04-arm","arch":"arm64"},{"os":"macos-14"}]}\' || \'{"include":[{"os":"macos-14"}]}\') }}',
+      ].join("\n"),
+    );
+    expect(releaseJobSection).toContain(
+      "Build unsigned Tauri App (macOS branch)",
+    );
+    expect(publishJobSection).toContain(
+      "  publish-release:\n    name: Publish GitHub Release\n    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')",
+    );
+  });
+
   it("publishes only manual-install assets without an updater chain", () => {
     const normalizedSource = source.toLowerCase();
 
@@ -60,9 +110,7 @@ describe("FyAgent release workflow", () => {
     expect(readme).toContain("manual release downloads");
     expect(readme).not.toContain("auto-updater");
     expect(readme).not.toContain("tauri-plugin-updater");
-    expect(readmeSource).toContain(
-      "FyAgent-v{version}-Linux-{arch}.AppImage",
-    );
+    expect(readmeSource).toContain("FyAgent-v{version}-Linux-{arch}.AppImage");
     expect(readmeSource).toContain("FyAgent-v{version}-Linux-{arch}.deb");
     expect(readmeSource).toContain("FyAgent-v{version}-Linux-{arch}.rpm");
   });
