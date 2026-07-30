@@ -11,5 +11,9 @@ workflow 必须共同去除。database-too-new 仍拒绝不兼容数据，只显
 受控分发信息，避免上游 URL、自动更新或 database mutation。
 
 品牌迁移采用审计表逐项分类：可见名称/链接/文案更改，许可证/identifier/deep-link/data
-directory/internal package 名保留。为避免跨层竞态，本任务在所有 children 的 DTO contracts
-稳定后才编辑 shared registry/Cargo/entry points。
+directory/internal package 名保留。图标以 `assets/fyagent.png` 保存用户提供文件的精确字节，
+由仓库现有 `pnpm tauri icon` 生成标准平台集合；About 复用生成的 32×32 PNG。macOS tray
+继续使用 template rendering，但三个倍率只取源图非透明边界内的 alpha 轮廓，等比装入
+24pt 画布中央的 18pt 内容框并输出黑色 RGBA，避免把彩色 app bitmap 当作菜单栏模板。
+DMG 背景、provider/partner 图标和截图不进入写集。为避免跨层竞态，本任务在所有 children
+的 DTO contracts 稳定后才编辑 shared registry/Cargo/entry points。

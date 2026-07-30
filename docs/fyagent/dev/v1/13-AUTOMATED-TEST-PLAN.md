@@ -350,6 +350,12 @@ Windows runner只运行 fake，不改变系统 package inventory。
 - 无 UpdateProvider自动调用；
 - 无上游 update banner/button；
 - FyAgent标题；
+- `assets/fyagent.png` 与获批输入的 SHA-256、1024×1024、RGBA 和透明度一致；
+- Tauri CLI 标准图标 inventory 完整且 `64x64.png` 存在，所有既有应用品牌路径均已变更；
+- About 图标与生成的 32×32 PNG 字节一致；
+- macOS template 为 24×24、48×48、72×72 黑色 RGBA，非透明边界等比位于 18pt 内容框，
+  alpha 包含透明、实心和抗锯齿值；
+- `dmg-background.png`、provider/partner 图标、截图等排除资产无 diff；
 - release workflow 无 Tauri updater signing key、updater artifact、`latest.json` 或旧品牌/旧官网发布面；仅发布 FyAgent 手动安装资产；
 - 不测试许可证文本被删除。
 
@@ -364,6 +370,8 @@ Windows runner只运行 fake，不改变系统 package inventory。
 - no `PowerShell Add-AppxPackage` fallback；
 - no `open -a ChatGPT`；
 - no `pgrep -x`/killall。
+- 图标检查必须解析 PNG/ICO/ICNS 元数据和 alpha，而不能只比较文件名或非零大小；自动化
+  只能证明文件级生成结果，不能替代 Windows shell/安装器或 macOS Dock/menu bar 视觉验收。
 
 若不加入 CI脚本，集成报告必须人工运行 `rg` 审计。
 

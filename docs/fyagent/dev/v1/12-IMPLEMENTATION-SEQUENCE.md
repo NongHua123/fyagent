@@ -292,7 +292,13 @@ chore(fyagent): update visible branding and disable self-update
 - 移除 UpdateProvider；
 - 移除 updater plugin/endpoint/artifacts；
 - 移除 update commands/UI；
-- 保留 LICENSE、identifier、data dir、icon。
+- 将用户提供的 1024×1024 RGBA PNG 原始字节保存为 `assets/fyagent.png`；
+- 运行 `pnpm tauri icon assets/fyagent.png --output src-tauri/icons` 生成桌面、Windows
+  Store、Android、iOS 图标并保留 `64x64.png`；
+- 从生成的 32×32 输出替换 About 图标；从源图 alpha 轮廓生成 24/48/72 像素 macOS
+  template，按 24pt 画布中的 18pt 内容框等比居中，RGB 全黑并保留抗锯齿 alpha；
+- 保留 LICENSE、identifier、deep-link、data dir、内部包名和 DMG 背景；不修改
+  provider/partner 图标或截图。
 
 ### 审计
 
@@ -326,8 +332,9 @@ feat(codex-desktop): add exit protection and installer diagnostics
 5. Clippy三平台；
 6. Rust tests；
 7. endpoint/static审计；
-8. 无真实包审计；
-9. 生成集成报告。
+8. 图标源 hash、输出 inventory/尺寸/mode/alpha、About 一致性和无关资产 diff 审计；
+9. 无真实包审计；
+10. 生成集成报告。
 
 禁止通过：
 
@@ -341,6 +348,7 @@ feat(codex-desktop): add exit protection and installer diagnostics
 - 使用内部测试设备；
 - 不由 Agent自动卸载；
 - 按 `14`；
+- 在真实 Windows/macOS 构建上检查安装器/快捷方式/任务栏或 Dock/About/menu bar 图标；
 - 记录应用版本、镜像 release、OS、结果；
 - 测试失败回到对应模块，不在验收机手工修改生产文件掩盖。
 

@@ -182,13 +182,26 @@ Codex CLI lifecycle management is disabled in FyAgent V1; version detection rema
 - `productName`: `FyAgent`；
 - `bundle.createUpdaterArtifacts`: `false`；
 - 删除 `plugins.updater` endpoint/pubkey；
-- 保留 identifier、icons、deep-link、minimum system version（宿主本身）不变。
+- 保留 identifier、deep-link、minimum system version（宿主本身）不变；图标按下节替换。
 
-### 4.2 `src-tauri/src/lib.rs`
+### 4.2 应用品牌图标
+
+- 将用户提供的 1024×1024 RGBA PNG 以精确字节保存为 `assets/fyagent.png`，作为唯一可审计
+  视觉源；不得 AI 重绘、改色或调整构图；
+- 执行 `pnpm tauri icon assets/fyagent.png --output src-tauri/icons`，覆盖现有桌面、
+  Windows Store、Android 和 iOS 应用品牌路径，并保留生成的 `64x64.png`；
+- `src/assets/icons/app-icon.png` 必须与生成的 `src-tauri/icons/32x32.png` 字节一致；
+- `src-tauri/icons/tray/macos/` 的 `statusTemplate.png`、`statusTemplate@2x.png` 和
+  `statusbar_template_3x.png` 分别为 24×24、48×48、72×72；从源图 alpha 的非透明边界
+  等比缩放到 18pt 内容框并居中，RGB 全黑、alpha 保留抗锯齿，不使用彩色 bitmap；
+- 不修改 `src-tauri/icons/dmg-background.png`、provider/partner/Claude/OpenAI 图标、截图、
+  identifier、deep-link、数据目录、crate/npm 名或 LICENSE。
+
+### 4.3 `src-tauri/src/lib.rs`
 
 删除 updater plugin初始化。
 
-### 4.3 `src-tauri/src/commands/misc.rs`
+### 4.4 `src-tauri/src/commands/misc.rs`
 
 定位：
 
@@ -202,7 +215,7 @@ V1 应停止前端调用并从 invoke registration删除 updater命令。是否�
 
 注意不要删除与“Codex桌面应用镜像版本检查”同名但新模块独立的能力。
 
-### 4.4 权限/Capabilities
+### 4.5 权限/Capabilities
 
 检查 `src-tauri/capabilities/*` 与 updater plugin权限。删除 updater插件后清理无用权限，确保构建通过。
 
@@ -268,6 +281,7 @@ Linux隐藏逻辑可由 Card/Hook根据后端 support返回 null；避免 App自
 - 排除所有写 action；
 - 一键命令移除 Codex；
 - 可见品牌改 FyAgent；
+- About 图标使用由同一 FyAgent 源生成的 `src/assets/icons/app-icon.png`；
 - 移除 ccswitch.io/GitHub/updater区域；
 - 保留版本信息与其他工具管理。
 

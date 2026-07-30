@@ -7,8 +7,9 @@
 4. 使 Codex CLI backend/UI/bulk/manual command 全部只读，补其他工具回归。
 5. 移除 updater 的 config/capability/plugin/commands/frontend/DatabaseUpgrade/release workflow
    产物，补 no-network recovery test。
-6. 完成 FyAgent 可见品牌、locale、Header/About/README/发布文本的分类清理，并搜索核验
-   兼容性路径未被机械替换。
+6. 完成 FyAgent 可见品牌、locale、Header/About/README/发布文本的分类清理；保存精确
+   FyAgent 图标源，使用 Tauri CLI 生成应用品牌图标，单独生成 macOS tray template，并
+   搜索核验兼容性路径及无关图像未被机械替换。
 7. 运行 frontend/Rust 全量质量门、Windows ARM64 target evidence、静态审计与 review；
    记录每一项结果并准备人工验收表，不执行真实安装。
 
@@ -20,6 +21,34 @@ rg -n "@openai/codex@latest|npm i -g @openai/codex|volta install @openai/codex" 
 rg -n "UpdateProvider|useUpdate|tauri_plugin_updater|plugins.*updater|latest.json" src src-tauri .github
 rg -n "agentsmirror|github.com|oaistatic|apps.microsoft.com" src-tauri/src/codex_desktop src/components/codex src/lib/api/codex-desktop.ts
 ```
+
+图标替换还必须核对源文件 hash/尺寸/mode/alpha、全部已跟踪应用品牌路径的变更、各输出
+尺寸与透明度、About 32×32 字节一致性、macOS template 黑色轮廓和 18pt 内容框，以及
+`dmg-background.png`、provider/partner 图标、截图等排除项未变。原生 Windows shell/安装器、
+macOS Dock/菜单栏的视觉正确性保留给人工验收。
+
+## 2026-07-30 应用品牌图标替换记录
+
+以下命令均在 Windows 开发主机执行；构建了未签名 MSI，但没有安装或启动原生应用，也没有
+进行 Windows shell、macOS Dock/菜单栏视觉验收。
+
+| 类别 | 命令 / 检查 | 结果 |
+| ---- | ----------- | ---- |
+| 源图 | `Get-FileHash C:\Users\Administrator\Desktop\fyagent.png -Algorithm SHA256`；Pillow 读取外部输入与 `assets/fyagent.png` 的 PNG metadata/alpha | 退出码 0；两者 SHA-256 均为 `17236EBB0DD38D8A9FE5C4BA8D1621E4048909B86F1BD8C88BA55E8DBA63C9BF`；1024×1024、RGBA、alpha 0..255，含抗锯齿值 |
+| 标准集合 | `pnpm tauri icon assets/fyagent.png --output src-tauri/icons` | 退出码 0；生成桌面、Windows Store、Android、iOS 共 50 个既有路径，包含 `64x64.png`；未新增额外生成路径 |
+| About / tray | `Copy-Item src-tauri\icons\32x32.png src\assets\icons\app-icon.png -Force`；Pillow 按源 alpha 非透明边界生成三个 macOS template | About 与 32×32 输出 SHA-256 同为 `A0E4AC31157CAA5B9DD893A38A558B3BD506A6DDD37A61174BFB05EE12B54C19`；template 为 24/48/72 RGBA、RGB 全黑、alpha 0..255 且含部分透明值，非透明 bbox 分别为 `(4,3,20,21)`、`(8,6,41,42)`、`(12,9,61,62)` |
+| 文件级验证 | 内联 Python/Pillow + `git ls-files`/`git diff --name-only` 校验 source、inventory、PNG/ICO/ICNS、About、template、排除资产与 ZIP | 退出码 0；53/53 个既有应用品牌路径均变化；51/51 PNG 可解码且为 RGBA；ICO 含 16/24/32/48/64/256；ICNS 最大 1024×1024；DMG 背景、partner、截图和其他 renderer icons 无 diff；`v1.zip` 19/19 Markdown 逐字节一致 |
+| Diff | `git diff --check` | 退出码 0 |
+| 前端 / Rust | `pnpm format:check`；`pnpm typecheck`；`pnpm build:renderer`；`cargo check --manifest-path src-tauri/Cargo.toml` | 全部退出码 0；renderer 构建 3305 modules / 13.36s，仅既有 warnings；cargo check 13.40s |
+| 聚焦回归 | `pnpm exec vitest run tests/releaseWorkflow.test.ts tests/components/AboutSection.test.tsx` | 退出码 0；2 files / 6 tests 通过 |
+| Windows MSI | `pnpm tauri build --bundles msi` | 退出码 0；424.3s；`FyAgent_3.18.0_x64_en-US.msi` 为 12,791,808 bytes，SHA-256 `31C180695E45575A06D624CD0D05425D9657FAFB9E4A1DBA4102069D1D2ED3DF`；WiX `candle`/`light` 成功，Authenticode `NotSigned`，未安装。构建仅输出已知的 `__TAURI_BUNDLE_TYPE`/updater warning；V1 已禁用 updater |
+
+长期维护约束已写入 `.trellis/spec/backend/application-brand-assets.md`，并从 frontend/backend
+规范索引共同引用；ICNS 容器重生成的原始字节不稳定时必须比较可解码尺寸/像素，而不是把
+容器 byte equality 当作门槛。
+
+上述仅证明源文件与生成资产的静态一致性。Windows 安装器/快捷方式/任务栏和 macOS
+Finder/Dock/应用切换器/menu bar 的实际观感仍为 `Pending human`。
 
 ## 2026-07-29 收尾复验记录
 
