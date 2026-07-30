@@ -99,6 +99,15 @@ comparison value.
   steps. Download verification and installation states may still render the
   derived percentage or an indeterminate progress bar, but must not label their
   counters as bytes.
+- Download speed is a renderer-only interval measurement derived from adjacent
+  accepted snapshots for the same job, using increasing `completedBytes` and
+  `updatedAt`. The first sample, a non-increasing byte/time delta, invalid input,
+  a different job, missing progress, or leaving the `downloading`/`download`
+  stage resets the displayed speed while retaining a valid current sample as
+  the next baseline. Bind a measurement to its `jobId` and `sequence` so an
+  effect-driven state update cannot briefly expose the previous snapshot's
+  speed; append `/s` only for the download stage. Do not add this display-only
+  value to the Rust or TypeScript wire DTO.
 - The canonical fixture tests/fixtures/codexDesktopDtoContract.v1.json is
   produced-equivalent to Rust DTO serialization and parsed by the TypeScript
   contract test.
@@ -246,8 +255,12 @@ such controls.
 - TypeScript: import and parse tests/fixtures/codexDesktopDtoContract.v1.json;
   enumerate every frozen enum/tag branch and consume the complete snapshot.
   Component coverage must prove `job_downloading` retains percentage plus the
-  formatted current/total byte pair, while `job_installing` with non-null
-  current/total values renders the percentage without any byte label.
+  formatted current/total byte pair and a finite speed after a second valid
+  sample. Hook coverage must prove first/invalid/non-increasing samples and
+  job/phase/progress resets cannot retain stale speed, while a later valid
+  sample recovers from the new baseline. `job_installing` with non-null
+  current/total/speed values renders the percentage without any byte or `/s`
+  label.
 - Integration: static audit that ordinary IPC has no all-users or custom-input
   surface, and each command remains registered exactly once.
 - All-users: inject a bounded control reader; assert oversized JSON rejects

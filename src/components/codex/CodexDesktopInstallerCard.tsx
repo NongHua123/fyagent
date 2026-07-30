@@ -118,6 +118,9 @@ export function CodexDesktopInstallerCard() {
     ? formatBytes(progress?.current)
     : null;
   const totalText = showDownloadBytes ? formatBytes(progress?.total) : null;
+  const speedText = showDownloadBytes
+    ? formatBytes(progress?.bytesPerSecond)
+    : null;
   const primaryPending = installer.primaryDisabled && Boolean(primaryAction);
   const errorMessage =
     error &&
@@ -227,6 +230,7 @@ export function CodexDesktopInstallerCard() {
                 {completedText
                   ? " · " + completedText + (totalText ? " / " + totalText : "")
                   : null}
+                {speedText ? " · " + speedText + "/s" : null}
               </span>
             </div>
             <div

@@ -147,6 +147,24 @@ function makeJob(
   };
 }
 
+function makeDownloadJob(
+  sequence: number,
+  completedBytes: number,
+  updatedAt: string,
+  overrides: Partial<JobSnapshot> = {},
+): JobSnapshot {
+  return makeJob("downloading", sequence, {
+    updatedAt,
+    progress: {
+      phase: "download",
+      completedBytes,
+      totalBytes: 8 * 1024 * 1024,
+      percent: 50,
+    },
+    ...overrides,
+  });
+}
+
 function makeMetadataChangedError(): InstallerErrorDto {
   return {
     code: "METADATA_CHANGED",
@@ -338,6 +356,176 @@ describe("useCodexDesktopInstaller", () => {
     });
 
     await waitFor(() => expect(result.current.state).toBe("job_downloading"));
+  });
+
+  it("derives download speed only after two valid samples for the same job", async () => {
+    const mebibyte = 1024 * 1024;
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useCodexDesktopInstaller(), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(mocks.listeners.size).toBe(1));
+    await act(async () => {
+      emitJob(makeDownloadJob(1, mebibyte, "2026-07-29T00:00:01.000Z"));
+    });
+
+    await waitFor(() => {
+      expect(result.current.progress?.current).toBe(mebibyte);
+      expect(result.current.progress?.bytesPerSecond).toBeNull();
+    });
+
+    await act(async () => {
+      emitJob(makeDownloadJob(2, 5 * mebibyte, "2026-07-29T00:00:03.000Z"));
+    });
+
+    await waitFor(() =>
+      expect(result.current.progress?.bytesPerSecond).toBe(2 * mebibyte),
+    );
+  });
+
+  it("resets a zero-byte interval without exposing stale speed and recovers from that sample", async () => {
+    const mebibyte = 1024 * 1024;
+    const observedProgress: Array<{
+      current: number | null | undefined;
+      bytesPerSecond: number | null | undefined;
+    }> = [];
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(
+      () => {
+        const installer = useCodexDesktopInstaller();
+        observedProgress.push({
+          current: installer.progress?.current,
+          bytesPerSecond: installer.progress?.bytesPerSecond,
+        });
+        return installer;
+      },
+      { wrapper },
+    );
+
+    await waitFor(() => expect(mocks.listeners.size).toBe(1));
+    await act(async () => {
+      emitJob(makeDownloadJob(1, mebibyte, "2026-07-29T00:00:01.000Z"));
+    });
+    await act(async () => {
+      emitJob(makeDownloadJob(2, 3 * mebibyte, "2026-07-29T00:00:02.000Z"));
+    });
+    await waitFor(() =>
+      expect(result.current.progress?.bytesPerSecond).toBe(2 * mebibyte),
+    );
+
+    const resetRenderStart = observedProgress.length;
+    await act(async () => {
+      emitJob(makeDownloadJob(3, 3 * mebibyte, "2026-07-29T00:00:03.000Z"));
+    });
+    await waitFor(() =>
+      expect(result.current.progress?.bytesPerSecond).toBeNull(),
+    );
+    expect(observedProgress.slice(resetRenderStart)).not.toContainEqual({
+      current: 3 * mebibyte,
+      bytesPerSecond: 2 * mebibyte,
+    });
+
+    await act(async () => {
+      emitJob(makeDownloadJob(4, 5 * mebibyte, "2026-07-29T00:00:04.000Z"));
+    });
+    await waitFor(() =>
+      expect(result.current.progress?.bytesPerSecond).toBe(2 * mebibyte),
+    );
+  });
+
+  it.each([
+    {
+      caseName: "the timestamp is invalid",
+      snapshot: () => makeDownloadJob(3, 4 * 1024 * 1024, "not-a-timestamp"),
+    },
+    {
+      caseName: "the byte count is not finite",
+      snapshot: () =>
+        makeDownloadJob(3, Number.NaN, "2026-07-29T00:00:03.000Z"),
+    },
+    {
+      caseName: "time does not advance",
+      snapshot: () =>
+        makeDownloadJob(3, 4 * 1024 * 1024, "2026-07-29T00:00:02.000Z"),
+    },
+    {
+      caseName: "the byte count moves backwards",
+      snapshot: () =>
+        makeDownloadJob(3, 512 * 1024, "2026-07-29T00:00:03.000Z"),
+    },
+    {
+      caseName: "the progress phase is not download",
+      snapshot: () =>
+        makeDownloadJob(3, 4 * 1024 * 1024, "2026-07-29T00:00:03.000Z", {
+          progress: {
+            phase: "verification",
+            completedBytes: 4 * 1024 * 1024,
+            totalBytes: 8 * 1024 * 1024,
+            percent: 50,
+          },
+        }),
+    },
+    {
+      caseName: "download progress disappears",
+      snapshot: () =>
+        makeJob("downloading", 3, {
+          updatedAt: "2026-07-29T00:00:03.000Z",
+          progress: null,
+          cancellable: false,
+        }),
+    },
+    {
+      caseName: "a new job starts",
+      snapshot: () =>
+        makeDownloadJob(1, 4 * 1024 * 1024, "2026-07-29T00:01:01.000Z", {
+          jobId: "job-2",
+          startedAt: "2026-07-29T00:01:00.000Z",
+        }),
+    },
+    {
+      caseName: "the job leaves the download stage",
+      snapshot: () =>
+        makeJob("installing", 3, {
+          updatedAt: "2026-07-29T00:00:03.000Z",
+          progress: {
+            phase: "installation",
+            completedBytes: 1,
+            totalBytes: 2,
+            percent: 50,
+          },
+          cancellable: false,
+        }),
+    },
+  ])("clears download speed when $caseName", async ({ snapshot }) => {
+    const mebibyte = 1024 * 1024;
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useCodexDesktopInstaller(), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(mocks.listeners.size).toBe(1));
+    await act(async () => {
+      emitJob(makeDownloadJob(1, mebibyte, "2026-07-29T00:00:01.000Z"));
+    });
+    await waitFor(() =>
+      expect(result.current.progress?.bytesPerSecond).toBeNull(),
+    );
+
+    await act(async () => {
+      emitJob(makeDownloadJob(2, 3 * mebibyte, "2026-07-29T00:00:02.000Z"));
+    });
+    await waitFor(() =>
+      expect(result.current.progress?.bytesPerSecond).toBe(2 * mebibyte),
+    );
+
+    await act(async () => {
+      emitJob(snapshot());
+    });
+
+    await waitFor(() =>
+      expect(result.current.progress?.bytesPerSecond ?? null).toBeNull(),
+    );
   });
 
   it("does not cancel the backend job when the card unmounts", async () => {

@@ -62,13 +62,18 @@ describe("CodexDesktopInstallerCard", () => {
     expect(installer.runPrimaryAction).toHaveBeenCalledOnce();
   });
 
-  it("exposes bounded download progress and only renders cancellation while the backend allows it", () => {
+  it("shows bounded progress and download speed while the backend allows cancellation", () => {
     const installer = createViewModel({
       state: "job_downloading",
       primaryAction: null,
       primaryDisabled: true,
       canCancel: true,
-      progress: { current: 512, total: 1024, percent: 50 },
+      progress: {
+        current: 512,
+        total: 1024,
+        percent: 50,
+        bytesPerSecond: 2 * 1024 * 1024,
+      },
     });
     mocks.useInstaller.mockReturnValue(installer);
 
@@ -79,7 +84,7 @@ describe("CodexDesktopInstallerCard", () => {
         name: "codexDesktop.details.progress",
       }),
     ).toHaveAttribute("aria-valuenow", "50");
-    expect(screen.getByText("50% · 512 B / 1 KB")).toBeVisible();
+    expect(screen.getByText("50% · 512 B / 1 KB · 2 MB/s")).toBeVisible();
     const cancelButton = screen.getByRole("button", {
       name: "codexDesktop.actions.cancel",
     });
@@ -87,13 +92,63 @@ describe("CodexDesktopInstallerCard", () => {
     expect(installer.cancel).toHaveBeenCalledOnce();
   });
 
+  it("omits download speed until the hook has a valid measurement", () => {
+    mocks.useInstaller.mockReturnValue(
+      createViewModel({
+        state: "job_downloading",
+        primaryAction: null,
+        primaryDisabled: true,
+        progress: {
+          current: 512,
+          total: 1024,
+          percent: 50,
+          bytesPerSecond: null,
+        },
+      }),
+    );
+
+    render(<CodexDesktopInstallerCard />);
+
+    expect(screen.getByText("50% · 512 B / 1 KB")).toBeVisible();
+    expect(screen.queryByText(/\/s/)).not.toBeInTheDocument();
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, -1])(
+    "omits an invalid download speed value %s",
+    (bytesPerSecond) => {
+      mocks.useInstaller.mockReturnValue(
+        createViewModel({
+          state: "job_downloading",
+          primaryAction: null,
+          primaryDisabled: true,
+          progress: {
+            current: 512,
+            total: 1024,
+            percent: 50,
+            bytesPerSecond,
+          },
+        }),
+      );
+
+      render(<CodexDesktopInstallerCard />);
+
+      expect(screen.getByText("50% · 512 B / 1 KB")).toBeVisible();
+      expect(screen.queryByText(/\/s/)).not.toBeInTheDocument();
+    },
+  );
+
   it("shows percentage without completed download bytes while installing", () => {
     mocks.useInstaller.mockReturnValue(
       createViewModel({
         state: "job_installing",
         primaryAction: null,
         primaryDisabled: true,
-        progress: { current: 1024, total: 1024, percent: 100 },
+        progress: {
+          current: 1024,
+          total: 1024,
+          percent: 100,
+          bytesPerSecond: 2 * 1024 * 1024,
+        },
       }),
     );
 
@@ -101,6 +156,7 @@ describe("CodexDesktopInstallerCard", () => {
 
     expect(screen.getByText("100%")).toBeVisible();
     expect(screen.queryByText(/1 KB/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/MB\/s/)).not.toBeInTheDocument();
   });
 
   it.each([

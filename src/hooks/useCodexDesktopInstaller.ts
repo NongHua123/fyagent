@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
@@ -30,6 +37,60 @@ export interface CodexDesktopProgress {
   current: number | null;
   total: number | null;
   percent: number | null;
+  bytesPerSecond: number | null;
+}
+
+interface DownloadSpeedSample {
+  jobId: string;
+  completedBytes: number;
+  updatedAtMs: number;
+}
+
+interface DownloadSpeedMeasurement {
+  jobId: string;
+  sequence: number;
+  bytesPerSecond: number;
+}
+
+function deriveDownloadSpeed(
+  previous: DownloadSpeedSample | null,
+  job: JobSnapshot | null | undefined,
+): {
+  sample: DownloadSpeedSample | null;
+  bytesPerSecond: number | null;
+} {
+  const completedBytes = job?.progress?.completedBytes;
+  const updatedAtMs = job ? Date.parse(job.updatedAt) : Number.NaN;
+  if (
+    job?.stage !== "downloading" ||
+    job.progress?.phase !== "download" ||
+    completedBytes == null ||
+    !Number.isFinite(completedBytes) ||
+    completedBytes < 0 ||
+    !Number.isFinite(updatedAtMs)
+  ) {
+    return { sample: null, bytesPerSecond: null };
+  }
+
+  const sample = { jobId: job.jobId, completedBytes, updatedAtMs };
+  if (!previous || previous.jobId !== sample.jobId) {
+    return { sample, bytesPerSecond: null };
+  }
+
+  const elapsedMs = sample.updatedAtMs - previous.updatedAtMs;
+  const completedDelta = sample.completedBytes - previous.completedBytes;
+  if (elapsedMs <= 0 || completedDelta <= 0) {
+    return { sample, bytesPerSecond: null };
+  }
+
+  const bytesPerSecond = (completedDelta * 1000) / elapsedMs;
+  return {
+    sample,
+    bytesPerSecond:
+      Number.isFinite(bytesPerSecond) && bytesPerSecond >= 0
+        ? bytesPerSecond
+        : null,
+  };
 }
 
 export interface CodexDesktopInstallerViewModel {
@@ -227,6 +288,9 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
   const jobQuery = useCodexDesktopJob();
   const [actionError, setActionError] = useState<unknown>(null);
   const [isActing, setIsActing] = useState(false);
+  const downloadSpeedSampleRef = useRef<DownloadSpeedSample | null>(null);
+  const [downloadSpeedMeasurement, setDownloadSpeedMeasurement] =
+    useState<DownloadSpeedMeasurement | null>(null);
   const [acknowledgedMetadataChangeJobId, setAcknowledgedMetadataChangeJobId] =
     useState<string | null>(null);
 
@@ -293,6 +357,21 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
   const local = localQuery.data;
   const remote = remoteQuery.data;
   const job = jobQuery.data;
+
+  useLayoutEffect(() => {
+    const next = deriveDownloadSpeed(downloadSpeedSampleRef.current, job);
+    downloadSpeedSampleRef.current = next.sample;
+    setDownloadSpeedMeasurement(
+      job && next.bytesPerSecond != null
+        ? {
+            jobId: job.jobId,
+            sequence: job.sequence,
+            bytesPerSecond: next.bytesPerSecond,
+          }
+        : null,
+    );
+  }, [job]);
+
   const isAcknowledgedMetadataChange =
     job?.stage === "failed" && job.jobId === acknowledgedMetadataChangeJobId;
   // JobStore intentionally retains terminal successes. Once a refresh reports
@@ -441,14 +520,23 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
     }
   }, []);
 
+  const downloadBytesPerSecond =
+    job?.stage === "downloading" &&
+    job.progress?.phase === "download" &&
+    downloadSpeedMeasurement?.jobId === job.jobId &&
+    downloadSpeedMeasurement.sequence === job.sequence
+      ? downloadSpeedMeasurement.bytesPerSecond
+      : null;
+
   const progress = useMemo<CodexDesktopProgress | undefined>(() => {
     if (!job?.progress) return undefined;
     return {
       current: job.progress.completedBytes,
       total: job.progress.totalBytes,
       percent: job.progress.percent,
+      bytesPerSecond: downloadBytesPerSecond,
     };
-  }, [job?.progress]);
+  }, [downloadBytesPerSecond, job?.progress]);
 
   return {
     state,
