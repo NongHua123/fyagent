@@ -22,6 +22,11 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - frontend: Ubuntu；
 - backend: Ubuntu、Windows、macOS。
 
+为避免普通提交消耗私有仓库的 GitHub-hosted runner 配额，该 workflow 仅保留
+`workflow_dispatch` 手动入口，不在 push 或 pull request 更新时自动运行。上述命令仍是
+提交前必须在本地执行的质量门禁。`.github/workflows/labeler.yml` 同样仅允许维护者手动输入
+PR 编号后执行，避免 PR 更新额外启动 runner。
+
 V1 不新增专用 workflow，除非现有 workflow因 target feature无法覆盖且集成 Agent提供证据。优先扩展现有测试。
 
 ## 3. 禁止的自动化行为
