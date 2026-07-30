@@ -112,6 +112,12 @@ struct RunningApplication {
     bundle_path: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BundleCandidatePolicy {
+    StrictPackage,
+    SkipEscapedLocalSymlink,
+}
+
 /// Scan direct bundle children under the two standard roots. Any Stable
 /// candidate is fully verified before becoming a managed installation; Classic
 /// and Beta bundles are never promoted based on their filename or Team alone.
@@ -165,7 +171,16 @@ pub(crate) fn scan_stable_bundles(
                 "a standard Applications directory could not be enumerated",
             )
         })? {
-            let Some(bundle_path) = canonical_top_level_bundle(filesystem, &root, &entry)? else {
+            // Local discovery must not follow an escaped alias just to learn
+            // its identity. Downloaded package discovery uses the strict
+            // wrapper below and continues to reject the same path shape.
+            let Some(bundle_path) = canonical_top_level_bundle_with_policy(
+                filesystem,
+                &root,
+                &entry,
+                BundleCandidatePolicy::SkipEscapedLocalSymlink,
+            )?
+            else {
                 continue;
             };
             let Some(bundle_identifier) =
@@ -195,11 +210,25 @@ pub(crate) fn canonical_top_level_bundle(
     canonical_parent: &Path,
     candidate: &Path,
 ) -> Result<Option<PathBuf>, InstallerError> {
+    canonical_top_level_bundle_with_policy(
+        filesystem,
+        canonical_parent,
+        candidate,
+        BundleCandidatePolicy::StrictPackage,
+    )
+}
+
+fn canonical_top_level_bundle_with_policy(
+    filesystem: &dyn MacosFilesystem,
+    canonical_parent: &Path,
+    candidate: &Path,
+    policy: BundleCandidatePolicy,
+) -> Result<Option<PathBuf>, InstallerError> {
     if !has_app_extension(candidate) {
         return Ok(None);
     }
-    match filesystem.file_kind(candidate) {
-        Ok(MacosFileKind::Directory | MacosFileKind::Symlink) => {}
+    let candidate_kind = match filesystem.file_kind(candidate) {
+        Ok(kind @ (MacosFileKind::Directory | MacosFileKind::Symlink)) => kind,
         Ok(_) => return Ok(None),
         Err(error) if is_not_found(error) => return Ok(None),
         Err(_) => {
@@ -208,7 +237,7 @@ pub(crate) fn canonical_top_level_bundle(
                 "an application bundle candidate could not be inspected",
             ))
         }
-    }
+    };
 
     let canonical = filesystem.canonicalize(candidate).map_err(|_| {
         error(
@@ -216,6 +245,12 @@ pub(crate) fn canonical_top_level_bundle(
             "an application bundle candidate could not be canonicalized",
         )
     })?;
+    if candidate_kind == MacosFileKind::Symlink
+        && policy == BundleCandidatePolicy::SkipEscapedLocalSymlink
+        && !canonical.starts_with(canonical_parent)
+    {
+        return Ok(None);
+    }
     if canonical.parent() != Some(canonical_parent)
         || !canonical.starts_with(canonical_parent)
         || filesystem.file_kind(&canonical) != Ok(MacosFileKind::Directory)
@@ -970,6 +1005,53 @@ mod tests {
             1
         );
         runner.assert_drained();
+    }
+
+    #[test]
+    fn escaped_unrelated_bundle_symlink_does_not_block_local_discovery() {
+        let filesystem = FakeFilesystem::new();
+        let escaped = Path::new(SYSTEM_APPLICATIONS).join("Archive.app");
+        let escaped_target = Path::new("/Volumes/Archive/Archive.app");
+        let stable = Path::new(SYSTEM_APPLICATIONS).join("ChatGPT.app");
+        filesystem.add_dir(escaped_target);
+        filesystem.add_symlink(&escaped, escaped_target);
+        add_bundle(&filesystem, &stable);
+        let runner = FakeRunner::new();
+        queue_stable_bundle_scan(&runner, "5848");
+
+        let LocalInstallStatus::Installed { application } =
+            inspect_local(&runner, &filesystem, &host()).unwrap()
+        else {
+            panic!("the valid Stable bundle must remain discoverable");
+        };
+        assert_eq!(application.location.as_deref(), stable.to_str());
+        assert_eq!(
+            runner
+                .invocations()
+                .iter()
+                .filter(|invocation| invocation.program() == "plutil")
+                .count(),
+            2
+        );
+        runner.assert_drained();
+    }
+
+    #[test]
+    fn strict_package_candidate_check_rejects_an_escaped_bundle_symlink() {
+        let filesystem = FakeFilesystem::new();
+        let mount_point = Path::new("/Volumes/Codex Installer");
+        let escaped = mount_point.join("Codex.app");
+        let escaped_target = Path::new(SYSTEM_APPLICATIONS).join("ChatGPT.app");
+        filesystem.add_dir(mount_point);
+        filesystem.add_dir(&escaped_target);
+        filesystem.add_symlink(&escaped, &escaped_target);
+
+        assert_eq!(
+            canonical_top_level_bundle(&filesystem, mount_point, &escaped)
+                .unwrap_err()
+                .code(),
+            InstallerErrorCode::PackageParseFailed
+        );
     }
 
     #[test]

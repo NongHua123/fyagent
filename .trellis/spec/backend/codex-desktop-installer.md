@@ -143,11 +143,15 @@ comparison value.
   same descriptor's exact platform version.
 - macOS standard-directory scanning uses a tolerant identifier probe before
   Stable-only validation. A malformed, non-file, missing-identity, or
-  parse-rejected unrelated bundle is skipped;
+  parse-rejected unrelated bundle is skipped. A top-level `.app` symlink whose
+  canonical target escapes `/Applications` or `~/Applications` is also skipped
+  before reading its identifier, so an unrelated external alias cannot block
+  local discovery;
   only an exact `com.openai.codex` probe enters the strict version, executable,
-  architecture, Team, codesign, and Gatekeeper checks. Canonical-path escape,
-  directory-enumeration failure, or a known Stable candidate's strict failure
-  remains fail closed.
+  architecture, Team, codesign, and Gatekeeper checks. Downloaded/mounted
+  package discovery keeps the strict wrapper and rejects every escaped `.app`
+  candidate. Directory-enumeration failure, a non-symlink local canonical-path
+  escape, or a known Stable candidate's strict failure remains fail closed.
 
 ### Experimental all-users boundary
 
@@ -228,7 +232,8 @@ such controls.
   replacement-after-verification regression paths that prove Windows deployment
   and macOS attach are not reached,
   macOS malformed-unrelated-bundle scan regressions alongside known-Stable
-  fail-closed fixtures,
+  fail-closed fixtures, plus the policy split that skips an escaped top-level
+  local `.app` symlink while strict mounted-package discovery rejects it,
   service metadata-drift and checksum-reanchor behavior, direct same/newer
   local-version launch-only behavior, platform fixture/fake tests, DTO fixture
   equality, and a fixture whose manifest-wide aggregate version differs from
