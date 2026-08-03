@@ -172,3 +172,38 @@ Regenerated all application-brand icons from the approved FyAgent source, added 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: 实现 FyAgent v1-0.1
+
+**Date**: 2026-08-03
+**Task**: 实现 FyAgent v1-0.1
+**Branch**: `feature/fyagent-v1`
+
+### Summary
+
+实现独立 0.1.0 版本、Codex 原生能力与可信重启、WorkBuddy 独立配置域；本地质量门禁通过，真实端到端留给人工验收。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `73aed1ad` | (see git log) |
+| `2e56a6fe` | (see git log) |
+| `16b20c05` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
