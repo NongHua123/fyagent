@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  CodexDesktopRestartOutcome,
+  CodexDesktopRuntimeStatus,
   JobSnapshot,
   LocalInstallStatus,
   RemoteReleaseStatus,
@@ -40,5 +42,34 @@ export const codexDesktopApi = {
 
   async openLogDirectory(): Promise<void> {
     await invoke("codex_desktop_open_log_directory");
+  },
+
+  async getRuntimeStatus(): Promise<CodexDesktopRuntimeStatus> {
+    return await invoke("get_codex_desktop_runtime_status");
+  },
+
+  async requestRestart(): Promise<CodexDesktopRestartOutcome> {
+    return await invoke("request_codex_desktop_restart");
+  },
+
+  /**
+   * The backend-issued token is opaque, single-use, and short-lived. The
+   * renderer never derives, alters, or combines it with process information.
+   */
+  async continueRestartWithForce(
+    token: string,
+  ): Promise<CodexDesktopRestartOutcome> {
+    return await invoke("continue_codex_desktop_restart_with_force", {
+      token,
+    });
+  },
+
+  /**
+   * Cancels only the pending backend continuation identified by this opaque
+   * token. It is intentionally a no-result capability: the renderer cannot
+   * learn whether a process or token still exists.
+   */
+  async cancelRestartWithForce(token: string): Promise<void> {
+    await invoke("cancel_codex_desktop_restart_with_force", { token });
   },
 };

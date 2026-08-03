@@ -22,8 +22,8 @@ use std::{
 use futures::future::BoxFuture;
 
 use super::{
-    CodexDesktopPlatform, PlatformInstallPlan, PlatformProgressSink, VerifiedPackage,
-    MACOS_CODEX_STABLE_IDENTITY,
+    CodexDesktopPlatform, PlatformInstallPlan, PlatformProgressSink, RuntimeInspection,
+    TrustedRuntimeInstance, VerifiedPackage, MACOS_CODEX_STABLE_IDENTITY,
 };
 use crate::codex_desktop::{
     download::DownloadedArtifact,
@@ -501,14 +501,14 @@ impl MacosHost {
 /// host facts, command execution, and filesystem capabilities; this keeps all
 /// macOS tests entirely fake and gives platform root a side-effect-free object
 /// to construct during application setup.
-pub struct MacosPlatformAdapter {
+pub(crate) struct MacosPlatformAdapter {
     runner: Arc<dyn CommandRunner>,
     filesystem: Arc<dyn MacosFilesystem>,
     host: MacosHost,
 }
 
 impl MacosPlatformAdapter {
-    pub fn new(
+    pub(crate) fn new(
         runner: Arc<dyn CommandRunner>,
         filesystem: Arc<dyn MacosFilesystem>,
         host: MacosHost,
@@ -521,7 +521,7 @@ impl MacosPlatformAdapter {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn for_current_host() -> Result<Self, InstallerError> {
+    pub(crate) fn for_current_host() -> Result<Self, InstallerError> {
         Ok(Self::new(
             Arc::new(SystemCommandRunner),
             Arc::new(StdMacosFilesystem),
@@ -676,6 +676,98 @@ impl CodexDesktopPlatform for MacosPlatformAdapter {
             }
             run_blocking(move || {
                 bundle::launch_verified(runner.as_ref(), filesystem.as_ref(), &host, &installed)
+            })
+            .await
+        })
+    }
+
+    fn inspect_runtime<'a>(
+        &'a self,
+        installed: &'a InstalledApplication,
+    ) -> BoxFuture<'a, Result<RuntimeInspection, InstallerError>> {
+        let runner = self.runner.clone();
+        let filesystem = self.filesystem.clone();
+        let installed = installed.clone();
+        let host_error = self.host_support_error();
+        Box::pin(async move {
+            if let Some(error) = host_error {
+                return Err(error);
+            }
+            run_blocking(move || {
+                bundle::inspect_runtime(runner.as_ref(), filesystem.as_ref(), &installed)
+            })
+            .await
+        })
+    }
+
+    fn request_graceful_shutdown<'a>(
+        &'a self,
+        installed: &'a InstalledApplication,
+        instances: &'a [TrustedRuntimeInstance],
+    ) -> BoxFuture<'a, Result<(), InstallerError>> {
+        let runner = self.runner.clone();
+        let filesystem = self.filesystem.clone();
+        let installed = installed.clone();
+        let instances = instances.to_vec();
+        let host_error = self.host_support_error();
+        Box::pin(async move {
+            if let Some(error) = host_error {
+                return Err(error);
+            }
+            run_blocking(move || {
+                bundle::request_graceful_shutdown(
+                    runner.as_ref(),
+                    filesystem.as_ref(),
+                    &installed,
+                    &instances,
+                )
+            })
+            .await
+        })
+    }
+
+    fn force_shutdown<'a>(
+        &'a self,
+        installed: &'a InstalledApplication,
+        instances: &'a [TrustedRuntimeInstance],
+    ) -> BoxFuture<'a, Result<(), InstallerError>> {
+        let runner = self.runner.clone();
+        let filesystem = self.filesystem.clone();
+        let installed = installed.clone();
+        let instances = instances.to_vec();
+        let host_error = self.host_support_error();
+        Box::pin(async move {
+            if let Some(error) = host_error {
+                return Err(error);
+            }
+            run_blocking(move || {
+                bundle::force_shutdown(runner.as_ref(), filesystem.as_ref(), &installed, &instances)
+            })
+            .await
+        })
+    }
+
+    fn is_runtime_instance_running<'a>(
+        &'a self,
+        installed: &'a InstalledApplication,
+        instances: &'a [TrustedRuntimeInstance],
+    ) -> BoxFuture<'a, Result<bool, InstallerError>> {
+        let runner = self.runner.clone();
+        let filesystem = self.filesystem.clone();
+        let installed = installed.clone();
+        let instances = instances.to_vec();
+        let host_error = self.host_support_error();
+        Box::pin(async move {
+            if let Some(error) = host_error {
+                return Err(error);
+            }
+            run_blocking(move || {
+                bundle::is_runtime_instance_running(
+                    runner.as_ref(),
+                    filesystem.as_ref(),
+                    &installed,
+                    &instances,
+                )
             })
             .await
         })

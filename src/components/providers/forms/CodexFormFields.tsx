@@ -36,7 +36,9 @@ import {
 } from "@/lib/api/model-fetch";
 import { CustomUserAgentField } from "./CustomUserAgentField";
 import { LocalProxyRequestOverridesField } from "./LocalProxyRequestOverridesField";
+import { CodexNativeCapabilities } from "./codex/CodexNativeCapabilities";
 import { cn } from "@/lib/utils";
+import type { CodexProviderFeatureState } from "@/lib/api";
 import type {
   ClaudeApiKeyField,
   CodexApiFormat,
@@ -88,6 +90,15 @@ interface CodexFormFieldsProps {
   // Note: wire_api is always "responses" for Codex; apiFormat controls proxy-layer conversion
   apiFormat: CodexApiFormat;
   onApiFormatChange: (format: CodexApiFormat) => void;
+  // Native per-provider capabilities. The parent owns the draft-only IPC
+  // queue, so this presentational form never parses or rewrites TOML itself.
+  codexFeatureState?: CodexProviderFeatureState | null;
+  isCodexFeatureAnalyzing?: boolean;
+  isCodexFeaturePatching?: boolean;
+  codexFeatureError?: "analysis" | "patch" | null;
+  websocketAutoDisabled?: boolean;
+  onCodexImageExtensionChange?: (enabled: boolean) => void;
+  onCodexWebsocketsChange?: (enabled: boolean) => void;
   // Auth field for the Anthropic Messages upstream (only used when apiFormat === "anthropic")
   anthropicAuthField: ClaudeApiKeyField;
   onAnthropicAuthFieldChange: (value: ClaudeApiKeyField) => void;
@@ -191,6 +202,13 @@ export function CodexFormFields({
   onModelChange,
   apiFormat,
   onApiFormatChange,
+  codexFeatureState = null,
+  isCodexFeatureAnalyzing = false,
+  isCodexFeaturePatching = false,
+  codexFeatureError = null,
+  websocketAutoDisabled = false,
+  onCodexImageExtensionChange,
+  onCodexWebsocketsChange,
   anthropicAuthField,
   onAnthropicAuthFieldChange,
   impersonateClaudeCode,
@@ -248,6 +266,15 @@ export function CodexFormFields({
   const hasRequestOverrides = Boolean(
     localProxyHeadersOverride.trim() || localProxyBodyOverride.trim(),
   );
+  // A non-default feature state is important enough to reveal the existing
+  // advanced region. This intentionally does not expand for a plain "off"
+  // capability result, keeping normal providers visually quiet.
+  const hasCodexFeatureAttention = Boolean(
+    codexFeatureState &&
+      (codexFeatureState.imageExtension.kind !== "off" ||
+        codexFeatureState.websockets.enabled ||
+        codexFeatureState.diagnostics.length > 0),
+  );
   const hasAnyAdvancedValue =
     !!customUserAgent ||
     hasRequestOverrides ||
@@ -257,7 +284,8 @@ export function CodexFormFields({
     supportsThinking ||
     supportsEffort ||
     promptCacheRouting !== "auto" ||
-    !!maxOutputTokens;
+    !!maxOutputTokens ||
+    hasCodexFeatureAttention;
   const [advancedExpanded, setAdvancedExpanded] = useState(
     isXaiOauthPreset ? false : hasAnyAdvancedValue,
   );
@@ -796,6 +824,18 @@ export function CodexFormFields({
                 )}
               </div>
             )}
+
+            {onCodexImageExtensionChange && onCodexWebsocketsChange ? (
+              <CodexNativeCapabilities
+                state={codexFeatureState}
+                isAnalyzing={isCodexFeatureAnalyzing}
+                isPatching={isCodexFeaturePatching}
+                error={codexFeatureError}
+                websocketAutoDisabled={websocketAutoDisabled}
+                onImageExtensionChange={onCodexImageExtensionChange}
+                onWebsocketsChange={onCodexWebsocketsChange}
+              />
+            ) : null}
 
             {isChatFormat && canEditReasoning && (
               <div

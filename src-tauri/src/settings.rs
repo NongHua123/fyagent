@@ -36,6 +36,9 @@ pub struct VisibleApps {
     pub claude_desktop: bool,
     #[serde(default = "default_true")]
     pub codex: bool,
+    /// WorkBuddy is a top-level application surface, not an AppType/provider domain.
+    #[serde(default = "default_true")]
+    pub workbuddy: bool,
     #[serde(default = "default_true")]
     pub gemini: bool,
     #[serde(default = "default_true")]
@@ -54,6 +57,7 @@ impl Default for VisibleApps {
             claude: true,
             claude_desktop: true,
             codex: true,
+            workbuddy: true,
             gemini: true,
             grokbuild: true,
             opencode: true,
@@ -1161,6 +1165,7 @@ mod tests {
         .expect("visible apps");
 
         assert!(visible.is_visible(&AppType::ClaudeDesktop));
+        assert!(visible.workbuddy);
     }
 
     #[test]

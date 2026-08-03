@@ -231,6 +231,10 @@ export interface ProviderMeta {
   providerType?: string;
   // GitHub Copilot 关联账号 ID（旧字段，保留兼容读取）
   githubAccountId?: string;
+  // Codex native image-extension state has been explicitly saved. This
+  // distinguishes a historical missing header (default-on migration) from an
+  // explicit user choice to keep the feature off.
+  imageExtensionConfigured?: boolean;
 }
 
 // Skill 同步方式
@@ -279,6 +283,11 @@ export interface VisibleApps {
   claude: boolean;
   "claude-desktop": boolean;
   codex: boolean;
+  /**
+   * Kept optional so settings written by releases before FyAgent v0.1 remain
+   * readable; consumers resolve an omitted value to the visible default.
+   */
+  workbuddy?: boolean;
   gemini: boolean;
   grokbuild: boolean;
   opencode: boolean;

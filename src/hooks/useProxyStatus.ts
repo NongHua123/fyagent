@@ -16,14 +16,16 @@ import { extractErrorMessage } from "@/utils/errorUtils";
 /**
  * 代理服务状态管理
  */
-export function useProxyStatus() {
+export function useProxyStatus(options?: { enabled?: boolean }) {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
+  const enabled = options?.enabled ?? true;
 
   // 查询状态（自动轮询）
   const { data: status, isLoading } = useQuery({
     queryKey: ["proxyStatus"],
     queryFn: () => invoke<ProxyStatus>("get_proxy_status"),
+    enabled,
     // 仅在服务运行时轮询
     refetchInterval: (query) => (query.state.data?.running ? 2000 : false),
     // 保持之前的数据，避免闪烁
@@ -34,6 +36,7 @@ export function useProxyStatus() {
   const { data: takeoverStatus } = useQuery({
     queryKey: ["proxyTakeoverStatus"],
     queryFn: () => invoke<ProxyTakeoverStatus>("get_proxy_takeover_status"),
+    enabled,
     placeholderData: (previousData) => previousData,
   });
 

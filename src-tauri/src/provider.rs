@@ -43,6 +43,23 @@ pub struct Provider {
     pub in_failover_queue: bool,
 }
 
+/// Backward-compatible envelope for provider mutations that need to report a
+/// non-sensitive live-config summary. The existing commands retain their
+/// original return values; new `*_with_result` commands use this envelope.
+///
+/// `live_config_changed` is derived from the final bytes of Codex's live
+/// `config.toml`, never from a database mutation or an intended provider
+/// switch. It deliberately carries neither a path nor a digest, both of which
+/// could disclose local state without helping the renderer decide whether to
+/// offer a restart.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderMutationResult<T> {
+    pub value: T,
+    pub live_config_changed: bool,
+    pub app: String,
+}
+
 impl Provider {
     /// 从现有ID创建供应商
     pub fn with_id(
@@ -518,6 +535,32 @@ pub struct ProviderMeta {
     /// 用于多账号支持，关联到特定的 GitHub 账号
     #[serde(rename = "githubAccountId", skip_serializing_if = "Option::is_none")]
     pub github_account_id: Option<String>,
+    /// Whether the user has explicitly saved the Codex image-extension choice.
+    ///
+    /// This is a migration discriminator only. The effective state continues
+    /// to come from the provider TOML header, so a missing marker on legacy
+    /// records can default to the non-persistent "pending on" draft state.
+    /// Only `Some(true)` is a completed migration; legacy `false` is
+    /// normalized to missing at the persistence boundary.
+    #[serde(
+        rename = "imageExtensionConfigured",
+        default,
+        deserialize_with = "deserialize_image_extension_configured",
+        skip_serializing_if = "image_extension_marker_is_unfinished"
+    )]
+    pub image_extension_configured: Option<bool>,
+}
+
+fn image_extension_marker_is_unfinished(marker: &Option<bool>) -> bool {
+    *marker != Some(true)
+}
+
+fn deserialize_image_extension_configured<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let marker = Option::<bool>::deserialize(deserializer)?;
+    Ok((marker == Some(true)).then_some(true))
 }
 
 /// 解析 Provider 级自定义 User-Agent 字符串（单一真理来源）。
@@ -1002,6 +1045,34 @@ mod tests {
         let value = serde_json::to_value(&meta).expect("serialize ProviderMeta");
 
         assert!(value.get("pricingModelSource").is_none());
+    }
+
+    #[test]
+    fn provider_meta_normalizes_false_image_extension_marker_to_missing() {
+        let parsed: ProviderMeta = serde_json::from_value(json!({
+            "imageExtensionConfigured": false,
+        }))
+        .expect("deserialize legacy marker");
+        assert_eq!(parsed.image_extension_configured, None);
+
+        let serialized_false = serde_json::to_value(ProviderMeta {
+            image_extension_configured: Some(false),
+            ..ProviderMeta::default()
+        })
+        .expect("serialize unfinished marker");
+        assert!(serialized_false.get("imageExtensionConfigured").is_none());
+
+        let serialized_true = serde_json::to_value(ProviderMeta {
+            image_extension_configured: Some(true),
+            ..ProviderMeta::default()
+        })
+        .expect("serialize completed marker");
+        assert_eq!(
+            serialized_true
+                .get("imageExtensionConfigured")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
     }
 
     #[test]

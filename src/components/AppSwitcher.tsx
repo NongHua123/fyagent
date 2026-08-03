@@ -1,27 +1,30 @@
-import type { AppId } from "@/lib/api";
 import type { VisibleApps } from "@/types";
 import { ProviderIcon } from "@/components/ProviderIcon";
+import { WorkBuddyIcon } from "@/components/BrandIcons";
 import { cn } from "@/lib/utils";
+import type { TopLevelAppId } from "@/types/topLevelApp";
+import { useTranslation } from "react-i18next";
 import { Monitor, Terminal } from "lucide-react";
 
 const APP_BADGE_ICON: Partial<
-  Record<AppId, { icon: typeof Terminal; offsetY?: number }>
+  Record<TopLevelAppId, { icon: typeof Terminal; offsetY?: number }>
 > = {
   claude: { icon: Terminal },
   "claude-desktop": { icon: Monitor, offsetY: 0.5 },
 };
 
 interface AppSwitcherProps {
-  activeApp: AppId;
-  onSwitch: (app: AppId) => void;
+  activeApp: TopLevelAppId;
+  onSwitch: (app: TopLevelAppId) => void;
   visibleApps?: VisibleApps;
   compact?: boolean;
 }
 
-const ALL_APPS: AppId[] = [
+const ALL_APPS: TopLevelAppId[] = [
   "claude",
   "claude-desktop",
   "codex",
+  "workbuddy",
   "gemini",
   "grokbuild",
   "opencode",
@@ -36,13 +39,15 @@ export function AppSwitcher({
   visibleApps,
   compact,
 }: AppSwitcherProps) {
-  const handleSwitch = (app: AppId) => {
+  const { t } = useTranslation();
+
+  const handleSwitch = (app: TopLevelAppId) => {
     if (app === activeApp) return;
     localStorage.setItem(STORAGE_KEY, app);
     onSwitch(app);
   };
   const iconSize = 20;
-  const appIconName: Record<AppId, string> = {
+  const appIconName: Record<Exclude<TopLevelAppId, "workbuddy">, string> = {
     claude: "claude",
     "claude-desktop": "claude",
     codex: "openai",
@@ -52,10 +57,11 @@ export function AppSwitcher({
     openclaw: "openclaw",
     hermes: "hermes",
   };
-  const appDisplayName: Record<AppId, string> = {
+  const appDisplayName: Record<TopLevelAppId, string> = {
     claude: "Claude Code",
     "claude-desktop": "Claude Desktop",
     codex: "Codex",
+    workbuddy: t("apps.workbuddy"),
     gemini: "Gemini",
     grokbuild: "Grok Build",
     opencode: "OpenCode",
@@ -66,7 +72,9 @@ export function AppSwitcher({
   // Filter apps based on visibility settings (default all visible)
   const appsToShow = ALL_APPS.filter((app) => {
     if (!visibleApps) return true;
-    return visibleApps[app];
+    return app === "workbuddy"
+      ? (visibleApps.workbuddy ?? true)
+      : visibleApps[app];
   });
 
   return (
@@ -80,19 +88,24 @@ export function AppSwitcher({
             key={app}
             type="button"
             onClick={() => handleSwitch(app)}
+            aria-pressed={isActive}
             className={cn(
-              "group inline-flex items-center px-3 h-8 rounded-md text-sm font-medium transition-all duration-200",
+              "group inline-flex items-center px-3 h-8 rounded-md text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
               isActive
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground hover:bg-background/50",
             )}
           >
             <span className="relative inline-flex shrink-0">
-              <ProviderIcon
-                icon={appIconName[app]}
-                name={appDisplayName[app]}
-                size={iconSize}
-              />
+              {app === "workbuddy" ? (
+                <WorkBuddyIcon size={iconSize} />
+              ) : (
+                <ProviderIcon
+                  icon={appIconName[app]}
+                  name={appDisplayName[app]}
+                  size={iconSize}
+                />
+              )}
               {BadgeIcon && (
                 <span
                   className={cn(

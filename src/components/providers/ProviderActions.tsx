@@ -221,7 +221,7 @@ export function ProviderActions({
   const buttonState = getMainButtonState();
 
   const canDelete =
-    !isReadOnly && (isOmo || isAdditiveMode ? true : !isCurrent);
+    !isReadOnly && (isOmo || isAdditiveMode || appId === "codex" || !isCurrent);
   const readOnlyHint = t("provider.managedByHermesHint", {
     defaultValue: "由 Hermes 管理，请在 Hermes Web UI 中编辑",
   });

@@ -11,11 +11,14 @@ use indexmap::IndexMap;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
+use std::fs;
+use std::io::ErrorKind;
+use std::path::PathBuf;
 
 use crate::app_config::AppType;
 use crate::database::{validate_cost_multiplier, validate_pricing_source};
 use crate::error::AppError;
-use crate::provider::{Provider, UsageResult};
+use crate::provider::{Provider, ProviderMutationResult, UsageResult};
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
 use crate::store::AppState;
@@ -115,11 +118,100 @@ pub struct SwitchResult {
     pub warnings: Vec<String>,
 }
 
+fn read_codex_live_config_bytes() -> Result<Vec<u8>, AppError> {
+    let path = crate::codex_config::get_codex_config_path();
+    match fs::read(&path) {
+        Ok(bytes) => Ok(bytes),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(Vec::new()),
+        Err(error) => Err(AppError::io(&path, error)),
+    }
+}
+
+#[derive(Debug)]
+struct CodexLiveConfigSnapshot {
+    path: PathBuf,
+    /// `None` distinguishes a missing file from an existing empty file so a
+    /// failed deletion can restore the exact pre-mutation filesystem state.
+    bytes: Option<Vec<u8>>,
+}
+
+fn snapshot_codex_live_config() -> Result<CodexLiveConfigSnapshot, AppError> {
+    let path = crate::codex_config::get_codex_config_path();
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => Some(bytes),
+        Err(error) if error.kind() == ErrorKind::NotFound => None,
+        Err(error) => return Err(AppError::io(&path, error)),
+    };
+    Ok(CodexLiveConfigSnapshot { path, bytes })
+}
+
+fn clear_codex_live_config(snapshot: &CodexLiveConfigSnapshot) -> Result<(), AppError> {
+    // Do not create an empty config.toml when no non-empty live projection
+    // exists. This also keeps the final byte comparison false for a no-op
+    // cleanup.
+    if snapshot
+        .bytes
+        .as_ref()
+        .is_some_and(|bytes| !bytes.is_empty())
+    {
+        crate::codex_config::write_codex_live_config_atomic(None)?;
+    }
+    Ok(())
+}
+
+fn restore_codex_live_config(snapshot: &CodexLiveConfigSnapshot) -> Result<(), AppError> {
+    match &snapshot.bytes {
+        Some(bytes) => crate::config::atomic_write(&snapshot.path, bytes),
+        None => crate::config::delete_file(&snapshot.path),
+    }
+}
+
+fn rollback_current_codex_delete(
+    state: &AppState,
+    local_current: &Option<String>,
+    db_current: &Option<String>,
+    restore_live: impl Fn() -> Result<(), AppError>,
+) -> Vec<String> {
+    let mut rollback_errors = Vec::new();
+
+    let restore_db = match db_current.as_deref() {
+        Some(id) => state.db.set_current_provider(AppType::Codex.as_str(), id),
+        None => state.db.clear_current_provider(AppType::Codex.as_str()),
+    };
+    if let Err(error) = restore_db {
+        rollback_errors.push(format!("恢复数据库当前供应商失败: {error}"));
+    }
+
+    if let Err(error) =
+        crate::settings::set_current_provider(&AppType::Codex, local_current.as_deref())
+    {
+        rollback_errors.push(format!("恢复本地当前供应商失败: {error}"));
+    }
+
+    if let Err(error) = restore_live() {
+        rollback_errors.push(format!("恢复 Codex Live 配置失败: {error}"));
+    }
+
+    rollback_errors
+}
+
+fn current_codex_delete_error(primary: AppError, rollback_errors: Vec<String>) -> AppError {
+    if rollback_errors.is_empty() {
+        primary
+    } else {
+        AppError::Message(format!(
+            "删除当前 Codex 供应商失败: {primary}; 回滚部分状态失败: {}",
+            rollback_errors.join("；")
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[cfg(any(target_os = "macos", windows))]
     use crate::claude_desktop_config::PROFILE_ID;
+    use crate::codex_config::get_codex_config_path;
     use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
     use crate::database::Database;
     #[cfg(any(target_os = "macos", windows))]
@@ -129,6 +221,7 @@ mod tests {
     use crate::store::AppState;
     use serde_json::json;
     use serial_test::serial;
+    use std::cell::Cell;
     use std::env;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -247,6 +340,52 @@ mod tests {
         result
     }
 
+    #[test]
+    #[serial]
+    fn codex_live_config_result_compares_exact_final_bytes_after_successful_mutation() {
+        with_test_home(|_, _| {
+            let config_path = get_codex_config_path();
+            fs::create_dir_all(config_path.parent().expect("Codex config parent"))
+                .expect("create Codex config directory");
+            fs::write(&config_path, b"# unchanged\nmodel = \"fixture\"\n")
+                .expect("seed live config");
+
+            let unchanged = ProviderService::with_live_config_result(AppType::Codex, || {
+                Ok::<_, AppError>("unchanged")
+            })
+            .expect("read unchanged result");
+            assert!(!unchanged.live_config_changed);
+            assert_eq!(unchanged.value, "unchanged");
+            assert_eq!(unchanged.app, AppType::Codex.as_str());
+
+            let expected_final_bytes = b"# unchanged\r\nmodel = \"fixture\"\r\n";
+            let changed = ProviderService::with_live_config_result(AppType::Codex, || {
+                fs::write(&config_path, expected_final_bytes)
+                    .map_err(|error| AppError::io(&config_path, error))?;
+                Ok::<_, AppError>(())
+            })
+            .expect("successful live mutation result");
+            assert!(changed.live_config_changed, "line-ending bytes changed");
+
+            let identical_final_bytes =
+                ProviderService::with_live_config_result(AppType::Codex, || {
+                    fs::write(&config_path, expected_final_bytes)
+                        .map_err(|error| AppError::io(&config_path, error))?;
+                    Ok::<_, AppError>(())
+                })
+                .expect("same final bytes result");
+            assert!(
+                !identical_final_bytes.live_config_changed,
+                "a successful mutation with byte-identical final config must not request restart"
+            );
+
+            let non_codex =
+                ProviderService::with_live_config_result(AppType::Claude, || Ok::<_, AppError>(()))
+                    .expect("non-Codex mutation result");
+            assert!(!non_codex.live_config_changed);
+        });
+    }
+
     fn codex_settings(base_url: &str, api_key: &str) -> Value {
         json!({
             "auth": {
@@ -309,6 +448,295 @@ mod tests {
             ..Default::default()
         });
         provider
+    }
+
+    fn seed_current_codex_provider(state: &AppState, id: &str) {
+        let provider = codex_provider_with_usage(
+            id,
+            "https://gateway.example.test/v1",
+            "test-only-key",
+            None,
+            None,
+            None,
+        );
+        state
+            .db
+            .save_provider(AppType::Codex.as_str(), &provider)
+            .expect("save Codex provider");
+        state
+            .db
+            .set_current_provider(AppType::Codex.as_str(), id)
+            .expect("set database current provider");
+        crate::settings::set_current_provider(&AppType::Codex, Some(id))
+            .expect("set local current provider");
+    }
+
+    fn write_test_codex_live_config(bytes: &[u8]) {
+        let config_path = get_codex_config_path();
+        fs::create_dir_all(config_path.parent().expect("Codex config parent"))
+            .expect("create Codex config directory");
+        fs::write(config_path, bytes).expect("seed Codex live config");
+    }
+
+    #[test]
+    #[serial]
+    fn delete_current_codex_clears_live_projection_and_both_current_sources() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let state = AppState::new(Arc::new(Database::memory().expect("init db")));
+        seed_current_codex_provider(&state, "current-codex");
+
+        let original_live =
+            b"model_provider = \"custom\"\n[model_providers.custom]\nname = \"custom\"\n";
+        write_test_codex_live_config(original_live);
+        let auth_path = crate::codex_config::get_codex_auth_path();
+        fs::write(&auth_path, b"{\"tokens\":\"keep\"}").expect("seed Codex auth");
+
+        let result = ProviderService::with_live_config_result(AppType::Codex, || {
+            ProviderService::delete(&state, AppType::Codex, "current-codex").map(|()| true)
+        })
+        .expect("delete current Codex provider");
+
+        assert!(result.value);
+        assert!(result.live_config_changed);
+        assert_eq!(
+            fs::read(get_codex_config_path()).expect("read cleared live config"),
+            b""
+        );
+        assert_eq!(
+            fs::read(auth_path).expect("read preserved Codex auth"),
+            b"{\"tokens\":\"keep\"}"
+        );
+        assert_eq!(crate::settings::get_current_provider(&AppType::Codex), None);
+        assert_eq!(
+            state
+                .db
+                .get_current_provider(AppType::Codex.as_str())
+                .expect("get database current"),
+            None
+        );
+        assert!(state
+            .db
+            .get_provider_by_id("current-codex", AppType::Codex.as_str())
+            .expect("get deleted provider")
+            .is_none());
+    }
+
+    #[test]
+    #[serial]
+    fn delete_current_codex_with_unchanged_final_bytes_reports_no_live_change() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let state = AppState::new(Arc::new(Database::memory().expect("init db")));
+        seed_current_codex_provider(&state, "current-codex");
+        write_test_codex_live_config(b"");
+
+        let result = ProviderService::with_live_config_result(AppType::Codex, || {
+            ProviderService::delete(&state, AppType::Codex, "current-codex")
+        })
+        .expect("delete current Codex provider with empty live projection");
+
+        assert!(
+            !result.live_config_changed,
+            "the restart prompt must follow final bytes, not database deletion"
+        );
+        assert_eq!(
+            fs::read(get_codex_config_path()).expect("read unchanged empty live config"),
+            b""
+        );
+        assert_eq!(crate::settings::get_current_provider(&AppType::Codex), None);
+        assert_eq!(
+            state
+                .db
+                .get_current_provider(AppType::Codex.as_str())
+                .expect("get cleared database current"),
+            None
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn delete_noncurrent_codex_keeps_live_bytes_and_reports_no_live_change() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let state = AppState::new(Arc::new(Database::memory().expect("init db")));
+        seed_current_codex_provider(&state, "current-codex");
+        let other = codex_provider_with_usage(
+            "other-codex",
+            "https://gateway.example.test/v1",
+            "test-only-key",
+            None,
+            None,
+            None,
+        );
+        state
+            .db
+            .save_provider(AppType::Codex.as_str(), &other)
+            .expect("save noncurrent provider");
+
+        let original_live = b"# unchanged bytes\r\nmodel_provider = \"custom\"\r\n";
+        write_test_codex_live_config(original_live);
+
+        let result = ProviderService::with_live_config_result(AppType::Codex, || {
+            ProviderService::delete(&state, AppType::Codex, "other-codex")
+        })
+        .expect("delete noncurrent Codex provider");
+
+        assert!(!result.live_config_changed);
+        assert_eq!(
+            fs::read(get_codex_config_path()).expect("read unchanged live config"),
+            original_live
+        );
+        assert_eq!(
+            crate::settings::get_current_provider(&AppType::Codex),
+            Some("current-codex".to_owned())
+        );
+        assert_eq!(
+            state
+                .db
+                .get_current_provider(AppType::Codex.as_str())
+                .expect("get database current"),
+            Some("current-codex".to_owned())
+        );
+        assert!(state
+            .db
+            .get_provider_by_id("other-codex", AppType::Codex.as_str())
+            .expect("get deleted provider")
+            .is_none());
+    }
+
+    #[test]
+    #[serial]
+    fn failed_current_codex_delete_restores_live_and_current_state() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let state = AppState::new(Arc::new(Database::memory().expect("init db")));
+        seed_current_codex_provider(&state, "current-codex");
+
+        let original_live =
+            b"model_provider = \"custom\"\n[model_providers.custom]\nname = \"custom\"\n";
+        write_test_codex_live_config(original_live);
+        state
+            .db
+            .conn
+            .lock()
+            .expect("lock database")
+            .execute_batch(
+                "CREATE TRIGGER fail_current_codex_provider_delete\n\
+                 BEFORE DELETE ON providers\n\
+                 WHEN OLD.id = 'current-codex' AND OLD.app_type = 'codex'\n\
+                 BEGIN\n\
+                   SELECT RAISE(ABORT, 'injected current Codex delete failure');\n\
+                 END;",
+            )
+            .expect("install deletion failure trigger");
+
+        let error = ProviderService::delete(&state, AppType::Codex, "current-codex")
+            .expect_err("database deletion is injected to fail");
+        assert!(error
+            .to_string()
+            .contains("injected current Codex delete failure"));
+        assert_eq!(
+            fs::read(get_codex_config_path()).expect("read restored live config"),
+            original_live
+        );
+        assert_eq!(
+            crate::settings::get_current_provider(&AppType::Codex),
+            Some("current-codex".to_owned())
+        );
+        assert_eq!(
+            state
+                .db
+                .get_current_provider(AppType::Codex.as_str())
+                .expect("get restored database current"),
+            Some("current-codex".to_owned())
+        );
+        assert!(state
+            .db
+            .get_provider_by_id("current-codex", AppType::Codex.as_str())
+            .expect("get retained provider")
+            .is_some());
+    }
+
+    #[test]
+    #[serial]
+    fn failed_current_codex_live_clear_does_not_touch_settings_or_database() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let state = AppState::new(Arc::new(Database::memory().expect("init db")));
+        seed_current_codex_provider(&state, "current-codex");
+
+        let original_live = b"model_provider = \"custom\"\n";
+        write_test_codex_live_config(original_live);
+        let restore_called = Cell::new(false);
+        let error = ProviderService::delete_current_codex_with_live_actions(
+            &state,
+            "current-codex",
+            Some("current-codex".to_owned()),
+            Some("current-codex".to_owned()),
+            || Err(AppError::Message("injected live clear failure".to_owned())),
+            || {
+                restore_called.set(true);
+                Ok(())
+            },
+        )
+        .expect_err("live clear is injected to fail");
+
+        assert!(error.to_string().contains("injected live clear failure"));
+        assert!(!restore_called.get(), "no later mutation requires rollback");
+        assert_eq!(
+            fs::read(get_codex_config_path()).expect("read untouched live config"),
+            original_live
+        );
+        assert_eq!(
+            crate::settings::get_current_provider(&AppType::Codex),
+            Some("current-codex".to_owned())
+        );
+        assert_eq!(
+            state
+                .db
+                .get_current_provider(AppType::Codex.as_str())
+                .expect("get unchanged database current"),
+            Some("current-codex".to_owned())
+        );
+        assert!(state
+            .db
+            .get_provider_by_id("current-codex", AppType::Codex.as_str())
+            .expect("get retained provider")
+            .is_some());
+    }
+
+    #[test]
+    #[serial]
+    fn current_codex_delete_is_rejected_while_proxy_owns_live_config() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let state = AppState::new(Arc::new(Database::memory().expect("init db")));
+        seed_current_codex_provider(&state, "current-codex");
+
+        let original_live = b"model_provider = \"custom\"\n";
+        write_test_codex_live_config(original_live);
+        futures::executor::block_on(state.db.save_live_backup(AppType::Codex.as_str(), "{}"))
+            .expect("seed takeover backup");
+
+        let error = ProviderService::delete(&state, AppType::Codex, "current-codex")
+            .expect_err("proxy-owned live config must block delete");
+        assert!(error.to_string().contains("代理接管状态"));
+        assert_eq!(
+            fs::read(get_codex_config_path()).expect("read unchanged live config"),
+            original_live
+        );
+        assert_eq!(
+            crate::settings::get_current_provider(&AppType::Codex),
+            Some("current-codex".to_owned())
+        );
+        assert_eq!(
+            state
+                .db
+                .get_current_provider(AppType::Codex.as_str())
+                .expect("get unchanged database current"),
+            Some("current-codex".to_owned())
+        );
     }
 
     fn openclaw_provider(id: &str) -> Provider {
@@ -1957,6 +2385,36 @@ requires_openai_auth = true
 }
 
 impl ProviderService {
+    /// Execute a provider mutation and derive the restart-relevant live result
+    /// from the final `~/.codex/config.toml` bytes. Non-Codex apps deliberately
+    /// skip both reads and always return `false`; only the Codex live file is
+    /// relevant to the Codex Desktop restart coordinator.
+    ///
+    /// If either snapshot cannot be read, this returns an error instead of
+    /// guessing. The mutation may already have succeeded in the post-read
+    /// failure case, but falsely claiming no live change would be less safe
+    /// than surfacing that observation failure to the caller.
+    pub fn with_live_config_result<T>(
+        app_type: AppType,
+        mutation: impl FnOnce() -> Result<T, AppError>,
+    ) -> Result<ProviderMutationResult<T>, AppError> {
+        let before = matches!(app_type, AppType::Codex)
+            .then(read_codex_live_config_bytes)
+            .transpose()?;
+        let value = mutation()?;
+        let after = matches!(app_type, AppType::Codex)
+            .then(read_codex_live_config_bytes)
+            .transpose()?;
+
+        Ok(ProviderMutationResult {
+            value,
+            live_config_changed: before
+                .zip(after)
+                .is_some_and(|(before, after)| before != after),
+            app: app_type.as_str().to_owned(),
+        })
+    }
+
     fn normalize_provider_if_claude(app_type: &AppType, provider: &mut Provider) {
         if matches!(app_type, AppType::Claude) {
             let mut v = provider.settings_config.clone();
@@ -2095,6 +2553,9 @@ impl ProviderService {
         // Normalize Claude model keys
         Self::normalize_provider_if_claude(&app_type, &mut provider);
         Self::validate_provider_settings(&app_type, &provider)?;
+        if matches!(app_type, AppType::Codex) {
+            crate::codex_config::prepare_codex_provider_features_for_save(&mut provider, true)?;
+        }
         normalize_provider_common_config_for_storage(state.db.as_ref(), &app_type, &mut provider)?;
         Self::normalize_usage_script_credential_overrides(&app_type, &mut provider);
         if app_type.is_additive_mode() {
@@ -2150,6 +2611,9 @@ impl ProviderService {
         // Normalize Claude model keys
         Self::normalize_provider_if_claude(&app_type, &mut provider);
         Self::validate_provider_settings(&app_type, &provider)?;
+        if matches!(app_type, AppType::Codex) {
+            crate::codex_config::prepare_codex_provider_features_for_save(&mut provider, false)?;
+        }
         normalize_provider_common_config_for_storage(state.db.as_ref(), &app_type, &mut provider)?;
         Self::normalize_usage_script_credential_overrides(&app_type, &mut provider);
 
@@ -2361,10 +2825,87 @@ impl ProviderService {
         Ok(true)
     }
 
-    /// Delete a provider
+    fn delete_current_codex_with_live_actions(
+        state: &AppState,
+        id: &str,
+        local_current: Option<String>,
+        db_current: Option<String>,
+        clear_live: impl FnOnce() -> Result<(), AppError>,
+        restore_live: impl Fn() -> Result<(), AppError>,
+    ) -> Result<(), AppError> {
+        // The live clear intentionally happens first. If it cannot be written,
+        // neither current-provider source nor the database row is touched.
+        clear_live()?;
+
+        if let Err(error) = crate::settings::set_current_provider(&AppType::Codex, None) {
+            let rollback_errors =
+                rollback_current_codex_delete(state, &local_current, &db_current, restore_live);
+            return Err(current_codex_delete_error(error, rollback_errors));
+        }
+
+        if let Err(error) = state.db.clear_current_provider(AppType::Codex.as_str()) {
+            let rollback_errors =
+                rollback_current_codex_delete(state, &local_current, &db_current, restore_live);
+            return Err(current_codex_delete_error(error, rollback_errors));
+        }
+
+        if let Err(error) = state.db.delete_provider(AppType::Codex.as_str(), id) {
+            let rollback_errors =
+                rollback_current_codex_delete(state, &local_current, &db_current, restore_live);
+            return Err(current_codex_delete_error(error, rollback_errors));
+        }
+
+        Ok(())
+    }
+
+    fn delete_current_codex_provider(
+        state: &AppState,
+        id: &str,
+        local_current: Option<String>,
+        db_current: Option<String>,
+    ) -> Result<(), AppError> {
+        if state
+            .db
+            .get_provider_by_id(id, AppType::Codex.as_str())?
+            .is_none()
+        {
+            return Err(AppError::Message(format!("供应商 {id} 不存在")));
+        }
+
+        // A proxy takeover owns both the live projection and its backup. Do
+        // not overwrite either from a provider deletion; the user must first
+        // return the app to normal live-config ownership.
+        let has_live_backup =
+            futures::executor::block_on(state.db.get_live_backup(AppType::Codex.as_str()))?
+                .is_some();
+        let live_taken_over = state
+            .proxy_service
+            .detect_takeover_in_live_config_for_app(&AppType::Codex);
+        if has_live_backup || live_taken_over {
+            return Err(AppError::localized(
+                "provider.delete.live_taken_over",
+                "Live 配置当前处于代理接管状态，不能删除当前 Codex 供应商。请先关闭代理接管或恢复 Live 配置后重试。",
+                "The live config is currently taken over by the proxy and the current Codex provider cannot be deleted. Disable proxy takeover or restore the live config before retrying.",
+            ));
+        }
+
+        let snapshot = snapshot_codex_live_config()?;
+        Self::delete_current_codex_with_live_actions(
+            state,
+            id,
+            local_current,
+            db_current,
+            || clear_codex_live_config(&snapshot),
+            || restore_codex_live_config(&snapshot),
+        )
+    }
+
+    /// Delete a provider.
     ///
-    /// 同时检查本地 settings 和数据库的当前供应商，防止删除任一端正在使用的供应商。
-    /// 对于累加模式应用（OpenCode, OpenClaw），可以随时删除任意供应商，同时从 live 配置中移除。
+    /// Non-Codex apps keep the existing current-provider prohibition. A
+    /// current Codex provider instead clears its live projection and both
+    /// current-provider sources before the row is removed, with compensation
+    /// for every failure after the live write.
     pub fn delete(state: &AppState, app_type: AppType, id: &str) -> Result<(), AppError> {
         // Additive mode apps - no current provider concept
         if app_type.is_additive_mode() {
@@ -2414,7 +2955,22 @@ impl ProviderService {
             return Ok(());
         }
 
-        // For other apps: Check both local settings and database
+        if matches!(app_type, AppType::Codex) {
+            // Serialize with provider switching and proxy-takeover transitions
+            // before observing ownership/current state.
+            let _switch_guard = futures::executor::block_on(
+                state.proxy_service.lock_switch_for_app(app_type.as_str()),
+            );
+            let local_current = crate::settings::get_current_provider(&app_type);
+            let db_current = state.db.get_current_provider(app_type.as_str())?;
+            if local_current.as_deref() == Some(id) || db_current.as_deref() == Some(id) {
+                return Self::delete_current_codex_provider(state, id, local_current, db_current);
+            }
+
+            return state.db.delete_provider(app_type.as_str(), id);
+        }
+
+        // For all remaining non-additive apps: check both local settings and database.
         let local_current = crate::settings::get_current_provider(&app_type);
         let db_current = state.db.get_current_provider(app_type.as_str())?;
 
@@ -3478,6 +4034,7 @@ impl ProviderService {
                         crate::codex_config::validate_config_toml(cfg_text)?;
                     }
                 }
+                crate::codex_config::validate_codex_provider_features(provider)?;
             }
             AppType::Gemini => {
                 use crate::gemini_config::validate_gemini_settings;

@@ -44,6 +44,51 @@ export interface InstalledApplicationSummary {
 
 export type UnsupportedReason = "platform" | "architecture" | "os_version";
 
+/**
+ * Fixed, renderer-safe runtime summary for a possible Codex Desktop restart.
+ * It deliberately carries no process identifier, executable path, or launch
+ * command; all process identity decisions remain in the backend.
+ */
+export type CodexDesktopRuntimeStatus =
+  | { state: "not_installed" }
+  | { state: "not_running" }
+  | { state: "running" }
+  | {
+      state: "ambiguous";
+      reason: "installations" | "instances" | "identity_verification";
+    }
+  | {
+      state: "unsupported";
+      reason: UnsupportedReason;
+    };
+
+export type CodexDesktopRestartUnavailableReason =
+  | "not_installed"
+  | "not_running"
+  | "installations_ambiguous"
+  | "instances_ambiguous"
+  | "identity_verification"
+  | "unsupported";
+
+export type CodexDesktopRestartPhase =
+  | "detect"
+  | "quit"
+  | "force_quit"
+  | "launch"
+  | "verify";
+
+/** The opaque force token is returned only to the trusted backend verbatim. */
+export type CodexDesktopRestartOutcome =
+  | { state: "restarted" }
+  | { state: "force_confirmation_required"; token: string }
+  | { state: "unavailable"; reason: CodexDesktopRestartUnavailableReason }
+  | { state: "cancelled" }
+  | {
+      state: "failed";
+      phase: CodexDesktopRestartPhase;
+      error: InstallerErrorDto;
+    };
+
 export type InstallerErrorCode =
   | "PLATFORM_UNSUPPORTED"
   | "OS_VERSION_UNSUPPORTED"

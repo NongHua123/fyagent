@@ -8,11 +8,14 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 export function useTauriEvent<P>(
   eventName: string,
   handler: (payload: P) => void | Promise<void>,
+  enabled = true,
 ): void {
   const handlerRef = useRef(handler);
   handlerRef.current = handler;
 
   useEffect(() => {
+    if (!enabled) return;
+
     let disposed = false;
     let unlisten: UnlistenFn | undefined;
 
@@ -35,5 +38,5 @@ export function useTauriEvent<P>(
       disposed = true;
       unlisten?.();
     };
-  }, [eventName]);
+  }, [enabled, eventName]);
 }

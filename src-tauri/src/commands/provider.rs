@@ -5,7 +5,7 @@ use crate::app_config::AppType;
 use crate::commands::copilot::CopilotAuthState;
 use crate::commands::xai_oauth::XaiOAuthState;
 use crate::error::AppError;
-use crate::provider::{ClaudeDesktopMode, Provider};
+use crate::provider::{ClaudeDesktopMode, Provider, ProviderMutationResult};
 use crate::services::{
     EndpointLatency, ProviderService, ProviderSortUpdate, SpeedtestService, SwitchResult,
 };
@@ -47,6 +47,29 @@ pub fn add_provider(
         .map_err(|e| e.to_string())
 }
 
+/// Compatible mutation envelope for clients that coordinate a Codex Desktop
+/// restart. The original `add_provider` command intentionally keeps its bool
+/// return type for existing renderer versions.
+#[tauri::command]
+pub fn add_provider_with_result(
+    state: State<'_, AppState>,
+    app: String,
+    provider: Provider,
+    #[allow(non_snake_case)] addToLive: Option<bool>,
+) -> Result<ProviderMutationResult<bool>, String> {
+    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    let mutation_app_type = app_type.clone();
+    ProviderService::with_live_config_result(app_type, || {
+        ProviderService::add(
+            state.inner(),
+            mutation_app_type,
+            provider,
+            addToLive.unwrap_or(true),
+        )
+    })
+    .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn update_provider(
     state: State<'_, AppState>,
@@ -60,6 +83,26 @@ pub fn update_provider(
 }
 
 #[tauri::command]
+pub fn update_provider_with_result(
+    state: State<'_, AppState>,
+    app: String,
+    provider: Provider,
+    #[allow(non_snake_case)] originalId: Option<String>,
+) -> Result<ProviderMutationResult<bool>, String> {
+    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    let mutation_app_type = app_type.clone();
+    ProviderService::with_live_config_result(app_type, || {
+        ProviderService::update(
+            state.inner(),
+            mutation_app_type,
+            originalId.as_deref(),
+            provider,
+        )
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn delete_provider(
     state: State<'_, AppState>,
     app: String,
@@ -69,6 +112,59 @@ pub fn delete_provider(
     ProviderService::delete(state.inner(), app_type, &id)
         .map(|_| true)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_provider_with_result(
+    state: State<'_, AppState>,
+    app: String,
+    id: String,
+) -> Result<ProviderMutationResult<bool>, String> {
+    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    let mutation_app_type = app_type.clone();
+    ProviderService::with_live_config_result(app_type, || {
+        ProviderService::delete(state.inner(), mutation_app_type, &id).map(|_| true)
+    })
+    .map_err(|e| e.to_string())
+}
+
+/// Analyze a form-only Codex provider draft. This command never writes the
+/// database or `~/.codex/config.toml`.
+#[tauri::command]
+pub fn analyze_codex_provider_features(
+    app: String,
+    provider: Provider,
+    #[allow(non_snake_case)] isNew: Option<bool>,
+) -> Result<crate::codex_config::CodexProviderFeatureState, String> {
+    require_codex_feature_app(&app)?;
+    Ok(crate::codex_config::analyze_codex_provider_features(
+        &provider,
+        isNew.unwrap_or(false),
+    ))
+}
+
+/// Apply a non-destructive feature patch to a form-only Codex TOML draft.
+/// The caller must include the returned `tomlText` in a normal provider save;
+/// no user file is written by this command.
+#[tauri::command]
+pub fn patch_codex_provider_features(
+    app: String,
+    provider: Provider,
+    intent: crate::codex_config::CodexProviderFeatureIntent,
+    #[allow(non_snake_case)] isNew: Option<bool>,
+) -> Result<crate::codex_config::CodexProviderFeaturePatchResult, String> {
+    require_codex_feature_app(&app)?;
+    crate::codex_config::patch_codex_provider_features(&provider, &intent, isNew.unwrap_or(false))
+        .map_err(|error| error.to_string())
+}
+
+fn require_codex_feature_app(app: &str) -> Result<(), String> {
+    let app_type = AppType::from_str(app).map_err(|error| error.to_string())?;
+    if matches!(app_type, AppType::Codex) {
+        Ok(())
+    } else {
+        Err("Codex 原生能力仅适用于 Codex 应用".to_owned())
+    }
 }
 
 #[tauri::command]
@@ -112,6 +208,27 @@ pub async fn switch_provider(
             .try_state::<AppState>()
             .ok_or_else(|| "应用状态不可用".to_string())?;
         switch_provider_internal(state.inner(), app_type, &id).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("供应商切换任务执行失败: {e}"))?
+}
+
+#[tauri::command]
+pub async fn switch_provider_with_result(
+    app_handle: tauri::AppHandle,
+    app: String,
+    id: String,
+) -> Result<ProviderMutationResult<SwitchResult>, String> {
+    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or_else(|| "应用状态不可用".to_string())?;
+        let mutation_app_type = app_type.clone();
+        ProviderService::with_live_config_result(app_type, || {
+            switch_provider_internal(state.inner(), mutation_app_type, &id)
+        })
+        .map_err(|error| error.to_string())
     })
     .await
     .map_err(|e| format!("供应商切换任务执行失败: {e}"))?
@@ -197,6 +314,19 @@ pub fn import_default_config_test_hook(
 pub fn import_default_config(state: State<'_, AppState>, app: String) -> Result<bool, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     import_default_config_internal(&state, app_type).map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn import_default_config_with_result(
+    state: State<'_, AppState>,
+    app: String,
+) -> Result<ProviderMutationResult<bool>, String> {
+    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    let mutation_app_type = app_type.clone();
+    ProviderService::with_live_config_result(app_type, || {
+        import_default_config_internal(state.inner(), mutation_app_type)
+    })
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

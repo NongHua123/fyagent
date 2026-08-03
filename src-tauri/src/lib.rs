@@ -1373,11 +1373,18 @@ pub fn run() {
             commands::get_providers,
             commands::get_current_provider,
             commands::add_provider,
+            commands::add_provider_with_result,
             commands::update_provider,
+            commands::update_provider_with_result,
             commands::delete_provider,
+            commands::delete_provider_with_result,
             commands::remove_provider_from_live_config,
             commands::switch_provider,
+            commands::switch_provider_with_result,
             commands::import_default_config,
+            commands::import_default_config_with_result,
+            commands::analyze_codex_provider_features,
+            commands::patch_codex_provider_features,
             commands::get_claude_desktop_status,
             commands::get_claude_desktop_default_routes,
             commands::import_claude_desktop_providers_from_claude,
@@ -1694,7 +1701,15 @@ pub fn run() {
             commands::enter_lightweight_mode,
             commands::exit_lightweight_mode,
             commands::is_lightweight_mode,
+            // WorkBuddy is an isolated top-level configuration domain.
+            commands::get_workbuddy_status,
+            commands::fetch_workbuddy_models,
+            commands::save_workbuddy_models,
             commands::codex_desktop_get_local_status,
+            commands::get_codex_desktop_runtime_status,
+            commands::request_codex_desktop_restart,
+            commands::continue_codex_desktop_restart_with_force,
+            commands::cancel_codex_desktop_restart_with_force,
             commands::codex_desktop_check_latest,
             commands::codex_desktop_get_job,
             commands::codex_desktop_start_install,
@@ -2661,8 +2676,8 @@ mod tests {
     }
 
     #[test]
-    fn ordinary_codex_desktop_ipc_is_exactly_seven_unprivileged_commands() {
-        const EXPECTED_COMMANDS: [&str; 7] = [
+    fn codex_desktop_ipc_keeps_seven_ordinary_commands_and_four_trusted_restart_commands() {
+        const ORDINARY_COMMANDS: [&str; 7] = [
             "codex_desktop_get_local_status",
             "codex_desktop_check_latest",
             "codex_desktop_get_job",
@@ -2671,6 +2686,12 @@ mod tests {
             "codex_desktop_launch",
             "codex_desktop_open_log_directory",
         ];
+        const TRUSTED_RESTART_COMMANDS: [&str; 4] = [
+            "get_codex_desktop_runtime_status",
+            "request_codex_desktop_restart",
+            "continue_codex_desktop_restart_with_force",
+            "cancel_codex_desktop_restart_with_force",
+        ];
 
         let command_source = include_str!("commands/codex_desktop.rs").replace("\r\n", "\n");
         let library_source = include_str!("lib.rs").replace("\r\n", "\n");
@@ -2678,15 +2699,41 @@ mod tests {
 
         assert_eq!(
             command_source.matches("#[tauri::command]").count(),
-            EXPECTED_COMMANDS.len()
+            ORDINARY_COMMANDS.len() + TRUSTED_RESTART_COMMANDS.len()
         );
-        for command in EXPECTED_COMMANDS {
+        for command in ORDINARY_COMMANDS {
             assert_eq!(
                 command_source
                     .matches(&format!("pub async fn {command}("))
                     .count(),
                 1,
                 "ordinary command {command} must be declared exactly once"
+            );
+        }
+        for command in TRUSTED_RESTART_COMMANDS {
+            assert_eq!(
+                command_source
+                    .matches(&format!("pub async fn {command}("))
+                    .count(),
+                1,
+                "trusted restart command {command} must be declared exactly once"
+            );
+        }
+        let cancellation_signature_start = command_source
+            .find("pub async fn cancel_codex_desktop_restart_with_force(")
+            .expect("the force-confirmation cancellation command remains present");
+        let cancellation_signature_end = command_source[cancellation_signature_start..]
+            .find(") -> Result")
+            .map(|offset| cancellation_signature_start + offset)
+            .expect("the force-confirmation cancellation signature remains bounded");
+        let cancellation_signature =
+            &command_source[cancellation_signature_start..cancellation_signature_end];
+        assert!(cancellation_signature.contains("token: String"));
+        let cancellation_signature_lowercase = cancellation_signature.to_ascii_lowercase();
+        for prohibited in ["pid", "process", "path", "launch", "command", "name"] {
+            assert!(
+                !cancellation_signature_lowercase.contains(prohibited),
+                "force-confirmation cancellation must not accept {prohibited} input"
             );
         }
 
@@ -2701,12 +2748,18 @@ mod tests {
 
         assert_eq!(
             handler.matches("commands::codex_desktop_").count(),
-            EXPECTED_COMMANDS.len()
+            ORDINARY_COMMANDS.len()
         );
-        for command in EXPECTED_COMMANDS {
+        for command in ORDINARY_COMMANDS {
             assert!(
                 handler.contains(&format!("commands::{command}")),
                 "ordinary command {command} must remain registered"
+            );
+        }
+        for command in TRUSTED_RESTART_COMMANDS {
+            assert!(
+                handler.contains(&format!("commands::{command}")),
+                "trusted restart command {command} must remain registered"
             );
         }
         let handler_lowercase = handler.to_ascii_lowercase();

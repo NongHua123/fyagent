@@ -540,6 +540,76 @@ pub enum LocalInstallStatus {
     },
 }
 
+/// Privacy-safe runtime state used only by the Codex restart coordinator.
+/// The backend never serializes PIDs, executable paths, bundle paths, AUMIDs,
+/// or package family names: those stay inside the trusted platform boundary.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum CodexDesktopRuntimeStatus {
+    NotInstalled,
+    NotRunning,
+    Running,
+    Ambiguous {
+        reason: CodexDesktopRuntimeAmbiguity,
+    },
+    Unsupported {
+        reason: UnsupportedReason,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexDesktopRuntimeAmbiguity {
+    Installations,
+    Instances,
+    IdentityVerification,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexDesktopRestartPhase {
+    Detect,
+    Quit,
+    ForceQuit,
+    Launch,
+    Verify,
+}
+
+/// A restart request is unavailable when the application is not a uniquely
+/// verified, running Codex Desktop installation. This is a normal race-safe
+/// result, not an invitation to launch or to select a process by name.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexDesktopRestartUnavailableReason {
+    NotInstalled,
+    NotRunning,
+    InstallationsAmbiguous,
+    InstancesAmbiguous,
+    IdentityVerification,
+    Unsupported,
+}
+
+/// Result of a capability-scoped Codex Desktop restart. The opaque token is
+/// minted by the backend only after a normal quit timeout and is bound to the
+/// originally verified runtime instance(s); callers cannot provide a PID,
+/// path, process name, launch command, or arbitrary force target.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum CodexDesktopRestartOutcome {
+    Restarted,
+    ForceConfirmationRequired {
+        token: String,
+    },
+    Unavailable {
+        reason: CodexDesktopRestartUnavailableReason,
+    },
+    Cancelled,
+    Failed {
+        phase: CodexDesktopRestartPhase,
+        error: InstallerErrorDto,
+    },
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum InstallerWarningCode {

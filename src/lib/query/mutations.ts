@@ -15,6 +15,16 @@ import {
   GROKBUILD_OFFICIAL_PROVIDER_ID,
 } from "@/utils/providerCapabilities";
 
+/**
+ * Renderer-facing summary for a completed provider write. `liveConfigChanged`
+ * is intentionally supplied only by the Codex-aware backend mutation IPCs;
+ * it is never inferred from the selected provider or a button label.
+ */
+export interface ProviderMutationOutcome<T> {
+  value: T;
+  liveConfigChanged: boolean;
+}
+
 export const useAddProviderMutation = (appId: AppId) => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
@@ -45,7 +55,7 @@ export const useAddProviderMutation = (appId: AppId) => {
         if (!officialProvider) {
           throw new Error("Claude Desktop official provider was not created");
         }
-        return officialProvider;
+        return { value: officialProvider, liveConfigChanged: false };
       }
 
       if (appId === "codex" && ensureCodexOfficialSeed) {
@@ -55,7 +65,9 @@ export const useAddProviderMutation = (appId: AppId) => {
         if (!officialProvider) {
           throw new Error("Codex official provider was not created");
         }
-        return officialProvider;
+        // This seed operation only ensures a database row. It does not use a
+        // live-config mutation command, so it cannot request a desktop restart.
+        return { value: officialProvider, liveConfigChanged: false };
       }
 
       if (appId === "grokbuild" && ensureGrokBuildOfficialSeed) {
@@ -65,7 +77,7 @@ export const useAddProviderMutation = (appId: AppId) => {
         if (!officialProvider) {
           throw new Error("Grok Build official provider was not created");
         }
-        return officialProvider;
+        return { value: officialProvider, liveConfigChanged: false };
       }
 
       let id: string;
@@ -94,8 +106,20 @@ export const useAddProviderMutation = (appId: AppId) => {
       };
       delete (newProvider as any).providerKey;
 
+      if (appId === "codex") {
+        const result = await providersApi.addWithResult(
+          newProvider,
+          appId,
+          addToLive,
+        );
+        return {
+          value: newProvider,
+          liveConfigChanged: result.liveConfigChanged,
+        };
+      }
+
       await providersApi.add(newProvider, appId, addToLive);
-      return newProvider;
+      return { value: newProvider, liveConfigChanged: false };
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["providers", appId] });
@@ -167,10 +191,20 @@ export const useUpdateProviderMutation = (appId: AppId) => {
       provider: Provider;
       originalId?: string;
     }) => {
+      if (appId === "codex") {
+        const result = await providersApi.updateWithResult(
+          provider,
+          appId,
+          originalId,
+        );
+        return { value: provider, liveConfigChanged: result.liveConfigChanged };
+      }
+
       await providersApi.update(provider, appId, originalId);
-      return provider;
+      return { value: provider, liveConfigChanged: false };
     },
-    onSuccess: async (provider, variables) => {
+    onSuccess: async (outcome, variables) => {
+      const provider = outcome.value;
       await queryClient.invalidateQueries({ queryKey: ["providers", appId] });
       await queryClient.invalidateQueries({
         queryKey: usageKeys.script(provider.id, appId),
@@ -214,8 +248,19 @@ export const useDeleteProviderMutation = (appId: AppId) => {
   const { t } = useTranslation();
 
   return useMutation({
-    mutationFn: async (providerId: string) => {
+    mutationFn: async (
+      providerId: string,
+    ): Promise<ProviderMutationOutcome<void>> => {
+      if (appId === "codex") {
+        const result = await providersApi.deleteWithResult(providerId, appId);
+        return {
+          value: undefined,
+          liveConfigChanged: result.liveConfigChanged,
+        };
+      }
+
       await providersApi.delete(providerId, appId);
+      return { value: undefined, liveConfigChanged: false };
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["providers", appId] });
@@ -280,8 +325,21 @@ export const useSwitchProviderMutation = (appId: AppId) => {
   const { t } = useTranslation();
 
   return useMutation({
-    mutationFn: async (providerId: string): Promise<SwitchResult> => {
-      return await providersApi.switch(providerId, appId);
+    mutationFn: async (
+      providerId: string,
+    ): Promise<ProviderMutationOutcome<SwitchResult>> => {
+      if (appId === "codex") {
+        const result = await providersApi.switchWithResult(providerId, appId);
+        return {
+          value: result.value,
+          liveConfigChanged: result.liveConfigChanged,
+        };
+      }
+
+      return {
+        value: await providersApi.switch(providerId, appId),
+        liveConfigChanged: false,
+      };
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["providers", appId] });

@@ -8,11 +8,14 @@ import type { Provider } from "@/types";
 
 const apiMocks = vi.hoisted(() => ({
   update: vi.fn(),
+  updateWithResult: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
   providersApi: {
     update: (...args: unknown[]) => apiMocks.update(...args),
+    updateWithResult: (...args: unknown[]) =>
+      apiMocks.updateWithResult(...args),
   },
   sessionsApi: {},
   settingsApi: {},
@@ -69,6 +72,9 @@ function createProvider(overrides: Partial<Provider> = {}): Provider {
 
 beforeEach(() => {
   apiMocks.update.mockReset().mockResolvedValue(true);
+  apiMocks.updateWithResult
+    .mockReset()
+    .mockResolvedValue({ value: true, liveConfigChanged: false, app: "codex" });
 });
 
 describe("useUpdateProviderMutation", () => {
@@ -83,7 +89,12 @@ describe("useUpdateProviderMutation", () => {
       await result.current.mutateAsync({ provider });
     });
 
-    expect(apiMocks.update).toHaveBeenCalledWith(provider, "codex", undefined);
+    expect(apiMocks.updateWithResult).toHaveBeenCalledWith(
+      provider,
+      "codex",
+      undefined,
+    );
+    expect(apiMocks.update).not.toHaveBeenCalled();
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ["providers", "codex"],
     });
@@ -93,6 +104,25 @@ describe("useUpdateProviderMutation", () => {
     expect(invalidateSpy).not.toHaveBeenCalledWith({
       queryKey: usageKeys.all,
     });
+  });
+
+  it("preserves the backend's Codex live-config result", async () => {
+    apiMocks.updateWithResult.mockResolvedValueOnce({
+      value: true,
+      liveConfigChanged: true,
+      app: "codex",
+    });
+    const { wrapper } = createWrapper();
+    const provider = createProvider();
+    const { result } = renderHook(() => useUpdateProviderMutation("codex"), {
+      wrapper,
+    });
+
+    const outcome = await act(async () =>
+      result.current.mutateAsync({ provider }),
+    );
+
+    expect(outcome).toEqual({ value: provider, liveConfigChanged: true });
   });
 
   it("also invalidates the previous usage query when provider id changes", async () => {

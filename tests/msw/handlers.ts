@@ -92,6 +92,23 @@ export const handlers = [
     return success(true);
   }),
 
+  http.post(
+    `${TAURI_ENDPOINT}/switch_provider_with_result`,
+    async ({ request }) => {
+      const { id, app } = await withJson<{ id: string; app: AppId }>(request);
+      const providers = listProviders(app);
+      if (!providers[id]) {
+        return HttpResponse.json(false, { status: 404 });
+      }
+      setCurrentProviderId(app, id);
+      return success({
+        value: { warnings: [] },
+        liveConfigChanged: app === "codex",
+        app,
+      });
+    },
+  ),
+
   http.post(`${TAURI_ENDPOINT}/add_provider`, async ({ request }) => {
     const { provider, app } = await withJson<{
       provider: Provider & { id?: string };
@@ -103,6 +120,20 @@ export const handlers = [
     return success(true);
   }),
 
+  http.post(
+    `${TAURI_ENDPOINT}/add_provider_with_result`,
+    async ({ request }) => {
+      const { provider, app } = await withJson<{
+        provider: Provider & { id?: string };
+        app: AppId;
+      }>(request);
+
+      const newId = provider.id ?? `mock-${Date.now()}`;
+      addProvider(app, { ...provider, id: newId });
+      return success({ value: true, liveConfigChanged: app === "codex", app });
+    },
+  ),
+
   http.post(`${TAURI_ENDPOINT}/update_provider`, async ({ request }) => {
     const { provider, app } = await withJson<{
       provider: Provider;
@@ -112,16 +143,62 @@ export const handlers = [
     return success(true);
   }),
 
+  http.post(
+    `${TAURI_ENDPOINT}/update_provider_with_result`,
+    async ({ request }) => {
+      const { provider, app } = await withJson<{
+        provider: Provider;
+        app: AppId;
+      }>(request);
+      updateProvider(app, provider);
+      return success({
+        value: true,
+        liveConfigChanged: app === "codex",
+        app,
+      });
+    },
+  ),
+
   http.post(`${TAURI_ENDPOINT}/delete_provider`, async ({ request }) => {
     const { id, app } = await withJson<{ id: string; app: AppId }>(request);
     deleteProvider(app, id);
     return success(true);
   }),
 
+  http.post(
+    `${TAURI_ENDPOINT}/delete_provider_with_result`,
+    async ({ request }) => {
+      const { id, app } = await withJson<{ id: string; app: AppId }>(request);
+      deleteProvider(app, id);
+      return success({
+        value: true,
+        liveConfigChanged: app === "codex",
+        app,
+      });
+    },
+  ),
+
   http.post(`${TAURI_ENDPOINT}/import_default_config`, async () => {
     resetProviderState();
     return success(true);
   }),
+
+  http.post(
+    `${TAURI_ENDPOINT}/import_default_config_with_result`,
+    async ({ request }) => {
+      const { app } = await withJson<{ app: AppId }>(request);
+      resetProviderState();
+      return success({
+        value: true,
+        liveConfigChanged: app === "codex",
+        app,
+      });
+    },
+  ),
+
+  http.post(`${TAURI_ENDPOINT}/get_codex_desktop_runtime_status`, () =>
+    success({ state: "not_running" }),
+  ),
 
   http.post(`${TAURI_ENDPOINT}/open_external`, () => success(true)),
 

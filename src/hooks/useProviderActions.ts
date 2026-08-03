@@ -16,6 +16,7 @@ import {
   useUpdateProviderMutation,
   useDeleteProviderMutation,
   useSwitchProviderMutation,
+  type ProviderMutationOutcome,
 } from "@/lib/query";
 import { usageKeys } from "@/lib/query/usage";
 import { extractErrorMessage } from "@/utils/errorUtils";
@@ -31,6 +32,28 @@ import {
 } from "@/utils/providerCapabilities";
 import { isOAuthProviderType } from "@/config/constants";
 
+type CodexLiveConfigChangedHandler = () => void | Promise<void>;
+
+const hasLiveConfigChanged = (outcome: unknown): boolean =>
+  Boolean(
+    outcome &&
+      typeof outcome === "object" &&
+      "liveConfigChanged" in outcome &&
+      (outcome as { liveConfigChanged?: unknown }).liveConfigChanged === true,
+  );
+
+const mutationValue = <T>(outcome: unknown): T | undefined => {
+  if (
+    outcome &&
+    typeof outcome === "object" &&
+    "liveConfigChanged" in outcome &&
+    "value" in outcome
+  ) {
+    return (outcome as ProviderMutationOutcome<T>).value;
+  }
+  return outcome as T | undefined;
+};
+
 /**
  * Hook for managing provider actions (add, update, delete, switch)
  * Extracts business logic from App.tsx
@@ -39,6 +62,7 @@ export function useProviderActions(
   activeApp: AppId,
   isProxyRunning?: boolean,
   isProxyTakeover?: boolean,
+  onCodexLiveConfigChanged?: CodexLiveConfigChangedHandler,
 ) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -47,6 +71,26 @@ export function useProviderActions(
   const updateProviderMutation = useUpdateProviderMutation(activeApp);
   const deleteProviderMutation = useDeleteProviderMutation(activeApp);
   const switchProviderMutation = useSwitchProviderMutation(activeApp);
+
+  /**
+   * Keep the successful provider write and a desktop restart as two distinct
+   * outcomes. A runtime-status failure must never turn a saved provider back
+   * into a failed UI action.
+   */
+  const requestCodexRestartIfNeeded = useCallback(
+    async (liveConfigChanged: boolean) => {
+      if (activeApp !== "codex" || !liveConfigChanged) return;
+      try {
+        await onCodexLiveConfigChanged?.();
+      } catch (error) {
+        console.warn(
+          "Failed to coordinate Codex restart after a saved configuration",
+          error,
+        );
+      }
+    },
+    [activeApp, onCodexLiveConfigChanged],
+  );
 
   // Claude 插件同步逻辑
   const syncClaudePlugin = useCallback(
@@ -88,7 +132,8 @@ export function useProviderActions(
       },
     ) => {
       const enhanced = injectCodingPlanUsageScript(activeApp, provider);
-      await addProviderMutation.mutateAsync(enhanced);
+      const outcome = await addProviderMutation.mutateAsync(enhanced);
+      await requestCodexRestartIfNeeded(hasLiveConfigChanged(outcome));
 
       // OpenClaw: register models to allowlist after adding provider
       if (activeApp === "openclaw" && provider.suggestedDefaults) {
@@ -136,13 +181,22 @@ export function useProviderActions(
         }
       }
     },
-    [addProviderMutation, activeApp, queryClient, t],
+    [
+      addProviderMutation,
+      activeApp,
+      queryClient,
+      requestCodexRestartIfNeeded,
+      t,
+    ],
   );
 
   // 更新供应商
   const updateProvider = useCallback(
     async (provider: Provider, originalId?: string) => {
-      await updateProviderMutation.mutateAsync({ provider, originalId });
+      const outcome = await updateProviderMutation.mutateAsync({
+        provider,
+        originalId,
+      });
 
       // 更新托盘菜单（失败不影响主操作）
       try {
@@ -153,8 +207,9 @@ export function useProviderActions(
           trayError,
         );
       }
+      await requestCodexRestartIfNeeded(hasLiveConfigChanged(outcome));
     },
-    [updateProviderMutation],
+    [requestCodexRestartIfNeeded, updateProviderMutation],
   );
 
   // 切换供应商
@@ -287,7 +342,10 @@ export function useProviderActions(
       }
 
       try {
-        const result = await switchProviderMutation.mutateAsync(provider.id);
+        const outcome = await switchProviderMutation.mutateAsync(provider.id);
+        const result = mutationValue<{
+          warnings: string[];
+        }>(outcome);
         await syncClaudePlugin(provider);
 
         // Show backfill warning if present
@@ -305,10 +363,7 @@ export function useProviderActions(
         if (!proxyRequiredReason) {
           let messageKey = "notifications.switchSuccess";
           let defaultMessage = "切换成功！";
-          if (activeApp === "codex") {
-            messageKey = "notifications.codexRestartRequired";
-            defaultMessage = "切换成功，请重启客户端以生效";
-          } else if (activeApp === "grokbuild") {
+          if (activeApp === "grokbuild") {
             messageKey = "notifications.grokBuildRestartRequired";
             defaultMessage = "切换成功，请重启 Grok Build 以生效";
           } else if (activeApp === "claude-desktop") {
@@ -328,6 +383,8 @@ export function useProviderActions(
             closeButton: true,
           });
         }
+
+        await requestCodexRestartIfNeeded(hasLiveConfigChanged(outcome));
       } catch {
         // 错误提示由 mutation 处理
       }
@@ -338,6 +395,7 @@ export function useProviderActions(
       activeApp,
       isProxyRunning,
       isProxyTakeover,
+      requestCodexRestartIfNeeded,
       t,
     ],
   );
@@ -345,9 +403,10 @@ export function useProviderActions(
   // 删除供应商
   const deleteProvider = useCallback(
     async (id: string) => {
-      await deleteProviderMutation.mutateAsync(id);
+      const outcome = await deleteProviderMutation.mutateAsync(id);
+      await requestCodexRestartIfNeeded(hasLiveConfigChanged(outcome));
     },
-    [deleteProviderMutation],
+    [deleteProviderMutation, requestCodexRestartIfNeeded],
   );
 
   // 保存用量脚本
@@ -362,7 +421,13 @@ export function useProviderActions(
           },
         };
 
-        await providersApi.update(updatedProvider, activeApp);
+        const liveConfigChanged =
+          activeApp === "codex"
+            ? (await providersApi.updateWithResult(updatedProvider, activeApp))
+                .liveConfigChanged
+            : await providersApi
+                .update(updatedProvider, activeApp)
+                .then(() => false);
         await queryClient.invalidateQueries({
           queryKey: ["providers", activeApp],
         });
@@ -380,6 +445,7 @@ export function useProviderActions(
           }),
           { closeButton: true },
         );
+        await requestCodexRestartIfNeeded(liveConfigChanged);
       } catch (error) {
         const detail =
           extractErrorMessage(error) ||
@@ -389,7 +455,7 @@ export function useProviderActions(
         toast.error(detail);
       }
     },
-    [activeApp, queryClient, t],
+    [activeApp, queryClient, requestCodexRestartIfNeeded, t],
   );
 
   // Set provider as default model (OpenClaw only)

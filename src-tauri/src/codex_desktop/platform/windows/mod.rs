@@ -31,9 +31,11 @@ use self::{
 
 #[cfg(test)]
 use self::deployment::WindowsNativeError;
+#[cfg(target_os = "windows")]
+mod runtime;
 use super::{
-    CodexDesktopPlatform, PlatformInstallPlan, PlatformProgressSink, VerifiedPackage,
-    WINDOWS_CODEX_STABLE_IDENTITY,
+    CodexDesktopPlatform, PlatformInstallPlan, PlatformProgressSink, RuntimeInspection,
+    TrustedRuntimeInstance, VerifiedPackage, WINDOWS_CODEX_STABLE_IDENTITY,
 };
 use crate::codex_desktop::{
     download::DownloadedArtifact,
@@ -170,7 +172,7 @@ impl WindowsHost {
 /// Windows installer adapter with injectable PackageManager facts. The public
 /// construction boundary is side-effect-free, so tests never query, deploy,
 /// or activate a real system package.
-pub struct WindowsPlatformAdapter {
+pub(crate) struct WindowsPlatformAdapter {
     package_manager: Arc<dyn WindowsPackageManager>,
     host: WindowsHost,
     publisher_evidence: VerifiedPublisherEvidence,
@@ -319,6 +321,68 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
                 return Err(error);
             }
             run_blocking(move || launch(package_manager.as_ref(), &host, &installed)).await
+        })
+    }
+
+    fn inspect_runtime<'a>(
+        &'a self,
+        installed: &'a InstalledApplication,
+    ) -> BoxFuture<'a, Result<RuntimeInspection, InstallerError>> {
+        let installed = installed.clone();
+        let host_error = self.host_support_error();
+        Box::pin(async move {
+            if let Some(error) = host_error {
+                return Err(error);
+            }
+            run_blocking(move || runtime::inspect(&installed)).await
+        })
+    }
+
+    fn request_graceful_shutdown<'a>(
+        &'a self,
+        installed: &'a InstalledApplication,
+        instances: &'a [TrustedRuntimeInstance],
+    ) -> BoxFuture<'a, Result<(), InstallerError>> {
+        let installed = installed.clone();
+        let instances = instances.to_vec();
+        let host_error = self.host_support_error();
+        Box::pin(async move {
+            if let Some(error) = host_error {
+                return Err(error);
+            }
+            run_blocking(move || runtime::request_graceful_shutdown(&installed, &instances)).await
+        })
+    }
+
+    fn force_shutdown<'a>(
+        &'a self,
+        installed: &'a InstalledApplication,
+        instances: &'a [TrustedRuntimeInstance],
+    ) -> BoxFuture<'a, Result<(), InstallerError>> {
+        let installed = installed.clone();
+        let instances = instances.to_vec();
+        let host_error = self.host_support_error();
+        Box::pin(async move {
+            if let Some(error) = host_error {
+                return Err(error);
+            }
+            run_blocking(move || runtime::force_shutdown(&installed, &instances)).await
+        })
+    }
+
+    fn is_runtime_instance_running<'a>(
+        &'a self,
+        installed: &'a InstalledApplication,
+        instances: &'a [TrustedRuntimeInstance],
+    ) -> BoxFuture<'a, Result<bool, InstallerError>> {
+        let installed = installed.clone();
+        let instances = instances.to_vec();
+        let host_error = self.host_support_error();
+        Box::pin(async move {
+            if let Some(error) = host_error {
+                return Err(error);
+            }
+            run_blocking(move || runtime::is_instance_running(&installed, &instances)).await
         })
     }
 }

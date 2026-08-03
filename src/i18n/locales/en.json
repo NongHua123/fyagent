@@ -866,11 +866,145 @@
     "claudeDesktop": "Claude Desktop",
     "claude-desktop": "Claude Desktop",
     "codex": "Codex",
+    "workbuddy": "WorkBuddy",
     "gemini": "Gemini",
     "grokbuild": "Grok Build",
     "opencode": "OpenCode",
     "openclaw": "OpenClaw",
     "hermes": "Hermes"
+  },
+  "workbuddy": {
+    "title": "WorkBuddy",
+    "description": "Configure OpenAI-compatible models for WorkBuddy without reading saved credentials.",
+    "status": {
+      "title": "Configuration status",
+      "loading": "Loading configuration status...",
+      "path": "Configuration file",
+      "exists": "File status",
+      "existsYes": "Exists",
+      "existsNo": "Not created yet",
+      "modelCount": "Configured models",
+      "unavailable": "Configuration status is currently unavailable."
+    },
+    "connection": { "title": "Connection" },
+    "baseUrl": "Base URL",
+    "apiKey": "API key",
+    "showApiKey": "Show API key",
+    "hideApiKey": "Hide API key",
+    "allowNoApiKey": "Allow no API key",
+    "allowNoApiKeyHint": "Use this only when the upstream endpoint does not require authentication.",
+    "clearExistingApiKeys": "Also clear existing API keys for selected models",
+    "clearExistingApiKeysHint": "When selected models already have API keys, checking this writes an empty key. Leave it unchecked to preserve each existing key.",
+    "fetchModels": "Fetch models",
+    "fetchFailed": "Could not fetch models",
+    "save": "Save configuration",
+    "saving": "Saving...",
+    "saveSuccess": "Configuration saved",
+    "saveFailed": "Could not save configuration",
+    "httpWarning": {
+      "title": "Unencrypted remote connection",
+      "description": "This remote endpoint uses HTTP. Your API key could be exposed in transit."
+    },
+    "models": {
+      "title": "Models",
+      "selectAll": "Select all",
+      "deselectAll": "Deselect all",
+      "truncatedTitle": "Model list was truncated",
+      "truncatedDescription": "Only the first 1,000 unique model IDs returned by the upstream service are available here. Add any remaining models manually.",
+      "fetchedList": "Fetched model list",
+      "emptyFetch": "The upstream service returned no usable model IDs.",
+      "notFetched": "Fetch models to select them, or add model IDs manually.",
+      "manual": "Manual model IDs",
+      "manualPlaceholder": "one-model-id-per-line",
+      "manualHint": "One model ID per line. Blank lines are ignored."
+    },
+    "validation": {
+      "apiKeyRequired": "An API key is required unless \"Allow no API key\" is enabled.",
+      "modelRequired": "Select or enter at least one model before saving."
+    },
+    "duplicateDialog": {
+      "title": "Duplicate model IDs found",
+      "description": "Some selected model IDs already occur more than once in the existing file.",
+      "occurrences": "{{count}} occurrences",
+      "keepDuplicates": "Overwrite updates every duplicate entry's managed fields. It does not remove or merge duplicates.",
+      "confirm": "Overwrite duplicate entries"
+    },
+    "error": {
+      "invalidUrl": "Enter a valid HTTP or HTTPS URL.",
+      "apiKeyRequired": "An API key is required for this request.",
+      "fetchHttp": "The model service returned an HTTP error.",
+      "fetchTimeout": "The model request timed out.",
+      "fetchRedirectRejected": "The model request was redirected to an untrusted origin.",
+      "fetchResponseTooLarge": "The model response was too large.",
+      "fetchInvalidSchema": "The model service returned an unsupported response. Add models manually instead.",
+      "configReadFailed": "The existing WorkBuddy configuration could not be read safely.",
+      "configInvalidJson": "The existing WorkBuddy configuration is not valid JSON.",
+      "configRootNotArray": "The existing WorkBuddy configuration must be a JSON array.",
+      "configInvalidEntry": "A model entry in the existing WorkBuddy configuration is invalid.",
+      "configNoTargetModels": "Select or enter at least one model before saving.",
+      "configConcurrentModification": "The WorkBuddy configuration changed outside FyAgent. Refresh and try again.",
+      "configDuplicateTarget": "Duplicate target model IDs require confirmation.",
+      "configBackupFailed": "A backup could not be created, so the configuration was not changed.",
+      "configWriteFailed": "The configuration could not be written safely.",
+      "httpStatus": "HTTP status: {{status}}",
+      "redactedSummary": "Upstream summary: {{summary}}",
+      "invalidEntryIndex": "Invalid configuration item at index {{index}}",
+      "internal": "The WorkBuddy request could not be completed. Please try again."
+    }
+  },
+  "codexFeatures": {
+    "title": "Codex native capabilities",
+    "description": "These options change only this provider's TOML draft and are written to the Codex configuration when you save.",
+    "analyzing": "Checking Codex native capabilities…",
+    "analysisFailed": "Could not analyze the Codex native capability draft. Check the TOML and try again.",
+    "patchFailed": "Could not update the Codex native capability draft. Check the TOML and try again.",
+    "savePreparationFailed": "Could not prepare Codex native capabilities. Check the TOML and try again.",
+    "imageExtension": {
+      "label": "Enable built-in image extension",
+      "description": "Writes a managed request header for this third-party API provider to enable Codex's built-in image extension.",
+      "legacyTitle": "Migration on save",
+      "legacyDescription": "This historical provider defaults to enabled until you save. Turning it off does not change the configuration until the provider is saved.",
+      "conflictTitle": "Image-extension header conflict",
+      "conflictDescription": "The TOML contains a same-name header that FyAgent does not own. Resolve it manually; FyAgent will not overwrite, remove, or add a case variant.",
+      "invalidTitle": "Image-extension setting cannot be read",
+      "invalidDescription": "The request-header structure is not the string map Codex requires. Fix the TOML before changing this switch."
+    },
+    "websockets": {
+      "label": "Enable WebSocket transport",
+      "description": "Available only for OpenAI Responses. Turning it off removes supports_websockets instead of writing false.",
+      "incompatible": "The current upstream format is not OpenAI Responses, so WebSocket transport is unavailable.",
+      "saveBlocked": "The current upstream format does not support WebSocket. Remove supports_websockets from the TOML before saving.",
+      "autoDisabled": "WebSocket transport was disabled because the upstream format changed away from Responses, and the field was removed from this TOML draft."
+    },
+    "diagnostic": {
+      "invalidToml": "The Codex TOML draft is invalid. FyAgent will not rewrite it automatically.",
+      "invalidHeaders": "The Codex request-header structure is invalid. Fix it manually before changing native capabilities.",
+      "invalidWebsockets": "The WebSocket setting is invalid. Fix the TOML manually before saving.",
+      "generic": "The Codex native capability configuration is invalid. FyAgent will not rewrite this TOML draft automatically."
+    }
+  },
+  "codexRestart": {
+    "title": "Configuration updated",
+    "description": "Codex is currently running. Restart it to load the configuration you just saved.",
+    "restartAction": "Restart Codex",
+    "laterAction": "Restart manually later",
+    "forceTitle": "Codex did not exit normally",
+    "forceDescription": "The configuration was saved, but Codex did not exit in time. Confirm before FyAgent force-closes the verified instance and restarts it; you can also restart manually later.",
+    "forceAction": "Force quit and restart",
+    "restarted": "Codex was restarted and loaded the new configuration.",
+    "later": "Configuration saved. Restart Codex manually later.",
+    "manualRequired": "Configuration saved. Restart Codex manually to load the new configuration.",
+    "notInstalled": "Configuration saved, but no trusted Codex Desktop installation was found to restart.",
+    "ambiguous": "Configuration saved, but FyAgent could not uniquely identify the running Codex Desktop. Restart it manually.",
+    "unsupported": "Configuration saved. Automatic Codex restart is unsupported on this platform; restart it manually.",
+    "failed": "Configuration was saved, but Codex could not be restarted. Restart it manually before continuing.",
+    "phase": {
+      "detect": "Trusted desktop detection did not complete.",
+      "quit": "Codex did not exit normally.",
+      "forceQuit": "The verified Codex instance could not be force-closed.",
+      "launch": "Codex could not be launched from its trusted installation.",
+      "verify": "Codex was launched but a new trusted instance could not be verified."
+    }
   },
   "grokBuild": {
     "apiBackend": "API backend",

@@ -68,6 +68,8 @@ interface ProviderListProps {
   isProxyTakeover?: boolean; // 代理接管模式（Live配置已被接管）
   activeProviderId?: string; // 代理当前实际使用的供应商 ID（用于故障转移模式下标注绿色边框）
   onSetAsDefault?: (provider: Provider) => void; // OpenClaw: set as default model
+  /** Called only after a Codex import actually changed the live config. */
+  onCodexLiveConfigChanged?: () => void | Promise<void>;
 }
 
 export function ProviderList({
@@ -90,6 +92,7 @@ export function ProviderList({
   isProxyTakeover = false,
   activeProviderId,
   onSetAsDefault,
+  onCodexLiveConfigChanged,
 }: ProviderListProps) {
   const { t } = useTranslation();
   const { checkProvider, isChecking } = useStreamCheck(appId);
@@ -210,27 +213,40 @@ export function ProviderList({
   // Import current live config as default provider
   const queryClient = useQueryClient();
   const importMutation = useMutation({
-    mutationFn: async (): Promise<boolean> => {
+    mutationFn: async (): Promise<{
+      imported: boolean;
+      liveConfigChanged: boolean;
+    }> => {
       if (appId === "opencode") {
         const count = await providersApi.importOpenCodeFromLive();
-        return count > 0;
+        return { imported: count > 0, liveConfigChanged: false };
       }
       if (appId === "openclaw") {
         const count = await providersApi.importOpenClawFromLive();
-        return count > 0;
+        return { imported: count > 0, liveConfigChanged: false };
       }
       if (appId === "hermes") {
         const count = await providersApi.importHermesFromLive();
-        return count > 0;
+        return { imported: count > 0, liveConfigChanged: false };
       }
       if (appId === "claude-desktop") {
         const count = await providersApi.importClaudeDesktopFromClaude();
-        return count > 0;
+        return { imported: count > 0, liveConfigChanged: false };
       }
-      return providersApi.importDefault(appId);
+      if (appId === "codex") {
+        const result = await providersApi.importDefaultWithResult(appId);
+        return {
+          imported: result.value,
+          liveConfigChanged: result.liveConfigChanged,
+        };
+      }
+      return {
+        imported: await providersApi.importDefault(appId),
+        liveConfigChanged: false,
+      };
     },
-    onSuccess: (imported) => {
-      if (imported) {
+    onSuccess: (outcome) => {
+      if (outcome.imported) {
         queryClient.invalidateQueries({ queryKey: ["providers", appId] });
         if (appId === "claude-desktop") {
           queryClient.invalidateQueries({ queryKey: ["claudeDesktopStatus"] });
@@ -238,6 +254,18 @@ export function ProviderList({
         toast.success(t("provider.importCurrentDescription"));
       } else {
         toast.info(t("provider.noProviders"));
+      }
+
+      if (appId === "codex" && outcome.liveConfigChanged) {
+        // A restart-status lookup is advisory. Import has already completed;
+        // never turn a saved import into an error if the dialog coordinator is
+        // temporarily unavailable.
+        Promise.resolve(onCodexLiveConfigChanged?.()).catch((error) => {
+          console.warn(
+            "Failed to coordinate Codex restart after importing configuration",
+            error,
+          );
+        });
       }
     },
     onError: (error: unknown) => {

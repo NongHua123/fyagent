@@ -23,6 +23,7 @@ import type {
   CodexChatReasoning,
   PromptCacheRoutingMode,
   ClaudeApiKeyField,
+  Provider,
 } from "@/types";
 import {
   providerPresets,
@@ -123,6 +124,7 @@ import { HERMES_DEFAULT_CONFIG } from "./hooks/useHermesFormState";
 import { resolveManagedAccountId } from "@/lib/authBinding";
 import { useOpenClawLiveProviderIds } from "@/hooks/useOpenClaw";
 import { useHermesLiveProviderIds } from "@/hooks/useHermes";
+import { useCodexProviderFeatures } from "@/hooks/useCodexProviderFeatures";
 
 type PresetEntry = {
   id: string;
@@ -212,6 +214,19 @@ const normalizeCodexChatReasoningForSave = (
       : undefined,
     outputFormat: value?.outputFormat ?? "auto",
   };
+};
+
+const parseCodexFeatureAuth = (value: string): Record<string, unknown> => {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    // A temporary invalid auth editor value should make the capability analysis
+    // inapplicable; it must not prevent the user from correcting the form.
+    return {};
+  }
 };
 
 type LocalProxyRequestOverridesBuildResult = ReturnType<
@@ -637,19 +652,6 @@ function ProviderFormFull({
     [originalHandleCodexConfigChange, debouncedValidate],
   );
 
-  const handleCodexApiFormatChange = useCallback(
-    (format: CodexApiFormat) => {
-      setLocalCodexApiFormat(format);
-      // wire_api is always "responses" for Codex; format controls proxy-layer conversion
-      setCodexConfig((prev) => {
-        const updated = setCodexWireApi(prev, "responses");
-        debouncedValidate(updated);
-        return updated;
-      });
-    },
-    [setCodexConfig, debouncedValidate],
-  );
-
   useEffect(() => {
     if (appId === "codex" && !initialData && selectedPresetId === "custom") {
       const template = getCodexCustomTemplate();
@@ -727,6 +729,103 @@ function ProviderFormFull({
     )?.preset;
     return preset && "providerType" in preset ? preset.providerType : undefined;
   }, [presetEntries, selectedPresetId]);
+
+  /**
+   * The backend owns TOML parsing and patching. This provider is an in-memory
+   * form draft only: it is never sent through a normal provider mutation until
+   * the existing submit path has completed validation.
+   */
+  const getCodexFeatureDraft = useCallback(
+    (): Provider => ({
+      id: providerId ?? "fyagent-form-draft",
+      name: form.getValues("name").trim() || "FyAgent draft",
+      category,
+      settingsConfig: {
+        auth: parseCodexFeatureAuth(codexAuth),
+        config: codexConfig,
+      },
+      meta: {
+        ...(initialData?.meta ?? {}),
+        ...(presetProviderType || initialData?.meta?.providerType
+          ? {
+              providerType:
+                presetProviderType ?? initialData?.meta?.providerType,
+            }
+          : {}),
+        // apiFormat controls proxy conversion. The TOML wire_api remains
+        // responses for every Codex provider and must not be used to infer the
+        // capability compatibility.
+        ...(category !== "official" ? { apiFormat: localCodexApiFormat } : {}),
+      },
+    }),
+    [
+      category,
+      codexAuth,
+      codexConfig,
+      form,
+      initialData?.meta,
+      localCodexApiFormat,
+      presetProviderType,
+      providerId,
+    ],
+  );
+
+  const handleCodexFeatureTomlPatched = useCallback(
+    (tomlText: string) => {
+      setCodexConfig(tomlText);
+      debouncedValidate(tomlText);
+    },
+    [debouncedValidate, setCodexConfig],
+  );
+
+  const {
+    state: codexFeatureState,
+    isAnalyzing: isCodexFeatureAnalyzing,
+    isPatching: isCodexFeaturePatching,
+    error: codexFeatureError,
+    websocketAutoDisabled,
+    patchFeatures: patchCodexFeatures,
+    handleApiFormatChange: handleCodexFeatureApiFormatChange,
+    prepareForSave: prepareCodexFeaturesForSave,
+  } = useCodexProviderFeatures({
+    // The form is the only caller and is mounted only for the provider domain;
+    // the API wrapper additionally supplies the fixed app: "codex" command
+    // guard so no other top-level app can invoke the feature IPC.
+    enabled: appId === "codex",
+    isNew: !isEditMode,
+    analysisKey: [
+      category,
+      codexAuth,
+      codexConfig,
+      localCodexApiFormat,
+      presetProviderType ?? "",
+      initialData?.meta?.imageExtensionConfigured ? "configured" : "pending",
+    ].join("\u0000"),
+    configText: codexConfig,
+    getDraft: getCodexFeatureDraft,
+    onTomlPatched: handleCodexFeatureTomlPatched,
+  });
+
+  const handleCodexApiFormatChange = useCallback(
+    (format: CodexApiFormat) => {
+      // wire_api is always "responses" for Codex; format controls proxy-layer
+      // conversion. Pass the exact next draft into the feature queue so moving
+      // away from Responses removes supports_websockets before the next save.
+      const updated = setCodexWireApi(codexConfig, "responses");
+      setLocalCodexApiFormat(format);
+      setCodexConfig(updated);
+      debouncedValidate(updated);
+      void handleCodexFeatureApiFormatChange(format, updated).catch(
+        () => undefined,
+      );
+    },
+    [
+      codexConfig,
+      debouncedValidate,
+      handleCodexFeatureApiFormatChange,
+      setCodexConfig,
+    ],
+  );
 
   const {
     templateValues,
@@ -1367,14 +1466,25 @@ function ProviderFormFull({
       initialData?.meta?.providerType === "xai_oauth";
 
     let settingsConfig: string;
+    let codexFeatureSavePreparation:
+      | { tomlText: string; imageExtensionConfigured?: true }
+      | undefined;
 
     if (appId === "codex") {
       try {
+        // Close the debounce/click-save race on the same draft that the user
+        // sees. In particular, a non-Responses format must never persist a
+        // stale supports_websockets = true field.
+        codexFeatureSavePreparation = await prepareCodexFeaturesForSave();
         const authJson = JSON.parse(codexAuth);
         let normalizedCodexConfig =
-          category !== "official" && (codexConfig ?? "").trim()
-            ? setCodexWireApi(codexConfig ?? "", "responses")
-            : (codexConfig ?? "");
+          category !== "official" &&
+          (codexFeatureSavePreparation.tomlText ?? "").trim()
+            ? setCodexWireApi(
+                codexFeatureSavePreparation.tomlText ?? "",
+                "responses",
+              )
+            : (codexFeatureSavePreparation.tomlText ?? "");
         // 模型映射与「路由接管」解耦：对所有非官方供应商，填了就持久化
         //（Chat 生成兼容路由、原生 Responses 生成 model-catalogs.json），
         // 留空归一化为 [] 即不写。后端只看 modelCatalog.models 是否非空。
@@ -1406,7 +1516,27 @@ function ProviderFormFull({
           configObj.modelCatalog = { models: normalizedCatalogModels };
         }
         settingsConfig = JSON.stringify(configObj);
-      } catch (err) {
+      } catch (error) {
+        // A failed native-capability preparation is actionable (for example an
+        // incompatible manual WebSocket field), while JSON/TOML editor errors
+        // retain the pre-existing fallback save behavior.
+        if (codexFeatureSavePreparation === undefined) {
+          const isIncompatibleWebsocket =
+            error instanceof Error &&
+            error.message === "CODEX_FEATURE_INCOMPATIBLE_WEBSOCKET";
+          toast.error(
+            isIncompatibleWebsocket
+              ? t("codexFeatures.websockets.saveBlocked", {
+                  defaultValue:
+                    "当前上游格式不支持 WebSocket。请在 TOML 中删除 supports_websockets 后再保存。",
+                })
+              : t("codexFeatures.savePreparationFailed", {
+                  defaultValue:
+                    "无法准备 Codex 原生能力配置；请检查 TOML 后重试。",
+                }),
+          );
+          return;
+        }
         settingsConfig = values.settingsConfig.trim();
       }
     } else if (appId === "gemini") {
@@ -1654,6 +1784,13 @@ function ProviderFormFull({
         localIsFullUrl
           ? true
           : undefined,
+      // This private migration discriminator is included only in the same
+      // normal save that owns the patched TOML. Cancelling or a failed submit
+      // therefore cannot mark a historical provider as migrated.
+      ...(appId === "codex" &&
+      codexFeatureSavePreparation?.imageExtensionConfigured === true
+        ? { imageExtensionConfigured: true }
+        : {}),
     };
 
     if (!isCodexOauthProvider && "codexFastMode" in nextMeta) {
@@ -2309,6 +2446,21 @@ function ProviderFormFull({
               onModelChange={handleCodexModelChange}
               apiFormat={localCodexApiFormat}
               onApiFormatChange={handleCodexApiFormatChange}
+              codexFeatureState={codexFeatureState}
+              isCodexFeatureAnalyzing={isCodexFeatureAnalyzing}
+              isCodexFeaturePatching={isCodexFeaturePatching}
+              codexFeatureError={codexFeatureError}
+              websocketAutoDisabled={websocketAutoDisabled}
+              onCodexImageExtensionChange={(enabled) => {
+                void patchCodexFeatures({ imageExtension: enabled }).catch(
+                  () => undefined,
+                );
+              }}
+              onCodexWebsocketsChange={(enabled) => {
+                void patchCodexFeatures({ websockets: enabled }).catch(
+                  () => undefined,
+                );
+              }}
               anthropicAuthField={localCodexAnthropicAuthField}
               onAnthropicAuthFieldChange={setLocalCodexAnthropicAuthField}
               impersonateClaudeCode={localCodexImpersonateClaudeCode}

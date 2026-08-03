@@ -866,11 +866,145 @@
     "claudeDesktop": "Claude Desktop",
     "claude-desktop": "Claude Desktop",
     "codex": "Codex",
+    "workbuddy": "WorkBuddy",
     "gemini": "Gemini",
     "grokbuild": "Grok Build",
     "opencode": "OpenCode",
     "openclaw": "OpenClaw",
     "hermes": "Hermes"
+  },
+  "workbuddy": {
+    "title": "WorkBuddy",
+    "description": "保存済みの認証情報を読み取らずに、WorkBuddy 用の OpenAI 互換モデルを設定します。",
+    "status": {
+      "title": "設定の状態",
+      "loading": "設定の状態を読み込み中...",
+      "path": "設定ファイル",
+      "exists": "ファイルの状態",
+      "existsYes": "存在します",
+      "existsNo": "まだ作成されていません",
+      "modelCount": "設定済みモデル数",
+      "unavailable": "現在、設定の状態を読み取れません。"
+    },
+    "connection": { "title": "接続設定" },
+    "baseUrl": "ベース URL",
+    "apiKey": "API キー",
+    "showApiKey": "API キーを表示",
+    "hideApiKey": "API キーを隠す",
+    "allowNoApiKey": "API キーなしを許可",
+    "allowNoApiKeyHint": "上流エンドポイントで認証が不要な場合にのみ使用してください。",
+    "clearExistingApiKeys": "選択したモデルの既存 API キーも空にする",
+    "clearExistingApiKeysHint": "選択したモデルに API キーがある場合、チェックすると空のキーを書き込みます。チェックしない場合は既存のキーを個別に保持します。",
+    "fetchModels": "モデルを取得",
+    "fetchFailed": "モデルを取得できませんでした",
+    "save": "設定を保存",
+    "saving": "保存中...",
+    "saveSuccess": "設定を保存しました",
+    "saveFailed": "設定を保存できませんでした",
+    "httpWarning": {
+      "title": "暗号化されていないリモート接続",
+      "description": "このリモートエンドポイントは HTTP を使用しています。転送中に API キーが露出する可能性があります。"
+    },
+    "models": {
+      "title": "モデル",
+      "selectAll": "すべて選択",
+      "deselectAll": "すべて解除",
+      "truncatedTitle": "モデル一覧が切り詰められました",
+      "truncatedDescription": "ここでは上流サービスが返した先頭 1,000 件の重複しないモデル ID だけを利用できます。残りは手動で追加してください。",
+      "fetchedList": "取得済みモデル一覧",
+      "emptyFetch": "上流サービスから使用可能なモデル ID が返されませんでした。",
+      "notFetched": "モデルを取得して選択するか、モデル ID を手動で追加してください。",
+      "manual": "手動モデル ID",
+      "manualPlaceholder": "1 行に 1 つのモデル ID",
+      "manualHint": "1 行に 1 つのモデル ID を入力します。空行は無視されます。"
+    },
+    "validation": {
+      "apiKeyRequired": "「API キーなしを許可」が有効でない限り、API キーは必須です。",
+      "modelRequired": "保存する前に少なくとも 1 つのモデルを選択または入力してください。"
+    },
+    "duplicateDialog": {
+      "title": "重複したモデル ID が見つかりました",
+      "description": "選択したモデル ID の一部が既存ファイル内に複数回出現しています。",
+      "occurrences": "{{count}} 件",
+      "keepDuplicates": "上書きではすべての重複エントリの管理対象フィールドを更新します。重複は削除も統合もされません。",
+      "confirm": "重複エントリを上書き"
+    },
+    "error": {
+      "invalidUrl": "有効な HTTP または HTTPS URL を入力してください。",
+      "apiKeyRequired": "このリクエストには API キーが必要です。",
+      "fetchHttp": "モデルサービスが HTTP エラーを返しました。",
+      "fetchTimeout": "モデル取得リクエストがタイムアウトしました。",
+      "fetchRedirectRejected": "モデルリクエストは信頼できないオリジンへリダイレクトされました。",
+      "fetchResponseTooLarge": "モデルレスポンスが大きすぎます。",
+      "fetchInvalidSchema": "モデルサービスが未対応のレスポンスを返しました。手動入力を使用してください。",
+      "configReadFailed": "既存の WorkBuddy 設定を安全に読み取れませんでした。",
+      "configInvalidJson": "既存の WorkBuddy 設定は有効な JSON ではありません。",
+      "configRootNotArray": "既存の WorkBuddy 設定のルートは JSON 配列である必要があります。",
+      "configInvalidEntry": "既存の WorkBuddy 設定に無効なモデルエントリがあります。",
+      "configNoTargetModels": "保存する前に少なくとも 1 つのモデルを選択または入力してください。",
+      "configConcurrentModification": "WorkBuddy 設定が FyAgent の外部で変更されました。更新して再試行してください。",
+      "configDuplicateTarget": "重複した対象モデル ID には確認が必要です。",
+      "configBackupFailed": "バックアップを作成できなかったため、設定は変更されませんでした。",
+      "configWriteFailed": "設定を安全に書き込めませんでした。",
+      "httpStatus": "HTTP ステータス: {{status}}",
+      "redactedSummary": "上流の要約: {{summary}}",
+      "invalidEntryIndex": "無効な設定項目のインデックス: {{index}}",
+      "internal": "WorkBuddy リクエストを完了できませんでした。もう一度お試しください。"
+    }
+  },
+  "codexFeatures": {
+    "title": "Codex ネイティブ機能",
+    "description": "これらの設定は現在のプロバイダーの TOML 下書きだけを変更し、保存時に Codex 設定へ書き込みます。",
+    "analyzing": "Codex ネイティブ機能を確認しています…",
+    "analysisFailed": "Codex ネイティブ機能の下書きを解析できませんでした。TOML を確認して再試行してください。",
+    "patchFailed": "Codex ネイティブ機能の下書きを更新できませんでした。TOML を確認して再試行してください。",
+    "savePreparationFailed": "Codex ネイティブ機能を保存用に準備できませんでした。TOML を確認して再試行してください。",
+    "imageExtension": {
+      "label": "組み込み画像拡張を有効にする",
+      "description": "Codex の組み込み画像拡張を有効にするため、このサードパーティ API プロバイダーへ管理済みリクエストヘッダーを書き込みます。",
+      "legacyTitle": "保存時に移行",
+      "legacyDescription": "これは既存プロバイダー向けの既定オン移行です。保存するまで設定は変更されません。",
+      "conflictTitle": "画像拡張ヘッダーの競合",
+      "conflictDescription": "TOML に FyAgent が管理しない同名ヘッダーがあります。FyAgent は上書き、削除、大文字小文字違いの追加を行いません。手動で解決してください。",
+      "invalidTitle": "画像拡張設定を読み取れません",
+      "invalidDescription": "リクエストヘッダー構造が Codex に必要な文字列マップではありません。切り替える前に TOML を修正してください。"
+    },
+    "websockets": {
+      "label": "WebSocket 転送を有効にする",
+      "description": "OpenAI Responses 形式でのみ利用できます。オフにすると false を書かず supports_websockets を削除します。",
+      "incompatible": "現在の上流形式は OpenAI Responses ではないため、WebSocket 転送は利用できません。",
+      "saveBlocked": "現在の上流形式は WebSocket をサポートしていません。保存前に TOML から supports_websockets を削除してください。",
+      "autoDisabled": "上流形式が Responses 以外に変更されたため WebSocket をオフにし、この TOML 下書きからフィールドを削除しました。"
+    },
+    "diagnostic": {
+      "invalidToml": "Codex TOML 下書きが無効です。FyAgent は自動的に書き換えません。",
+      "invalidHeaders": "Codex リクエストヘッダー構造が無効です。ネイティブ機能を変更する前に手動で修正してください。",
+      "invalidWebsockets": "WebSocket 設定が無効です。保存前に TOML を手動で修正してください。",
+      "generic": "Codex ネイティブ機能の設定が無効です。FyAgent はこの TOML 下書きを自動で書き換えません。"
+    }
+  },
+  "codexRestart": {
+    "title": "設定を更新しました",
+    "description": "Codex は現在実行中です。再起動すると、保存した新しい設定が読み込まれます。",
+    "restartAction": "Codex を再起動",
+    "laterAction": "後で手動で再起動",
+    "forceTitle": "Codex が正常に終了しませんでした",
+    "forceDescription": "設定は保存されましたが、Codex が時間内に終了しませんでした。確認後にのみ、検証済みのインスタンスを強制終了して再起動します。後で手動で再起動することもできます。",
+    "forceAction": "強制終了して再起動",
+    "restarted": "Codex を再起動し、新しい設定を読み込みました。",
+    "later": "設定を保存しました。後で Codex を手動で再起動してください。",
+    "manualRequired": "設定を保存しました。新しい設定を読み込むには Codex を手動で再起動してください。",
+    "notInstalled": "設定を保存しましたが、再起動できる信頼済みの Codex Desktop が見つかりませんでした。",
+    "ambiguous": "設定を保存しましたが、実行中の Codex Desktop を一意に確認できませんでした。手動で再起動してください。",
+    "unsupported": "設定を保存しました。このプラットフォームでは自動再起動に対応していないため、Codex を手動で再起動してください。",
+    "failed": "設定は保存されましたが、Codex の再起動に失敗しました。続行する前に手動で再起動してください。",
+    "phase": {
+      "detect": "信頼済みデスクトップアプリの検出を完了できませんでした。",
+      "quit": "Codex が正常に終了しませんでした。",
+      "forceQuit": "検証済みの Codex インスタンスを強制終了できませんでした。",
+      "launch": "信頼済みのインストールから Codex を起動できませんでした。",
+      "verify": "Codex は起動しましたが、新しい信頼済みインスタンスを確認できませんでした。"
+    }
   },
   "grokBuild": {
     "apiBackend": "API Backend",

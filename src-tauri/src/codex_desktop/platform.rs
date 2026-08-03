@@ -18,9 +18,12 @@ use super::{
     error::{InstallerError, InstallerErrorCode},
     types::{
         CpuArchitecture, DesktopPlatform, InstalledApplication, JobProgress, LocalInstallStatus,
-        ReleaseDescriptor, UnsupportedReason,
+        ReleaseDescriptor,
     },
 };
+
+#[cfg(any(not(any(target_os = "windows", target_os = "macos")), test))]
+use super::types::UnsupportedReason;
 
 // The command/filesystem boundary is target-neutral, so test builds include it
 // on every host and can exercise the adapter with fakes. Runtime construction
@@ -61,6 +64,73 @@ where
 
 /// An owned, cloneable progress reporter suitable for platform async work.
 pub type PlatformProgressSink = Arc<dyn PlatformProgressReporter>;
+
+/// Opaque, platform-bound runtime evidence. It is deliberately crate-private
+/// and non-serializable so IPC callers cannot select a process, bundle, path,
+/// AUMID, or package family for a shutdown operation.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) enum TrustedRuntimeInstance {
+    /// The one visible top-level window process for the verified Windows
+    /// package family. Renderer/helper processes are deliberately excluded;
+    /// more than one top-level window is reported as ambiguous instead of
+    /// being collapsed into a process-name-style group.
+    #[cfg_attr(
+        not(any(target_os = "windows", test)),
+        expect(
+            dead_code,
+            reason = "the Windows adapter constructs this evidence only on Windows"
+        )
+    )]
+    Windows {
+        package_family_name: String,
+        process_id: u32,
+        /// The process creation timestamp prevents a recycled numeric PID from
+        /// being mistaken for the runtime that passed the initial identity
+        /// check.
+        creation_time: u64,
+    },
+    /// macOS represents an app instance by an NSRunningApplication PID plus
+    /// the canonical bundle path verified against the installed bundle.
+    #[cfg_attr(
+        not(any(target_os = "macos", test)),
+        expect(
+            dead_code,
+            reason = "the macOS adapter constructs this evidence only on macOS"
+        )
+    )]
+    Macos {
+        process_id: i32,
+        bundle_path: PathBuf,
+        reported_bundle_path: PathBuf,
+        /// Like the Windows creation timestamp, this distinguishes a newly
+        /// launched app that reused a PID from the instance approved for the
+        /// current restart operation.
+        launch_timestamp_ms: u64,
+    },
+}
+
+impl fmt::Debug for TrustedRuntimeInstance {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Windows { .. } => formatter
+                .debug_struct("TrustedRuntimeInstance::Windows")
+                .finish(),
+            Self::Macos { .. } => formatter
+                .debug_struct("TrustedRuntimeInstance::Macos")
+                .finish(),
+        }
+    }
+}
+
+/// Runtime detection uses only [`TrustedRuntimeInstance`] evidence. A platform
+/// may report ambiguity instead of trying to disambiguate with an executable
+/// or display-name heuristic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RuntimeInspection {
+    NotRunning,
+    Running(Vec<TrustedRuntimeInstance>),
+    Ambiguous,
+}
 
 /// Platform-specific preflight output consumed by the service's shared disk
 /// check.  Paths are crate-private and intentionally omitted from `Debug` so
@@ -247,7 +317,7 @@ const fn installed_platform(version: &super::types::PlatformVersion) -> DesktopP
 /// `BoxFuture` keeps this trait object-safe without adding `async-trait`.
 /// `platform` is optional because Linux and other unsupported hosts cannot be
 /// misrepresented by the V1 Windows/macOS enum.
-pub trait CodexDesktopPlatform: Send + Sync {
+pub(crate) trait CodexDesktopPlatform: Send + Sync {
     fn platform(&self) -> Option<DesktopPlatform>;
 
     fn architecture(&self) -> CpuArchitecture;
@@ -281,23 +351,81 @@ pub trait CodexDesktopPlatform: Send + Sync {
         &'a self,
         installed: &'a InstalledApplication,
     ) -> BoxFuture<'a, Result<(), InstallerError>>;
+
+    /// Detect runtime instances that are bound to `installed`'s already
+    /// verified identity. The default fails closed so a platform adapter cannot
+    /// accidentally gain restart control merely by implementing installer
+    /// discovery and launch.
+    fn inspect_runtime<'a>(
+        &'a self,
+        _installed: &'a InstalledApplication,
+    ) -> BoxFuture<'a, Result<RuntimeInspection, InstallerError>> {
+        Box::pin(async {
+            Err(InstallerError::new(InstallerErrorCode::PlatformUnsupported)
+                .with_diagnostic_message("trusted runtime inspection is unavailable"))
+        })
+    }
+
+    /// Ask only the previously verified runtime instance(s) to close normally.
+    /// The default makes forceful lifecycle behavior opt-in per platform.
+    fn request_graceful_shutdown<'a>(
+        &'a self,
+        _installed: &'a InstalledApplication,
+        _instances: &'a [TrustedRuntimeInstance],
+    ) -> BoxFuture<'a, Result<(), InstallerError>> {
+        Box::pin(async {
+            Err(InstallerError::new(InstallerErrorCode::PlatformUnsupported)
+                .with_diagnostic_message("trusted graceful shutdown is unavailable"))
+        })
+    }
+
+    /// Force only the previously verified runtime instance(s) after a separate
+    /// user confirmation. Implementations must revalidate identity immediately
+    /// before terminating anything.
+    fn force_shutdown<'a>(
+        &'a self,
+        _installed: &'a InstalledApplication,
+        _instances: &'a [TrustedRuntimeInstance],
+    ) -> BoxFuture<'a, Result<(), InstallerError>> {
+        Box::pin(async {
+            Err(InstallerError::new(InstallerErrorCode::PlatformUnsupported)
+                .with_diagnostic_message("trusted force shutdown is unavailable"))
+        })
+    }
+
+    /// Check whether the exact runtime evidence captured before a graceful or
+    /// force request is still alive. Unlike general runtime discovery, this is
+    /// allowed to observe a just-closed primary process while package helper
+    /// processes finish their own shutdown; it must never select a replacement
+    /// PID or a different instance.
+    fn is_runtime_instance_running<'a>(
+        &'a self,
+        _installed: &'a InstalledApplication,
+        _instances: &'a [TrustedRuntimeInstance],
+    ) -> BoxFuture<'a, Result<bool, InstallerError>> {
+        Box::pin(async {
+            Err(InstallerError::new(InstallerErrorCode::PlatformUnsupported)
+                .with_diagnostic_message("trusted runtime liveness inspection is unavailable"))
+        })
+    }
 }
 
 /// A fail-closed adapter for hosts V1 cannot install on.
 ///
-/// It remains available on every target so Linux builds can report a stable
-/// unsupported state without importing Windows/macOS APIs or pretending that a
-/// platform operation succeeded.
+/// Supported-host production construction never needs this type. Unit tests
+/// still compile it so the unsupported result remains covered on every host.
+#[cfg(any(not(any(target_os = "windows", target_os = "macos")), test))]
 #[derive(Debug, Clone)]
-pub struct UnsupportedPlatformAdapter {
+pub(crate) struct UnsupportedPlatformAdapter {
     platform: Option<DesktopPlatform>,
     architecture: CpuArchitecture,
     reason: UnsupportedReason,
     error_code: InstallerErrorCode,
 }
 
+#[cfg(any(not(any(target_os = "windows", target_os = "macos")), test))]
 impl UnsupportedPlatformAdapter {
-    pub fn platform_unsupported(architecture: CpuArchitecture) -> Self {
+    pub(crate) fn platform_unsupported(architecture: CpuArchitecture) -> Self {
         Self {
             platform: None,
             architecture,
@@ -306,7 +434,7 @@ impl UnsupportedPlatformAdapter {
         }
     }
 
-    pub fn architecture_unsupported(
+    pub(crate) fn architecture_unsupported(
         platform: DesktopPlatform,
         architecture: CpuArchitecture,
     ) -> Self {
@@ -325,6 +453,7 @@ impl UnsupportedPlatformAdapter {
     }
 }
 
+#[cfg(any(not(any(target_os = "windows", target_os = "macos")), test))]
 impl CodexDesktopPlatform for UnsupportedPlatformAdapter {
     fn platform(&self) -> Option<DesktopPlatform> {
         self.platform

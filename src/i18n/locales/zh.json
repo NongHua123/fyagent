@@ -866,11 +866,145 @@
     "claudeDesktop": "Claude Desktop",
     "claude-desktop": "Claude Desktop",
     "codex": "Codex",
+    "workbuddy": "WorkBuddy",
     "gemini": "Gemini",
     "grokbuild": "Grok Build",
     "opencode": "OpenCode",
     "openclaw": "OpenClaw",
     "hermes": "Hermes"
+  },
+  "workbuddy": {
+    "title": "WorkBuddy",
+    "description": "为 WorkBuddy 配置 OpenAI 兼容模型，不读取已保存的凭据。",
+    "status": {
+      "title": "配置状态",
+      "loading": "正在读取配置状态…",
+      "path": "配置文件",
+      "exists": "文件状态",
+      "existsYes": "已存在",
+      "existsNo": "尚未创建",
+      "modelCount": "已配置模型数",
+      "unavailable": "暂时无法读取配置状态。"
+    },
+    "connection": { "title": "连接配置" },
+    "baseUrl": "基础 URL",
+    "apiKey": "API Key",
+    "showApiKey": "显示 API Key",
+    "hideApiKey": "隐藏 API Key",
+    "allowNoApiKey": "允许无 API Key",
+    "allowNoApiKeyHint": "仅在上游端点不要求鉴权时使用。",
+    "clearExistingApiKeys": "同时清空所选模型已有的 API Key",
+    "clearExistingApiKeysHint": "若所选模型已有 API Key，勾选后会写入空 Key；不勾选则逐条保留原 Key。",
+    "fetchModels": "获取模型",
+    "fetchFailed": "获取模型失败",
+    "save": "保存配置",
+    "saving": "保存中…",
+    "saveSuccess": "配置已保存",
+    "saveFailed": "保存配置失败",
+    "httpWarning": {
+      "title": "远程连接未加密",
+      "description": "该远程端点使用 HTTP，传输中的 API Key 可能暴露。"
+    },
+    "models": {
+      "title": "模型",
+      "selectAll": "全选",
+      "deselectAll": "取消全选",
+      "truncatedTitle": "模型列表已截断",
+      "truncatedDescription": "这里只显示上游返回的前 1,000 个去重模型 ID。其余模型可手动添加。",
+      "fetchedList": "已获取的模型列表",
+      "emptyFetch": "上游未返回可用的模型 ID。",
+      "notFetched": "请先获取模型进行选择，或手动添加模型 ID。",
+      "manual": "手动模型 ID",
+      "manualPlaceholder": "每行一个模型 ID",
+      "manualHint": "每行一个模型 ID，空行会被忽略。"
+    },
+    "validation": {
+      "apiKeyRequired": "除非已启用“允许无 API Key”，否则必须填写 API Key。",
+      "modelRequired": "请至少选择或输入一个模型后再保存。"
+    },
+    "duplicateDialog": {
+      "title": "发现重复模型 ID",
+      "description": "部分目标模型 ID 在现有文件中出现了多次。",
+      "occurrences": "出现 {{count}} 次",
+      "keepDuplicates": "覆盖会更新每个重复条目的受管字段，不会删除或合并重复条目。",
+      "confirm": "覆盖重复条目"
+    },
+    "error": {
+      "invalidUrl": "请输入有效的 HTTP 或 HTTPS URL。",
+      "apiKeyRequired": "本次请求需要 API Key。",
+      "fetchHttp": "模型服务返回了 HTTP 错误。",
+      "fetchTimeout": "获取模型请求超时。",
+      "fetchRedirectRejected": "模型请求被重定向到不可信来源。",
+      "fetchResponseTooLarge": "模型响应过大。",
+      "fetchInvalidSchema": "模型服务返回了不支持的响应，请改用手动输入。",
+      "configReadFailed": "无法安全读取现有 WorkBuddy 配置。",
+      "configInvalidJson": "现有 WorkBuddy 配置不是有效 JSON。",
+      "configRootNotArray": "现有 WorkBuddy 配置根节点必须是 JSON 数组。",
+      "configInvalidEntry": "现有 WorkBuddy 配置中存在无效模型条目。",
+      "configNoTargetModels": "请至少选择或输入一个模型后再保存。",
+      "configConcurrentModification": "WorkBuddy 配置已在 FyAgent 外被修改，请刷新后重试。",
+      "configDuplicateTarget": "重复目标模型 ID 需要确认。",
+      "configBackupFailed": "备份创建失败，配置未被修改。",
+      "configWriteFailed": "无法安全写入配置。",
+      "httpStatus": "HTTP 状态码：{{status}}",
+      "redactedSummary": "上游摘要：{{summary}}",
+      "invalidEntryIndex": "无效配置条目索引：{{index}}",
+      "internal": "WorkBuddy 请求未能完成，请重试。"
+    }
+  },
+  "codexFeatures": {
+    "title": "Codex 原生能力",
+    "description": "这些选项只修改当前供应商的 TOML 草稿；保存后才会写入 Codex 配置。",
+    "analyzing": "正在检查 Codex 原生能力…",
+    "analysisFailed": "无法分析 Codex 原生能力草稿，请检查 TOML 后重试。",
+    "patchFailed": "无法更新 Codex 原生能力草稿，请检查 TOML 后重试。",
+    "savePreparationFailed": "无法准备 Codex 原生能力配置，请检查 TOML 后重试。",
+    "imageExtension": {
+      "label": "启用内置生图扩展",
+      "description": "向当前第三方 API 供应商写入受管请求头，以启用 Codex 的内置生图扩展。",
+      "legacyTitle": "保存时迁移",
+      "legacyDescription": "这是历史供应商的默认开启迁移。取消不会修改配置；保存后才会写入受管请求头。",
+      "conflictTitle": "生图扩展请求头冲突",
+      "conflictDescription": "当前 TOML 含有同名但非受管的请求头。FyAgent 不会覆盖、删除或新建大小写变体，请先手工处理。",
+      "invalidTitle": "无法读取生图扩展设置",
+      "invalidDescription": "请求头结构不是 Codex 所需的字符串映射。请在 TOML 中修复后再修改此开关。"
+    },
+    "websockets": {
+      "label": "启用 WebSocket 传输",
+      "description": "仅 OpenAI Responses 格式可用。关闭时会删除 supports_websockets，而不是写入 false。",
+      "incompatible": "当前上游格式不是 OpenAI Responses，因此 WebSocket 传输不可用。",
+      "saveBlocked": "当前上游格式不支持 WebSocket。请在 TOML 中删除 supports_websockets 后再保存。",
+      "autoDisabled": "已因上游格式改为非 Responses 自动关闭 WebSocket，并从当前 TOML 草稿移除该字段。"
+    },
+    "diagnostic": {
+      "invalidToml": "Codex TOML 草稿无效；FyAgent 不会自动重写。",
+      "invalidHeaders": "Codex 请求头结构无效。请先手工修复，再修改原生能力。",
+      "invalidWebsockets": "WebSocket 设置无效。请手工修复 TOML 后再保存。",
+      "generic": "Codex 原生能力配置无效；FyAgent 不会自动重写该 TOML 草稿。"
+    }
+  },
+  "codexRestart": {
+    "title": "配置已更新",
+    "description": "当前 Codex 正在运行。重启后会加载刚刚保存的新配置。",
+    "restartAction": "重启 Codex",
+    "laterAction": "稍后手动重启",
+    "forceTitle": "Codex 未能正常退出",
+    "forceDescription": "配置已保存，但 Codex 没有在等待时间内正常退出。确认后才会强制关闭已验证的实例并重新启动；你也可以稍后手动重启。",
+    "forceAction": "强制退出并重启",
+    "restarted": "Codex 已重启，新配置已生效。",
+    "later": "配置已保存；请稍后手动重启 Codex。",
+    "manualRequired": "配置已保存；请手动重启 Codex 以加载新配置。",
+    "notInstalled": "配置已保存；未检测到可信 Codex Desktop，无法自动重启。",
+    "ambiguous": "配置已保存；无法唯一确认正在运行的 Codex Desktop，请手动重启。",
+    "unsupported": "配置已保存；当前平台不支持自动重启，请手动重启 Codex。",
+    "failed": "配置已保存，但 Codex 重启失败。请手动重启后再继续。",
+    "phase": {
+      "detect": "可信桌面应用检测未完成。",
+      "quit": "Codex 未能正常退出。",
+      "forceQuit": "无法强制关闭已验证的 Codex 实例。",
+      "launch": "无法从可信安装记录启动 Codex。",
+      "verify": "Codex 已启动，但无法确认新的可信实例。"
+    }
   },
   "grokBuild": {
     "apiBackend": "API Backend",

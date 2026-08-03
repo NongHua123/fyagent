@@ -1,6 +1,7 @@
 import { Suspense, type ComponentType } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { providersApi } from "@/lib/api/providers";
 import {
@@ -9,7 +10,12 @@ import {
   setLiveProviderIds,
   setProviders,
 } from "../msw/state";
-import { emitTauriEvent } from "../msw/tauriMocks";
+import {
+  clearTauriInvocations,
+  emitTauriEvent,
+  getTauriInvocations,
+} from "../msw/tauriMocks";
+import { server } from "../msw/server";
 
 const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
@@ -123,6 +129,7 @@ vi.mock("@/components/AppSwitcher", () => ({
       <span>{activeApp}</span>
       <button onClick={() => onSwitch("claude")}>switch-claude</button>
       <button onClick={() => onSwitch("codex")}>switch-codex</button>
+      <button onClick={() => onSwitch("workbuddy")}>switch-workbuddy</button>
       <button onClick={() => onSwitch("openclaw")}>switch-openclaw</button>
     </div>
   ),
@@ -153,6 +160,8 @@ const renderApp = (AppComponent: ComponentType) => {
 describe("App integration with MSW", () => {
   beforeEach(() => {
     resetProviderState();
+    clearTauriInvocations();
+    localStorage.clear();
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
   });
@@ -255,6 +264,52 @@ describe("App integration with MSW", () => {
     await waitFor(() => {
       expect(toastErrorMock).toHaveBeenCalled();
     });
+  });
+
+  it("keeps WorkBuddy outside provider, proxy, skills, usage, and environment IPC", async () => {
+    server.use(
+      http.post("http://tauri.local/get_workbuddy_status", () =>
+        HttpResponse.json({
+          path: "C:/Users/test/.workbuddy/models.json",
+          exists: false,
+          modelCount: 0,
+          revision: null,
+          backupExists: false,
+        }),
+      ),
+    );
+    const { default: App } = await import("@/App");
+    renderApp(App);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("provider-list").textContent).toContain(
+        "claude-1",
+      ),
+    );
+    clearTauriInvocations();
+
+    fireEvent.click(screen.getByText("switch-workbuddy"));
+    await screen.findByText("workbuddy.title");
+    await waitFor(() =>
+      expect(getTauriInvocations()).toContain("get_workbuddy_status"),
+    );
+
+    const prohibitedCommands = new Set([
+      "get_providers",
+      "get_proxy_status",
+      "get_proxy_takeover_status",
+      "check_env_conflicts",
+      "check_all_env_conflicts",
+      "get_migration_result",
+      "get_skills_migration_result",
+      "scan_unmanaged_skills",
+      "get_usage_cache",
+    ]);
+    expect(
+      getTauriInvocations().filter((command) =>
+        prohibitedCommands.has(command),
+      ),
+    ).toEqual([]);
   });
 
   it("duplicates openclaw providers with a generated key that avoids live-only ids", async () => {

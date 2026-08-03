@@ -7,6 +7,7 @@ import type { Provider } from "@/types";
 
 const apiMocks = vi.hoisted(() => ({
   add: vi.fn(),
+  addWithResult: vi.fn(),
   ensureClaudeDesktopOfficialProvider: vi.fn(),
   ensureCodexOfficialProvider: vi.fn(),
   getAll: vi.fn(),
@@ -20,6 +21,7 @@ const uuidMocks = vi.hoisted(() => ({
 vi.mock("@/lib/api", () => ({
   providersApi: {
     add: (...args: unknown[]) => apiMocks.add(...args),
+    addWithResult: (...args: unknown[]) => apiMocks.addWithResult(...args),
     ensureClaudeDesktopOfficialProvider: (...args: unknown[]) =>
       apiMocks.ensureClaudeDesktopOfficialProvider(...args),
     ensureCodexOfficialProvider: (...args: unknown[]) =>
@@ -59,6 +61,9 @@ function createWrapper() {
 
 beforeEach(() => {
   apiMocks.add.mockReset().mockResolvedValue(true);
+  apiMocks.addWithResult
+    .mockReset()
+    .mockResolvedValue({ value: true, liveConfigChanged: false, app: "codex" });
   apiMocks.ensureClaudeDesktopOfficialProvider
     .mockReset()
     .mockResolvedValue(true);
@@ -95,8 +100,9 @@ describe("useAddProviderMutation", () => {
       "claude-desktop",
       undefined,
     );
-    expect(duplicatedProvider.id).toBe("generated-uuid");
-    expect(duplicatedProvider.id).not.toBe("claude-desktop-official");
+    expect(duplicatedProvider.value.id).toBe("generated-uuid");
+    expect(duplicatedProvider.value.id).not.toBe("claude-desktop-official");
+    expect(duplicatedProvider.liveConfigChanged).toBe(false);
   });
 
   it("returns the persisted seed row for the Claude Desktop official preset", async () => {
@@ -135,7 +141,10 @@ describe("useAddProviderMutation", () => {
     );
     expect(apiMocks.getAll).toHaveBeenCalledWith("claude-desktop");
     expect(apiMocks.add).not.toHaveBeenCalled();
-    expect(persistedProvider).toEqual(seedProvider);
+    expect(persistedProvider).toEqual({
+      value: seedProvider,
+      liveConfigChanged: false,
+    });
   });
 
   it("recreates and returns the fixed Codex official seed", async () => {
@@ -165,6 +174,37 @@ describe("useAddProviderMutation", () => {
     expect(apiMocks.ensureCodexOfficialProvider).toHaveBeenCalledTimes(1);
     expect(apiMocks.getAll).toHaveBeenCalledWith("codex");
     expect(apiMocks.add).not.toHaveBeenCalled();
-    expect(persistedProvider).toEqual(seedProvider);
+    expect(persistedProvider).toEqual({
+      value: seedProvider,
+      liveConfigChanged: false,
+    });
+  });
+
+  it("uses the Codex result wrapper instead of inferring a restart from add", async () => {
+    apiMocks.addWithResult.mockResolvedValueOnce({
+      value: true,
+      liveConfigChanged: true,
+      app: "codex",
+    });
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useAddProviderMutation("codex"), {
+      wrapper,
+    });
+
+    const outcome = await act(async () =>
+      result.current.mutateAsync({
+        name: "Third-party Codex",
+        settingsConfig: { auth: { OPENAI_API_KEY: "test" }, config: "" },
+        category: "custom",
+      }),
+    );
+
+    expect(apiMocks.addWithResult).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "generated-uuid" }),
+      "codex",
+      undefined,
+    );
+    expect(apiMocks.add).not.toHaveBeenCalled();
+    expect(outcome.liveConfigChanged).toBe(true);
   });
 });
