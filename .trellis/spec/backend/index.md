@@ -13,3 +13,4 @@ test that enforces it.
 | [GitHub Release Workflow](./github-release-workflow.md)   | Manually dispatched unsigned macOS artifacts and signed tag release boundaries.    |
 | [Application Brand Assets](./application-brand-assets.md) | Cross-platform app icons, About reuse, macOS tray templates, and validation.       |
 | [Application Identity](./application-identity.md)         | Cross-layer FyAgent identity, clean-break behavior, and provenance exceptions.     |
+| [FyAgent v1-0.1 Configuration Domains](./fyagent-v1-0-1-config-domains.md) | Independent `0.1.0` version chain, Codex capability/restart contracts, and WorkBuddy's isolated secure configuration domain. |

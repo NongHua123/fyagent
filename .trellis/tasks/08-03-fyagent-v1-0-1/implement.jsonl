@@ -1,0 +1,8 @@
+{"file":"docs/fyagent/dev/v1-0.1/01-需求规格说明.md","reason":"v1-0.1 产品范围、行为、安全与兼容性要求。"}
+{"file":"docs/fyagent/dev/v1-0.1/02-系统架构与详细设计.md","reason":"现有模块映射、接口边界与状态机设计依据。"}
+{"file":"docs/fyagent/dev/v1-0.1/03-配置数据模型与安全设计.md","reason":"TOML、WorkBuddy JSON、URL、密钥、原子写入与平台安全契约。"}
+{"file":"docs/fyagent/dev/v1-0.1/04-验收标准与测试场景.md","reason":"可执行验收场景和人工验证边界。"}
+{"file":".trellis/spec/backend/application-identity.md","reason":"FyAgent 独立版本、打包身份与历史事实保留规则。"}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"可信 Codex Desktop 安装、运行与重启边界。"}
+{"file":".trellis/spec/frontend/index.md","reason":"前端 API、类型、状态、翻译与测试入口规范。"}
+{"file":".trellis/tasks/08-03-fyagent-v1-0-1/research/implementation-baseline.md","reason":"当前版本、模块和本地验证基线。"}
