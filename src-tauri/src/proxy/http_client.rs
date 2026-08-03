@@ -16,27 +16,37 @@ static GLOBAL_CLIENT: OnceCell<RwLock<Client>> = OnceCell::new();
 /// 当前代理 URL（用于日志和状态查询）
 static CURRENT_PROXY_URL: OnceCell<RwLock<Option<String>>> = OnceCell::new();
 
-/// CC Switch 代理服务器当前监听的端口
-static CC_SWITCH_PROXY_PORT: OnceCell<RwLock<u16>> = OnceCell::new();
+/// Proxy choice copied by security-sensitive scoped clients. This type is
+/// crate-private so an explicit URL (which may include credentials) cannot
+/// reach logs, IPC, or a renderer-facing DTO.
+#[derive(Clone)]
+pub(crate) enum InstallerProxyConfiguration {
+    Explicit(url::Url),
+    System,
+    Direct,
+}
 
-/// 设置 CC Switch 代理服务器的监听端口
+/// FyAgent 代理服务器当前监听的端口
+static FYAGENT_PROXY_PORT: OnceCell<RwLock<u16>> = OnceCell::new();
+
+/// 设置 FyAgent 代理服务器的监听端口
 ///
 /// 应在代理服务器启动时调用，以便系统代理检测能正确识别自己的端口
 pub fn set_proxy_port(port: u16) {
-    if let Some(lock) = CC_SWITCH_PROXY_PORT.get() {
+    if let Some(lock) = FYAGENT_PROXY_PORT.get() {
         if let Ok(mut current_port) = lock.write() {
             *current_port = port;
-            log::debug!("[GlobalProxy] Updated CC Switch proxy port to {port}");
+            log::debug!("[GlobalProxy] Updated FyAgent proxy port to {port}");
         }
     } else {
-        let _ = CC_SWITCH_PROXY_PORT.set(RwLock::new(port));
-        log::debug!("[GlobalProxy] Initialized CC Switch proxy port to {port}");
+        let _ = FYAGENT_PROXY_PORT.set(RwLock::new(port));
+        log::debug!("[GlobalProxy] Initialized FyAgent proxy port to {port}");
     }
 }
 
-/// 获取 CC Switch 代理服务器的监听端口
+/// 获取 FyAgent 代理服务器的监听端口
 fn get_proxy_port() -> u16 {
-    CC_SWITCH_PROXY_PORT
+    FYAGENT_PROXY_PORT
         .get()
         .and_then(|lock| lock.read().ok())
         .map(|port| *port)
@@ -206,6 +216,38 @@ pub fn get_current_proxy_url() -> Option<String> {
         .and_then(|url| url.clone())
 }
 
+/// Returns the current global proxy policy for a short-lived scoped client.
+///
+/// Installer clients must not reuse `GLOBAL_CLIENT` because that client has a
+/// different redirect and timeout policy. Reading this configuration per
+/// request preserves the existing proxy hot-update behavior while keeping the
+/// caller responsible for its own client hardening.
+pub(crate) fn installer_proxy_configuration() -> Result<InstallerProxyConfiguration, ()> {
+    installer_proxy_configuration_from(
+        get_current_proxy_url().as_deref(),
+        system_proxy_points_to_loopback(),
+    )
+}
+
+fn installer_proxy_configuration_from(
+    explicit_proxy_url: Option<&str>,
+    system_proxy_points_to_self: bool,
+) -> Result<InstallerProxyConfiguration, ()> {
+    let Some(value) = explicit_proxy_url else {
+        return Ok(if system_proxy_points_to_self {
+            InstallerProxyConfiguration::Direct
+        } else {
+            InstallerProxyConfiguration::System
+        });
+    };
+
+    let parsed = url::Url::parse(value).map_err(|_| ())?;
+    if !["http", "https", "socks5", "socks5h"].contains(&parsed.scheme()) {
+        return Err(());
+    }
+    Ok(InstallerProxyConfiguration::Explicit(parsed))
+}
+
 /// 检查是否正在使用代理
 #[allow(dead_code)]
 pub fn is_proxy_enabled() -> bool {
@@ -290,17 +332,17 @@ fn proxy_points_to_loopback(value: &str) -> bool {
             .unwrap_or(false)
     }
 
-    // 检查是否指向 CC Switch 自己的代理端口
+    // 检查是否指向 FyAgent 自己的代理端口
     // 只有指向自己的代理才需要跳过，避免递归
-    fn is_cc_switch_proxy_port(port: Option<u16>) -> bool {
-        let cc_switch_port = get_proxy_port();
-        port == Some(cc_switch_port)
+    fn is_fyagent_proxy_port(port: Option<u16>) -> bool {
+        let fyagent_port = get_proxy_port();
+        port == Some(fyagent_port)
     }
 
     if let Ok(parsed) = url::Url::parse(value) {
         if let Some(host) = parsed.host_str() {
-            // 只有当主机是 loopback 且端口是 CC Switch 的端口时才返回 true
-            return host_is_loopback(host) && is_cc_switch_proxy_port(parsed.port());
+            // 只有当主机是 loopback 且端口是 FyAgent 的端口时才返回 true
+            return host_is_loopback(host) && is_fyagent_proxy_port(parsed.port());
         }
         return false;
     }
@@ -308,7 +350,7 @@ fn proxy_points_to_loopback(value: &str) -> bool {
     let with_scheme = format!("http://{value}");
     if let Ok(parsed) = url::Url::parse(&with_scheme) {
         if let Some(host) = parsed.host_str() {
-            return host_is_loopback(host) && is_cc_switch_proxy_port(parsed.port());
+            return host_is_loopback(host) && is_fyagent_proxy_port(parsed.port());
         }
     }
 
@@ -393,11 +435,35 @@ mod tests {
     }
 
     #[test]
+    fn installer_proxy_configuration_preserves_explicit_proxy_and_self_loop_policy() {
+        let explicit = installer_proxy_configuration_from(
+            Some("socks5://user:secret@proxy.example.com:1080"),
+            false,
+        )
+        .expect("a supported explicit proxy is accepted");
+        assert!(matches!(
+            explicit,
+            InstallerProxyConfiguration::Explicit(url)
+                if url.scheme() == "socks5" && url.host_str() == Some("proxy.example.com")
+        ));
+
+        assert!(matches!(
+            installer_proxy_configuration_from(None, false).unwrap(),
+            InstallerProxyConfiguration::System
+        ));
+        assert!(matches!(
+            installer_proxy_configuration_from(None, true).unwrap(),
+            InstallerProxyConfiguration::Direct
+        ));
+        assert!(installer_proxy_configuration_from(Some("file:///not-a-proxy"), false).is_err());
+    }
+
+    #[test]
     fn test_proxy_points_to_loopback() {
-        // 设置 CC Switch 代理端口为 15721（默认值）
+        // 设置 FyAgent 代理端口为 15721（默认值）
         set_proxy_port(15721);
 
-        // 只有指向 CC Switch 自己端口的 loopback 地址才返回 true
+        // 只有指向 FyAgent 自己端口的 loopback 地址才返回 true
         assert!(proxy_points_to_loopback("http://127.0.0.1:15721"));
         assert!(proxy_points_to_loopback("socks5://localhost:15721"));
         assert!(proxy_points_to_loopback("127.0.0.1:15721"));
@@ -415,7 +481,7 @@ mod tests {
     fn test_system_proxy_points_to_loopback() {
         let _guard = env_lock().lock().unwrap();
 
-        // 设置 CC Switch 代理端口
+        // 设置 FyAgent 代理端口
         set_proxy_port(15721);
 
         let keys = [
@@ -431,7 +497,7 @@ mod tests {
             std::env::remove_var(key);
         }
 
-        // 指向 CC Switch 端口的代理应该被跳过
+        // 指向 FyAgent 端口的代理应该被跳过
         std::env::set_var("HTTP_PROXY", "http://127.0.0.1:15721");
         assert!(system_proxy_points_to_loopback());
 

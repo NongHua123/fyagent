@@ -1,17 +1,17 @@
-# 统一 Codex 会话历史：功能介绍与使用攻略（CC Switch）
+# 统一 Codex 会话历史：功能介绍与使用攻略（FyAgent）
 
-> 适用版本：CC Switch v3.16.x 及以上。本文根据当前代码整理，命令与路径均可亲手验证；示例使用去敏数据，不包含真实会话内容或 API Key。
+> 适用版本：FyAgent v3.16.x 及以上。本文根据当前代码整理，命令与路径均可亲手验证；示例使用去敏数据，不包含真实会话内容或 API Key。
 
 ## 这个功能是什么
 
-「统一 Codex 会话历史」是 CC Switch v3.16.x 为 Codex 新增的一个开关。它的位置在 **设置 → 通用 → 「Codex 应用增强」分组**里（"Codex 应用增强"是这个分组的标题，开关本身叫"统一 Codex 会话历史"）。开启后，**官方订阅（ChatGPT 登录 / OpenAI API Key）的会话，会和 CC Switch 管理的所有第三方供应商会话，出现在同一个历史 / 续聊列表里**——不再被分隔在两个互相看不见的列表中。
+「统一 Codex 会话历史」是 FyAgent v3.16.x 为 Codex 新增的一个开关。它的位置在 **设置 → 通用 → 「Codex 应用增强」分组**里（"Codex 应用增强"是这个分组的标题，开关本身叫"统一 Codex 会话历史"）。开启后，**官方订阅（ChatGPT 登录 / OpenAI API Key）的会话，会和 FyAgent 管理的所有第三方供应商会话，出现在同一个历史 / 续聊列表里**——不再被分隔在两个互相看不见的列表中。
 
 ## 它解决什么问题
 
 Codex 自己按"供应商标签"（一个叫 `model_provider` 的字段）给会话分类，而且**续聊 / 历史列表只显示和你当前激活的供应商同标签的会话**。于是会话天然被分进两个"抽屉"：
 
 - 官方订阅的会话，归在 Codex 内建的 **`openai`** 标签下；
-- CC Switch 管理的所有第三方供应商，归在 **`custom`** 标签下。
+- FyAgent 管理的所有第三方供应商，归在 **`custom`** 标签下。
 
 两个抽屉互相看不见。如果你**经常在官方与第三方之间切换**，就会遇到这种割裂："刚才用官方聊的会话，切到第三方后在历史列表里找不到了"——它其实没丢，只是被分到了另一个抽屉。这种割裂既容易让人误以为会话丢失，也不方便把所有会话放在一处统一回顾、续聊。
 
@@ -47,9 +47,9 @@ Codex 自己按"供应商标签"（一个叫 `model_provider` 的字段）给会
 你每开一个 Codex 会话，Codex 会在会话文件头部记一个标签 `model_provider`，标记"这条会话是用哪个供应商聊的"。Codex 的**续聊 / 历史列表是按当前激活的这个标签精确过滤的**——只显示和"你现在这个供应商"同标签的会话。
 
 - 官方订阅（ChatGPT 登录 / OpenAI API Key）的会话，标签是内建的 **`openai`**。
-- CC Switch 管理的所有第三方供应商，统一用标签 **`custom`**。
+- FyAgent 管理的所有第三方供应商，统一用标签 **`custom`**。
 
-所以默认情况下，官方会话和第三方会话天生互相看不见——它们在两个不同的抽屉里。这是 **Codex 自身的设计**，不是 CC Switch 弄丢了什么。
+所以默认情况下，官方会话和第三方会话天生互相看不见——它们在两个不同的抽屉里。这是 **Codex 自身的设计**，不是 FyAgent 弄丢了什么。
 
 ```text
 默认状态（没开统一开关）：
@@ -77,10 +77,10 @@ Codex 自己按"供应商标签"（一个叫 `model_provider` 的字段）给会
 
 ### 备份：每次改标签前都先复制一份
 
-"合并抽屉"需要把一部分官方会话的标签从 `openai` 改成 `custom`（这一步叫**迁移**，且是**可选的、需要你主动勾选**）。而**任何一次改写之前，CC Switch 都会先把原文件原封不动地复制一份**到这里：
+"合并抽屉"需要把一部分官方会话的标签从 `openai` 改成 `custom`（这一步叫**迁移**，且是**可选的、需要你主动勾选**）。而**任何一次改写之前，FyAgent 都会先把原文件原封不动地复制一份**到这里：
 
 ```text
-~/.cc-switch/backups/codex-official-history-unify-v1/<时间戳>/
+~/.fyagent/backups/codex-official-history-unify-v1/<时间戳>/
 ```
 
 这份备份，就是日后"按备份精确还原"的唯一依据。它让整个过程变得**可逆**：你随时可以关掉开关，把当初迁进来的官方会话精确地翻回 `openai` 抽屉。
@@ -109,14 +109,14 @@ Codex 自己按"供应商标签"（一个叫 `model_provider` 的字段）给会
 
 ### 第 2 步：把开关从关拨到开 → 弹出确认窗
 
-一旦你把开关拨到开，CC Switch **不会立刻保存**，而是先弹出一个确认窗口。窗口文案如下（逐字）：
+一旦你把开关拨到开，FyAgent **不会立刻保存**，而是先弹出一个确认窗口。窗口文案如下（逐字）：
 
 - **标题**：统一 Codex 会话历史
 - **正文**：
 
   > 开启后，官方订阅与第三方将共用同一个会话历史列表。注意：跨供应商继续旧会话时，可能因对方后端无法解密 encrypted_content 推理内容而失败。
   >
-  > 可选择同时把现有官方会话历史迁入共享列表（迁移前自动备份到 ~/.cc-switch/backups，关闭开关时可选择恢复）。
+  > 可选择同时把现有官方会话历史迁入共享列表（迁移前自动备份到 ~/.fyagent/backups，关闭开关时可选择恢复）。
 
 - **复选框**：同时迁入现有官方会话历史
 - **确认按钮**：我已了解，继续开启
@@ -132,11 +132,11 @@ Codex 自己按"供应商标签"（一个叫 `model_provider` 的字段）给会
 > **如果你希望"以前的官方会话也出现在统一列表里"，必须主动勾选这个复选框。** 否则你会遇到下面对照表里的"场景 A"——老会话看起来"不见了"，其实只是留在原抽屉里。
 
 点"取消"或点窗口外面：开关直接弹回关闭状态，什么都没发生。
-点"我已了解，继续开启"：开关保存为开启，CC Switch 在后台落盘配置（如果勾了迁移，就执行迁移）。
+点"我已了解，继续开启"：开关保存为开启，FyAgent 在后台落盘配置（如果勾了迁移，就执行迁移）。
 
 ### 第 3 步（仅当勾了迁移）：迁移如何执行 + 数据安全
 
-如果你勾了"同时迁入现有官方会话历史"，CC Switch 会对你的官方老会话做这套流程：
+如果你勾了"同时迁入现有官方会话历史"，FyAgent 会对你的官方老会话做这套流程：
 
 ```text
 对每个官方（openai 标签）会话文件：
@@ -147,7 +147,7 @@ Codex 自己按"供应商标签"（一个叫 `model_provider` 的字段）给会
    ③ 索引数据库 state_5.sqlite 同步在一个事务里把标签改过来
 ```
 
-- **备份位置**：`~/.cc-switch/backups/codex-official-history-unify-v1/<时间戳>/`，每次迁移生成一个带时间戳的"代际目录"，内含 `jsonl/`（会话副本）、`state/`（索引库副本）、`meta.json`（记录这次迁移属于哪个 Codex 目录）。
+- **备份位置**：`~/.fyagent/backups/codex-official-history-unify-v1/<时间戳>/`，每次迁移生成一个带时间戳的"代际目录"，内含 `jsonl/`（会话副本）、`state/`（索引库副本）、`meta.json`（记录这次迁移属于哪个 Codex 目录）。
 - **改的是什么**：只有 `model_provider` 这一个字段值。你的对话内容、推理内容、所有正文**原样保留**。
 - **删的是什么**：**什么都没删**。备份是"复制"，改写是"原子替换同一个文件"，全程没有任何删除会话或索引的动作。文件在任何时刻都是完整的（要么是旧内容、要么是新内容，绝不会是空或半截）。
 
@@ -161,7 +161,7 @@ Codex 自己按"供应商标签"（一个叫 `model_provider` 的字段）给会
 
 ### 第 1 步：把开关从开拨到关 → 探测备份 → 弹出确认窗
 
-关闭时，CC Switch 会**先花一瞬间探测有没有迁移备份**，然后弹出确认窗口（所以关闭弹窗会有一点点延迟，属正常）。文案如下（逐字）：
+关闭时，FyAgent 会**先花一瞬间探测有没有迁移备份**，然后弹出确认窗口（所以关闭弹窗会有一点点延迟，属正常）。文案如下（逐字）：
 
 - **标题**：关闭统一会话历史
 - **正文**：
@@ -180,11 +180,11 @@ Codex 自己按"供应商标签"（一个叫 `model_provider` 的字段）给会
 
 ### 第 2 步：还原如何执行（按备份账本精确翻回）
 
-如果你保持勾选并点"关闭"，CC Switch 的还原流程是这样的：
+如果你保持勾选并点"关闭"，FyAgent 的还原流程是这样的：
 
 ```text
 ① 先把当前现场再复制一份到独立的还原备份目录
-   ~/.cc-switch/backups/codex-official-history-unify-restore-v1/<时间戳>/
+   ~/.fyagent/backups/codex-official-history-unify-restore-v1/<时间戳>/
    （还原本身也先备份，所以还原也不会丢数据）
 ② 翻遍所有迁移备份代际，找出"当初标签是 openai"的会话 id，组成一份"账本"
 ③ 只对【既在账本里、当前又仍是 custom】的会话，把标签改回 "openai"
@@ -206,7 +206,7 @@ Codex 自己按"供应商标签"（一个叫 `model_provider` 的字段）给会
 | **还原官方会话历史失败，请重试** | 还原过程报错，重试即可，数据未被破坏 |
 | **保存失败，请重试** | 关闭这一步保存本身就失败了；此时**绝不会触发还原**，开关弹回原位 |
 
-> **一个贴心的安全设计**：如果"关闭开关"这一步保存失败，CC Switch **绝不会去执行还原**。否则就会出现"开关还开着、会话却被翻回 openai 桶"的撕裂状态。保存失败时开关会**自动弹回原来的位置**，你不会停留在一个"看起来已关、实则没保存"的假状态里。
+> **一个贴心的安全设计**：如果"关闭开关"这一步保存失败，FyAgent **绝不会去执行还原**。否则就会出现"开关还开着、会话却被翻回 openai 桶"的撕裂状态。保存失败时开关会**自动弹回原来的位置**，你不会停留在一个"看起来已关、实则没保存"的假状态里。
 
 ---
 
@@ -237,7 +237,7 @@ Codex 自己按"供应商标签"（一个叫 `model_provider` 的字段）给会
 
 **现象**：统一之后列表里能看到一条用"另一家供应商"聊出来的旧会话，你切到现在的供应商点"继续"，结果报错或接不上。
 
-**真相**：会话文件完好无损，丢的不是数据，是"跨后端解密能力"。Codex 会话里保存了一段加密的推理内容 `encrypted_content`，**这段密文只有当初生成它的那个后端能解密**。你用 B 供应商去续 A 供应商生成的会话，B 解不开 A 的密文 → 续聊失败。这是**上游 Codex 的设计限制（by design）**，与 CC Switch 是否动过文件无关。会话里的文字内容你随时能读到。
+**真相**：会话文件完好无损，丢的不是数据，是"跨后端解密能力"。Codex 会话里保存了一段加密的推理内容 `encrypted_content`，**这段密文只有当初生成它的那个后端能解密**。你用 B 供应商去续 A 供应商生成的会话，B 解不开 A 的密文 → 续聊失败。这是**上游 Codex 的设计限制（by design）**，与 FyAgent 是否动过文件无关。会话里的文字内容你随时能读到。
 
 > 这是整篇攻略里**唯一一个"看起来真出了问题"的真实例外**——但请注意：它只是**无法续聊（生成不了新回合）**，**原始文件依然完整存在**，对话文字随时可读。
 
@@ -250,15 +250,15 @@ Codex 自己按"供应商标签"（一个叫 `model_provider` 的字段）给会
 
 **现象**：你开启并勾了迁移，但官方老会话既没进统一列表、关开关想还原也提示没东西可还原（或者关闭弹窗里压根没出现还原复选框，参见场景 E）。你怀疑迁移过程中把会话搞丢了。
 
-**真相**：迁移根本**没执行**，所以也不可能弄丢——你的会话一个字都没被改。CC Switch 在迁移前有一道安全闸门：它会检查 Codex 的 live 配置（`~/.codex/config.toml`）此刻是否**真的**路由到了共享 `custom` 抽屉，只有真路由过去了才迁移。以下两种情况会判定"还没统一"（内部原因码 `live_not_unified`），于是**主动跳过迁移、保留你的开关和迁移意愿、等条件满足后再迁**：
+**真相**：迁移根本**没执行**，所以也不可能弄丢——你的会话一个字都没被改。FyAgent 在迁移前有一道安全闸门：它会检查 Codex 的 live 配置（`~/.codex/config.toml`）此刻是否**真的**路由到了共享 `custom` 抽屉，只有真路由过去了才迁移。以下两种情况会判定"还没统一"（内部原因码 `live_not_unified`），于是**主动跳过迁移、保留你的开关和迁移意愿、等条件满足后再迁**：
 
-- **代理接管期间**：CC Switch 的代理接管了 live 配置，接管期的 live 不带统一路由标记。
-- **注入被拒**：你的 `config.toml` 已有手工指定的 `model_provider`，或已存在一张形态不同的 `[model_providers.custom]` 表（可能带第三方地址）。为避免把官方流量错误路由到第三方后端，CC Switch 宁可不注入、不迁移。
+- **代理接管期间**：FyAgent 的代理接管了 live 配置，接管期的 live 不带统一路由标记。
+- **注入被拒**：你的 `config.toml` 已有手工指定的 `model_provider`，或已存在一张形态不同的 `[model_providers.custom]` 表（可能带第三方地址）。为避免把官方流量错误路由到第三方后端，FyAgent 宁可不注入、不迁移。
 
 跳过迁移 = 不碰任何会话文件。**没迁，等于没动，谈不上丢。** 这是"安全延后"，不是"失败丢数据"。
 
 **怎么办**：
-- 退出代理接管 → **重启 CC Switch**：启动时会自动重试迁移（你的迁移意愿一直保留着）。
+- 退出代理接管 → **重启 FyAgent**：启动时会自动重试迁移（你的迁移意愿一直保留着）。
 - 检查 `~/.codex/config.toml`：若有你手工写的冲突路由，整理掉冲突后再开开关。
 - 实在不想折腾：直接关开关，官方会话仍以 `openai` 抽屉正常显示，毫发无损。
 
@@ -266,7 +266,7 @@ Codex 自己按"供应商标签"（一个叫 `model_provider` 的字段）给会
 
 **现象**：你开启统一期间，用官方又聊了几条新会话。后来关开关、勾了还原，还原完发现那几条新会话没回到官方抽屉。
 
-**真相**：这是**有意为之**的设计，新会话好端端在 `custom` 抽屉里，能看见、能续。还原的依据是"迁移时的备份账本"——**只有当初从 `openai` 抽屉迁进来的会话**，备份里有据可查，才会被精确翻回 `openai`。你**开启期间新建**的会话不在任何备份账本里；而且统一之后官方和第三方都用 `custom` 标签，**CC Switch 无法分辨这条新会话到底是官方聊的还是第三方聊的**。为了不把第三方会话误塞进官方历史，产品决策是：这些新会话一律留在 `custom`（第三方）历史里，绝不自动搬动。关闭弹窗的文案也明示了这一点——"开启期间产生的会话因无法区分来源，将留在第三方历史中"。
+**真相**：这是**有意为之**的设计，新会话好端端在 `custom` 抽屉里，能看见、能续。还原的依据是"迁移时的备份账本"——**只有当初从 `openai` 抽屉迁进来的会话**，备份里有据可查，才会被精确翻回 `openai`。你**开启期间新建**的会话不在任何备份账本里；而且统一之后官方和第三方都用 `custom` 标签，**FyAgent 无法分辨这条新会话到底是官方聊的还是第三方聊的**。为了不把第三方会话误塞进官方历史，产品决策是：这些新会话一律留在 `custom`（第三方）历史里，绝不自动搬动。关闭弹窗的文案也明示了这一点——"开启期间产生的会话因无法区分来源，将留在第三方历史中"。
 
 **怎么办**：
 - 切到任意一个第三方供应商（`custom` 抽屉），就能在历史列表里看到这些会话。
@@ -285,28 +285,28 @@ Codex 自己按"供应商标签"（一个叫 `model_provider` 的字段）给会
 
 这三种情况下，没有任何会话被删除。
 
-**怎么办**：用文末命令统计 `~/.codex/sessions/` 里的会话文件总数，确认文件都在；再看 `~/.cc-switch/backups/` 里有没有 `codex-official-history-unify-v1` 目录——如果连这个目录都没有，说明你从没触发过迁移，会话一直在原抽屉。
+**怎么办**：用文末命令统计 `~/.codex/sessions/` 里的会话文件总数，确认文件都在；再看 `~/.fyagent/backups/` 里有没有 `codex-official-history-unify-v1` 目录——如果连这个目录都没有，说明你从没触发过迁移，会话一直在原抽屉。
 
 ### 场景 F：还原被拒，提示"统一会话历史开关已重新开启，已跳过还原"
 
 **现象**：关开关 → 勾还原 → 你手很快，紧接着又把开关重新打开了，然后看到提示"统一会话历史开关已重新开启，已跳过还原"。
 
-**真相**：这是一道防护，防止把数据弄成"撕裂"状态，会话同样没丢。还原的动作是"把会话标签从 `custom` 翻回 `openai`"，但如果此刻开关又开着，live 配置正路由到 `custom`——一边把历史翻回 `openai`、一边新会话往 `custom` 落，会话会被人为撕成两半。所以 CC Switch 检测到"开关又开了"，**主动放弃这次还原、什么都不改**。会话维持现状，没有任何删除或破坏。
+**真相**：这是一道防护，防止把数据弄成"撕裂"状态，会话同样没丢。还原的动作是"把会话标签从 `custom` 翻回 `openai`"，但如果此刻开关又开着，live 配置正路由到 `custom`——一边把历史翻回 `openai`、一边新会话往 `custom` 落，会话会被人为撕成两半。所以 FyAgent 检测到"开关又开了"，**主动放弃这次还原、什么都不改**。会话维持现状，没有任何删除或破坏。
 
 **怎么办**：想真正还原，就**先把开关稳定地关掉**（别再立刻打开），再执行关闭 + 勾还原；想保持统一，就别还原，让会话留在 `custom` 共享抽屉正常使用。
 
-**总原则：CC Switch 的统一 / 迁移 / 还原全程只改会话的一个标签字段，并且每次改写前都自动备份。它不会删你的对话。看不见 ≠ 丢了——换个抽屉看，或用下面的命令亲眼确认。**
+**总原则：FyAgent 的统一 / 迁移 / 还原全程只改会话的一个标签字段，并且每次改写前都自动备份。它不会删你的对话。看不见 ≠ 丢了——换个抽屉看，或用下面的命令亲眼确认。**
 
 ---
 
 ## 亲手验证：你的会话文件还在硬盘上（最重要的一节）
 
-文字再多，不如亲眼看见。下面给出**真实路径**（取自 CC Switch 源码）和在不同系统下查看会话文件、备份目录的方法。**全程只读不改，强烈建议你亲手试一遍。**
+文字再多，不如亲眼看见。下面给出**真实路径**（取自 FyAgent 源码）和在不同系统下查看会话文件、备份目录的方法。**全程只读不改，强烈建议你亲手试一遍。**
 
 ### 最简单的方式：用文件管理器直接打开（完全不用命令行）
 
-- **macOS（Finder）**：按 `Cmd + Shift + G`，粘贴 `~/.codex/sessions` 回车，就能看到一堆 `.jsonl` 会话文件和它们的修改时间；备份目录粘贴 `~/.cc-switch/backups`。
-- **Windows（文件资源管理器）**：在地址栏粘贴 `%USERPROFILE%\.codex\sessions` 回车，就能看到会话文件夹和里面的 `.jsonl`；备份目录粘贴 `%USERPROFILE%\.cc-switch\backups`。
+- **macOS（Finder）**：按 `Cmd + Shift + G`，粘贴 `~/.codex/sessions` 回车，就能看到一堆 `.jsonl` 会话文件和它们的修改时间；备份目录粘贴 `~/.fyagent/backups`。
+- **Windows（文件资源管理器）**：在地址栏粘贴 `%USERPROFILE%\.codex\sessions` 回车，就能看到会话文件夹和里面的 `.jsonl`；备份目录粘贴 `%USERPROFILE%\.fyagent\backups`。
 
 **只要你能在这里看到一批 `.jsonl` 文件，就证明会话数据完好无损地在硬盘上。** 文件数量、修改时间，比任何文字都直观。
 
@@ -317,10 +317,10 @@ Codex 自己按"供应商标签"（一个叫 `model_provider` 的字段）给会
 | **会话正文（核心）** | `~/.codex/sessions/`（含按日期分的子目录，递归） | 每个会话一个 `.jsonl` 文本文件，**这就是你的对话内容** |
 | **归档会话** | `~/.codex/archived_sessions/` | 同为 `.jsonl` |
 | **会话索引数据库** | `~/.codex/state_5.sqlite` | `threads` 表的 `model_provider` 列就是"抽屉标签"，**它才是续聊列表真正读取的归类来源** |
-| **迁移备份**（开启迁移时自动产生） | `~/.cc-switch/backups/codex-official-history-unify-v1/<时间戳>/` | 内含 `jsonl/`、`state/`、`meta.json` |
-| **还原备份**（点还原时自动产生） | `~/.cc-switch/backups/codex-official-history-unify-restore-v1/<时间戳>/` | 还原前的安全副本 |
+| **迁移备份**（开启迁移时自动产生） | `~/.fyagent/backups/codex-official-history-unify-v1/<时间戳>/` | 内含 `jsonl/`、`state/`、`meta.json` |
+| **还原备份**（点还原时自动产生） | `~/.fyagent/backups/codex-official-history-unify-restore-v1/<时间戳>/` | 还原前的安全副本 |
 
-> **注意**：如果你在 CC Switch 里改过 Codex 目录，或在 `config.toml` 里设了 `sqlite_home`，请把上面的 `~/.codex` 换成你的实际目录。下文 `~` = 你的用户主目录。
+> **注意**：如果你在 FyAgent 里改过 Codex 目录，或在 `config.toml` 里设了 `sqlite_home`，请把上面的 `~/.codex` 换成你的实际目录。下文 `~` = 你的用户主目录。
 
 ### macOS / Linux 命令
 
@@ -370,16 +370,16 @@ python3 -m json.tool < "<文件名>.jsonl" 2>/dev/null | head -50
 open -e "<文件名>.jsonl"      # macOS
 ```
 
-**5. 看 CC Switch 的备份目录（证明迁移 / 还原前都留了副本）**
+**5. 看 FyAgent 的备份目录（证明迁移 / 还原前都留了副本）**
 
 ```bash
-ls -la ~/.cc-switch/backups/codex-official-history-unify-v1/ 2>/dev/null
-ls -la ~/.cc-switch/backups/codex-official-history-unify-restore-v1/ 2>/dev/null
+ls -la ~/.fyagent/backups/codex-official-history-unify-v1/ 2>/dev/null
+ls -la ~/.fyagent/backups/codex-official-history-unify-restore-v1/ 2>/dev/null
 ```
 
 ### Windows 命令（PowerShell）
 
-会话目录通常在 `C:\Users\<你的用户名>\.codex\`，备份在 `C:\Users\<你的用户名>\.cc-switch\backups\`。
+会话目录通常在 `C:\Users\<你的用户名>\.codex\`，备份在 `C:\Users\<你的用户名>\.fyagent\backups\`。
 
 ```powershell
 # 1. 会话文件总数（"没丢"的硬证据）
@@ -396,8 +396,8 @@ Get-ChildItem "$env:USERPROFILE\.codex\sessions" -Recurse -Filter *.jsonl |
   Select-String -Pattern 'model_provider"\s*:\s*"custom"' -List).Count
 
 # 4. 看备份目录
-Get-ChildItem "$env:USERPROFILE\.cc-switch\backups\codex-official-history-unify-v1" -ErrorAction SilentlyContinue
-Get-ChildItem "$env:USERPROFILE\.cc-switch\backups\codex-official-history-unify-restore-v1" -ErrorAction SilentlyContinue
+Get-ChildItem "$env:USERPROFILE\.fyagent\backups\codex-official-history-unify-v1" -ErrorAction SilentlyContinue
+Get-ChildItem "$env:USERPROFILE\.fyagent\backups\codex-official-history-unify-restore-v1" -ErrorAction SilentlyContinue
 ```
 
 > 同样提醒：第 3 步的 grep 数会**少于**文件总数属正常（旧会话不写该字段），请以第 1 步的**文件总数**作为"会话没丢"的判断依据。
@@ -408,11 +408,11 @@ Get-ChildItem "$env:USERPROFILE\.cc-switch\backups\codex-official-history-unify-
 
 ### 1. 分桶机制（抽屉的本质）
 
-Codex 的续聊 / 历史列表按当前激活的 `model_provider` id **精确字符串过滤**。会话文件 `.jsonl` 的**第一行**是一条 `type:"session_meta"` 记录，其 `payload.model_provider` 即该会话所属抽屉（`grep -rl` 只要文件里出现一次该标签就计入该文件，因此无需逐行解析；旧版本未写该字段的会话则数不到）。真正驱动续聊列表的是索引库 `state_5.sqlite` 的 `threads.model_provider` 列。官方订阅在 `config.toml` 没有显式 `model_provider` 时落进内建默认 id `openai`；CC Switch 的所有第三方供应商统一用 `custom`。
+Codex 的续聊 / 历史列表按当前激活的 `model_provider` id **精确字符串过滤**。会话文件 `.jsonl` 的**第一行**是一条 `type:"session_meta"` 记录，其 `payload.model_provider` 即该会话所属抽屉（`grep -rl` 只要文件里出现一次该标签就计入该文件，因此无需逐行解析；旧版本未写该字段的会话则数不到）。真正驱动续聊列表的是索引库 `state_5.sqlite` 的 `threads.model_provider` 列。官方订阅在 `config.toml` 没有显式 `model_provider` 时落进内建默认 id `openai`；FyAgent 的所有第三方供应商统一用 `custom`。
 
 ### 2. 开关做的事（注入，只活在 live）
 
-开启后，CC Switch 对官方 live `config.toml` 注入如下内容：
+开启后，FyAgent 对官方 live `config.toml` 注入如下内容：
 
 ```toml
 model_provider = "custom"
@@ -426,7 +426,7 @@ wire_api = "responses"
 
 每个字段都有作用：`requires_openai_auth = true` 让认证继续走 `auth.json` 里的 ChatGPT 登录、base_url 缺省回落官方 Codex 后端；`name = "OpenAI"` 让 Codex 的官方特性门控（web search、远程压缩等）继续命中；`supports_websockets = true` 补回 custom 条目默认丢失的能力；`wire_api = "responses"` 用官方 responses 协议。**净效果是：认证没变，只是桶名变了。**
 
-**关键不变量：这段注入只能存在于 live `config.toml`，绝不写进数据库的存储配置。** 切换离开官方供应商、把 live 回写数据库时，CC Switch 会把这段注入精确剥离（只在形态与注入产物完全一致时才剥，第三方自定义的 `custom` 表原样保留）。正因如此，"关掉开关 + 切换一次"就能彻底还原 live，数据库里始终是你原本干净的官方配置——这是整个开关可逆性的基石。
+**关键不变量：这段注入只能存在于 live `config.toml`，绝不写进数据库的存储配置。** 切换离开官方供应商、把 live 回写数据库时，FyAgent 会把这段注入精确剥离（只在形态与注入产物完全一致时才剥，第三方自定义的 `custom` 表原样保留）。正因如此，"关掉开关 + 切换一次"就能彻底还原 live，数据库里始终是你原本干净的官方配置——这是整个开关可逆性的基石。
 
 ### 3. 注入的两道拒绝闸（对应场景 C）
 
@@ -458,10 +458,10 @@ wire_api = "responses"
 
 ## 参考链接
 
-- [使用第三方 API 时保留 Codex 远程操作和官方插件：CC Switch 配置攻略](./codex-official-auth-preservation-guide-zh.md)
-- [在 Codex 中使用 DeepSeek 这类 Chat 格式 API：CC Switch 路由攻略](./codex-deepseek-routing-guide-zh.md)
-- CC Switch 用户手册中「Codex 应用增强」相关章节
+- [使用第三方 API 时保留 Codex 远程操作和官方插件：FyAgent 配置攻略](./codex-official-auth-preservation-guide-zh.md)
+- [在 Codex 中使用 DeepSeek 这类 Chat 格式 API：FyAgent 路由攻略](./codex-deepseek-routing-guide-zh.md)
+- FyAgent 用户手册中「Codex 应用增强」相关章节
 
 ---
 
-**给你的最后一句话**：你看到的"会话不见了 / 续聊失败"，本质是**会话被换到了另一个历史列表（抽屉）里、或对方后端无法解密旧推理内容**，文件始终原封不动地躺在 `~/.codex/sessions/`（及 `state_5.sqlite`）里。关闭开关时勾选"按备份还原"即可把当初迁入的官方会话精确翻回官方列表；即便不还原，原始 `.jsonl` 文件和 `~/.cc-switch/backups/codex-official-history-unify-*/` 下的备份副本也都在——**数据绝不会真正丢失。**
+**给你的最后一句话**：你看到的"会话不见了 / 续聊失败"，本质是**会话被换到了另一个历史列表（抽屉）里、或对方后端无法解密旧推理内容**，文件始终原封不动地躺在 `~/.codex/sessions/`（及 `state_5.sqlite`）里。关闭开关时勾选"按备份还原"即可把当初迁入的官方会话精确翻回官方列表；即便不还原，原始 `.jsonl` 文件和 `~/.fyagent/backups/codex-official-history-unify-*/` 下的备份副本也都在——**数据绝不会真正丢失。**

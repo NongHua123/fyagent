@@ -1229,7 +1229,7 @@ mod tests {
         assert_eq!(messages[1]["role"], "user");
         assert_eq!(
             messages[1]["content"][0]["text"],
-            "[cc-switch: media output of tool call call_image]"
+            "[fyagent: media output of tool call call_image]"
         );
         assert_eq!(messages[1]["content"][1]["type"], "image_url");
         assert!(messages[1]["content"][1].get("cache_control").is_none());

@@ -1,0 +1,4 @@
+07b67bd93e55eebd68541efe49d450f256252ed9c915759704cda9727b90d952  release-manifest.json
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  OpenAI.Codex_1.2.3.4_x64__fixture.Msix
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb *OpenAI.Codex_1.2.3.4_arm64__fixture.Msix
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc *Codex-mac-arm64.dmg

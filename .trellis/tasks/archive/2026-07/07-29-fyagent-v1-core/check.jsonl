@@ -1,0 +1,4 @@
+{"file":"docs/fyagent/dev/v1/13-AUTOMATED-TEST-PLAN.md","reason":"Core、source、downloader、service 的自动化覆盖要求"}
+{"file":"docs/fyagent/dev/v1/05-DOMAIN-MODEL-STATE-MACHINE-IPC.md","reason":"核对 Job、事件、取消和 IPC 不变量"}
+{"file":"docs/fyagent/dev/v1/07-WINDOWS-IMPLEMENTATION.md","reason":"复核 all-users job control 的 no-follow、final-handle、fixed-drive 和限长读取 TOCTOU 回归"}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"复核 restart claim 与普通 IPC 七命令封闭面，防止 active job cleanup 竞态和 all-users 输入面漂移"}

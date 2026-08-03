@@ -4,7 +4,7 @@
 //! extension shape — `{"type":"namespace","name":"mcp__x__","tools":[…]}` plus
 //! `tool_search` — that the OpenAI ChatGPT backend understands but strict
 //! third-party gateways (e.g. xAI's `api.x.ai/v1/responses`) reject with
-//! `422 unknown variant "namespace"`. cc-switch's Chat/Anthropic transforms
+//! `422 unknown variant "namespace"`. fyagent's Chat/Anthropic transforms
 //! already unwrap these, but the *native* Responses passthrough sends them
 //! verbatim.
 //!

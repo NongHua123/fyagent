@@ -1,8 +1,8 @@
 # FyAgent V1 — Agent 开发起点
 
-> 文档状态：V1 开发基线已冻结  
-> 目标读者：负责自动化开发、代码集成和验证的 Codex Agent  
-> 源码基线：CC Switch `3.18.0` 上传快照；实际开发前以私有仓库当前 `main` 的 commit SHA 为准并记录  
+> 文档状态：V1 开发基线已冻结
+> 目标读者：负责实现、代码集成和验证的仓库维护者与贡献者
+> 源码基线：CC Switch `3.18.0` 历史快照；实际开发前以当前仓库 checkout 的 commit SHA 为准并记录
 > 产品名称：FyAgent
 
 ## 1. 先读什么
@@ -54,7 +54,7 @@ https://codexapp.agentsmirror.com/latest/mac-arm64
 
 普通用户路径不得把 OpenAI 官网、GitHub Releases、Microsoft Store 网页、npm、crates.io 或其他境外站点作为完成安装所必需的运行时依赖。镜像不可用时，保留本地已安装应用的启动能力，并提供重试与使用 FyAgent 现有全局代理的提示；不得静默跳转到境外下载页。
 
-**开发阶段不受该约束。** Codex Agent 可以正常使用 GitHub、官方文档、npm、crates.io 和其他开发资源，也可以安装缺失环境。不得把开发机国内镜像配置强制写入仓库。
+**开发阶段不受该约束。** 开发贡献者可以正常使用 GitHub、官方文档、npm、crates.io 和其他开发资源，也可以安装缺失环境。不得把开发机国内镜像配置强制写入仓库。
 
 ### 3.3 V1 普通 UI 只执行当前用户安装
 
@@ -86,7 +86,7 @@ Agent 和 CI 不得：
 
 ## 4. 开发前基线记录
 
-在私有仓库中执行：
+在当前仓库 checkout 中执行：
 
 ```bash
 git switch main
@@ -203,8 +203,9 @@ src/main.tsx
 - Windows/macOS 平台代码通过 `cfg` 隔离，Linux CI 可编译；
 - Codex CLI 安装、升级、修复入口和后端执行能力已移除；
 - FyAgent 上游自动更新已禁用；
-- UI 可见 CC Switch 品牌与链接已移除，但许可证保留；
-- 自动化测试和现有 CI 全部通过；
+- 当前产品、运行时、构建、安装、落盘与协议身份已切换为 FyAgent clean break，
+  不迁移或兼容读取旧身份；真实仓库、历史/法律/上游与合作方契约值保留；
+- 本地仅完成非编译静态审计；编译、测试与打包结果以 Draft PR CI 为准；
 - 未进行或声称进行真实安装 E2E；
 - 人工验收文档已准备，结果由人工填写。
 

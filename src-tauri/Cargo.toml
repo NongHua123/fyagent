@@ -1,18 +1,21 @@
 [package]
-name = "cc-switch"
+name = "fyagent"
 version = "3.18.0"
 description = "All-in-One Assistant for Claude Code, Codex & Gemini CLI"
 authors = ["Jason Young"]
 license = "MIT"
-repository = "https://github.com/farion1231/cc-switch"
 edition = "2021"
 rust-version = "1.85.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-name = "cc_switch_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+name = "fyagent_lib"
+# V1 targets desktop only. Tauri's WiX bundler packages every release DLL as a
+# resource with a file KeyPath, which violates ICE38 for this per-user MSI.
+# Keep the Rust/static library outputs used by the desktop host and tests; add
+# `cdylib` back only together with an explicitly supported mobile build path.
+crate-type = ["staticlib", "rlib"]
 doctest = false
 
 [features]
@@ -31,7 +34,6 @@ tauri = { version = "2.8.2", features = ["tray-icon", "protocol-asset", "image-p
 tauri-plugin-log = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
-tauri-plugin-updater = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-store = "2"
 tauri-plugin-deep-link = "2"
@@ -92,6 +94,27 @@ webkit2gtk = { version = "2.0.1", features = ["v2_16"] }
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.52"
 windows-sys = { version = "0.61", features = ["Win32_Globalization", "Win32_UI_Shell"] }
+quick-xml = "0.38"
+windows = { version = "0.61", features = [
+  "ApplicationModel",
+  "ApplicationModel_Core",
+  "Foundation",
+  "Foundation_Collections",
+  "Management_Deployment",
+  "System",
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Com",
+  "Win32_System_Registry",
+  "Win32_System_SystemInformation",
+  "Win32_System_WindowsProgramming",
+  "Win32_System_WinRT",
+  "Win32_UI_Shell",
+] }
+windows-future = "0.2"
+windows-version = "0.1"
 
 [target.'cfg(all(target_os = "windows", target_arch = "aarch64"))'.dependencies]
 rquickjs = { version = "0.8", features = ["bindgen"] }

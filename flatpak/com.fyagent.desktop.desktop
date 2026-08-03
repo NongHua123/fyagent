@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=FyAgent
+Comment=FyAgent - All-in-One Assistant for Claude Code, Codex & Gemini CLI
+Exec=fyagent
+Icon=com.fyagent.desktop
+Terminal=false
+Categories=Utility;Development;
+StartupNotify=true

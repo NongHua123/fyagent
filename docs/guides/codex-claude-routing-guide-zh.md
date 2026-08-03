@@ -1,6 +1,6 @@
-# 通过 CC Switch 在 Codex 中使用 Claude 模型
+# 通过 FyAgent 在 Codex 中使用 Claude 模型
 
-> 适用版本：CC Switch 3.17.0 及以上（「Anthropic Messages 上游」自 3.17.0 引入）。本文根据仓库内文档与代码整理，以 Claude 系中转网关为例演示。截图来自当前前端界面，使用去敏示例数据生成，避免泄露真实 API Key。
+> 适用版本：FyAgent 3.17.0 及以上（「Anthropic Messages 上游」自 3.17.0 引入）。本文根据仓库内文档与代码整理，以 Claude 系中转网关为例演示。截图来自当前前端界面，使用去敏示例数据生成，避免泄露真实 API Key。
 
 ## 为什么需要本地路由
 
@@ -8,7 +8,7 @@
 
 这个功能面向的就是「手里只有 `/v1/messages` 端点」的场景：你有某个 Claude 系中转网关的 Key，想用 Codex 的交互习惯跑 Claude 系列模型；或者公司出于合规策略禁用了 Claude Code 客户端、只保留了经批准的 Claude 系网关——模型本身可用，缺的只是一个被允许的客户端，现在 Codex 可以补上这个位置。
 
-CC Switch 的做法是让 Codex 始终连本机路由，仍以 Responses API 发送请求；路由识别当前供应商是 Anthropic 格式后，把请求转换成 Anthropic Messages 发给上游，再把响应转换回 Responses 形态返回给 Codex。
+FyAgent 的做法是让 Codex 始终连本机路由，仍以 Responses API 发送请求；路由识别当前供应商是 Anthropic 格式后，把请求转换成 Anthropic Messages 发给上游，再把响应转换回 Responses 形态返回给 Codex。
 
 ![Codex 供应商列表里的需要路由标记](../images/codex-claude-routing/01-codex-providers-require-routing.png)
 
@@ -23,7 +23,7 @@ CC Switch 的做法是让 Codex 始终连本机路由，仍以 Responses API 发
 
 你需要先准备好三样东西：
 
-- 已安装并能启动的 CC Switch（3.17.0 及以上）。
+- 已安装并能启动的 FyAgent（3.17.0 及以上）。
 - 已安装 Codex CLI，并至少运行过一次，让 `~/.codex/` 目录结构存在。
 - 一个能访问 Anthropic Messages 协议端点（`/v1/messages`）的 API Key——来自某个 Claude 系中转网关，或企业内部的 Claude 网关；端点地址和认证方式以网关文档为准。注意：部分供应商会限制其 Claude API 只能在 Claude Code 中使用，这类 Key 走 Codex 可能会报错，拿不准就先咨询供应商。
 
@@ -31,10 +31,10 @@ Codex 页签目前没有 Anthropic 内置预设，下面走「自定义配置」
 
 ## 第一步：添加 Codex 供应商
 
-打开 CC Switch，切到顶部的 `Codex` 标签，点击右上角的加号添加供应商，保持默认的 `自定义配置`，然后填写：
+打开 FyAgent，切到顶部的 `Codex` 标签，点击右上角的加号添加供应商，保持默认的 `自定义配置`，然后填写：
 
 - **供应商名称**：随意，例如 `Claude Gateway`。
-- **API Key**：你的网关 Key。真实 Key 只保存在 CC Switch 里，由本地路由转发时注入，不会进入 Codex 的 live 配置。
+- **API Key**：你的网关 Key。真实 Key 只保存在 FyAgent 里，由本地路由转发时注入，不会进入 Codex 的 live 配置。
 - **API 请求地址**：填网关服务根地址即可，例如 `https://claude-gateway.example.com`。带不带 `/v1` 都能被正确处理，路由会自动把请求打到 `/v1/messages`；不要自己拼 `/v1/messages`（如果网关文档给的就是完整 messages URL，打开旁边的 `完整 URL` 开关原样粘贴也可以）。地址栏下方那句「兼容 OpenAI Response 格式」的黄色提示是为 Responses 直连场景写的通用文案，选 Anthropic 格式时按本文填写即可。
 - **默认模型**：填网关认识的 Claude 模型 id，例如 `claude-sonnet-5`，以网关文档给出的模型名为准。
 
@@ -52,7 +52,7 @@ Codex 页签目前没有 Anthropic 内置预设，下面走「自定义配置」
 - **模拟 Claude Code 客户端**：默认关闭。仅当网关或其上游限制「只能通过 Claude Code 使用」时才打开，开启后会伪装 User-Agent、`anthropic-beta`、`x-app` 请求头，并在系统提示首行注入 Claude Code 身份。普通网关不需要开；开启后仍被拒的处理见「常见问题」。
 - **最大输出 tokens**：Anthropic 协议的 `max_tokens` 是必填项，而 Codex 请求未携带输出上限时，路由按保守的 8192 兜底，长回答或深度思考可能被截断（表现为回复不完整、`stop_reason=max_tokens`）。遇到截断就在这里按模型真实上限调高，但不要超过——超了上游会直接 400。
 
-同区的 `模型映射` 是可选项：把 `claude-opus-4-8`、`claude-sonnet-5`、`claude-haiku-4-5-20251001` 这类模型 id（以你上游认识的名字为准）逐行加进去，CC Switch 会生成模型目录让 Codex 的 `/model` 菜单能列出它们；不填也能用，Codex 会直接请求默认模型。
+同区的 `模型映射` 是可选项：把 `claude-opus-4-8`、`claude-sonnet-5`、`claude-haiku-4-5-20251001` 这类模型 id（以你上游认识的名字为准）逐行加进去，FyAgent 会生成模型目录让 Codex 的 `/model` 菜单能列出它们；不填也能用，Codex 会直接请求默认模型。
 
 保存供应商后，卡片上会出现 `需要路由` 标记——这类供应商必须在本地路由运行时才能正常工作。
 
@@ -65,11 +65,11 @@ Codex 页签目前没有 Anthropic 内置预设，下面走「自定义配置」
 
 ![本地路由页面中启用 Codex 接管](../images/codex-claude-routing/04-local-route-codex-takeover.png)
 
-接管后，CC Switch 会把 Codex 的 live 配置指向本机路由（`base_url = http://127.0.0.1:15721/v1`），`auth.json` 里只有占位符。真实 Claude Key 仍保存在 CC Switch 的供应商配置里，由本地路由在转发时按你选的认证字段注入。
+接管后，FyAgent 会把 Codex 的 live 配置指向本机路由（`base_url = http://127.0.0.1:15721/v1`），`auth.json` 里只有占位符。真实 Claude Key 仍保存在 FyAgent 的供应商配置里，由本地路由在转发时按你选的认证字段注入。
 
 ## 第三步：切换供应商并重启 Codex
 
-回到 Codex 供应商列表，点击 Claude 供应商的 `启用`。如果路由没有在运行，CC Switch 会提示「此供应商使用 Anthropic Messages 接口格式，需要路由服务才能正常使用，请先启动路由」——回到第二步打开即可。
+回到 Codex 供应商列表，点击 Claude 供应商的 `启用`。如果路由没有在运行，FyAgent 会提示「此供应商使用 Anthropic Messages 接口格式，需要路由服务才能正常使用，请先启动路由」——回到第二步打开即可。
 
 切换后建议重启当前 Codex 终端会话：`config.toml` 和模型目录是 Codex 进程启动时读取的，运行中的进程不保证热加载。
 
@@ -123,7 +123,7 @@ Codex 页签目前没有 Anthropic 内置预设，下面走「自定义配置」
 
 ## 参考链接
 
-- [CC Switch 用户手册：代理服务](../user-manual/zh/4-proxy/4.1-service.md)
-- [CC Switch 用户手册：应用路由](../user-manual/zh/4-proxy/4.2-routing.md)
-- [CC Switch v3.17.0 发布说明](../release-notes/v3.17.0-zh.md)
+- [FyAgent 用户手册：代理服务](../user-manual/zh/4-proxy/4.1-service.md)
+- [FyAgent 用户手册：应用路由](../user-manual/zh/4-proxy/4.2-routing.md)
+- [FyAgent v3.17.0 发布说明](../release-notes/v3.17.0-zh.md)
 - 功能来自社区贡献 [#5071](https://github.com/farion1231/cc-switch/pull/5071)，感谢 @yeeyzy

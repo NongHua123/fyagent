@@ -44,9 +44,10 @@ note: interview identifiers D61-D65 were reused; canonical ADRs remove ambiguity
 
 不按公开签名/公证标准阻断。
 
-### ADR-009：可见品牌 FyAgent，内部身份暂保留（Accepted）
+### ADR-009：可见品牌 FyAgent，内部身份暂保留（Superseded by ADR-031）
 
-改 product/窗口/链接，保留 identifier、数据目录、deep link、内部包名和图标。
+原决策是改 product/窗口/链接，保留 identifier、数据目录、deep link、内部包名和图标。
+该边界已被 2026-07-30 用户确认的 clean-break 决策取代。
 
 ### ADR-010：禁用 FyAgent 自更新（Accepted）
 
@@ -122,7 +123,7 @@ hdiutil、codesign、spctl、ditto、open；无管理员 Helper。
 
 ### ADR-028：Codex worktree并行（Accepted）
 
-Core先冻结契约，Windows/macOS/UI并行，集成 Agent cherry-pick。
+Core 先冻结契约，Windows/macOS/UI 并行，集成负责人 cherry-pick。
 
 ### ADR-029：文档多 Markdown，无独立任务卡（Accepted）
 
@@ -131,6 +132,14 @@ Core先冻结契约，Windows/macOS/UI并行，集成 Agent cherry-pick。
 ### ADR-030：结构遵循 CC Switch而非机械预设（Accepted）
 
 Commands/Services/Domain/Platform、API/Query/Hook/Component 分层，允许按实际代码量合理合并。
+
+### ADR-031：FyAgent 底层身份 clean break（Accepted）
+
+当前产品、运行时、构建、安装、落盘和协议身份只使用 FyAgent/fyagent：
+`com.fyagent.desktop`、`fyagent://`、`~/.fyagent`、`fyagent.db`、`fyagent`、
+`fyagent_lib` 以及 FyAgent 自有的序列化/网络标记。不迁移、不回退读取、不注册别名，
+也不清理旧自启动值。真实仓库 `NongHua123/cc-switch`、历史证据、LICENSE/版权、
+必要上游引用和合作方 referral/优惠码按事实保留。
 
 ## 3. Legacy D01–D60 映射
 
@@ -159,8 +168,8 @@ Commands/Services/Domain/Platform、API/Query/Hook/Component 分层，允许按�
 | D21 | 最小侵入 |
 | D22 | 多文档，不拆大量任务卡 |
 | D23 | 删除 CLI生命周期写操作，保留核心能力 |
-| D24 | V1不要求与 CC Switch共存，身份迁移以后 |
-| D25 | 移除可见 CC Switch品牌 |
+| D24 | 已由 ADR-031 取代：FyAgent 底层身份 clean break，不迁移/兼容旧身份 |
+| D25 | 移除当前生产旧品牌，保留真实仓库、历史/法律/上游和合作方事实例外 |
 | D26 | Codex页顶部卡片 |
 | D27 | 进入页面检查 |
 | D28 | 安装/更新/启动状态映射 |
@@ -176,7 +185,7 @@ Commands/Services/Domain/Platform、API/Query/Hook/Component 分层，允许按�
 | D38 | Agent不做真实 E2E，人工验收 |
 | D39 | main基线、feature/fyagent-v1 |
 | D40 | Core/Win/Mac/UI worktrees，cherry-pick |
-| D41 | 表层品牌，保留图标/内部身份 |
+| D41 | 已由 ADR-031 取代：更换 FyAgent 图标并重命名内部身份 |
 | D42 | Stable only |
 | D43 | manifest + checksums + endpoint |
 | D44 | 5次 HTTPS重定向 |

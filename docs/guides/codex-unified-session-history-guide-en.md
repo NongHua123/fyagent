@@ -1,17 +1,17 @@
-# Unified Codex Session History: Feature Overview and Usage Guide (CC Switch)
+# Unified Codex Session History: Feature Overview and Usage Guide (FyAgent)
 
-> Applies to CC Switch v3.16.x and later. This guide is based on the current code; every command and path can be verified by hand. Examples use de-identified data and contain no real session content or API keys.
+> Applies to FyAgent v3.16.x and later. This guide is based on the current code; every command and path can be verified by hand. Examples use de-identified data and contain no real session content or API keys.
 
 ## What this feature is
 
-"Unified Codex session history" is a switch that CC Switch v3.16.x adds for Codex. You'll find it under **Settings -> General -> the "Codex App Enhancements" group** ("Codex App Enhancements" is the group title; the switch itself is called "Unified Codex session history"). Once enabled, **sessions from your official subscription (ChatGPT login / OpenAI API key) appear in the same history / resume list as sessions from every third-party provider CC Switch manages**—they are no longer split into two lists that can't see each other.
+"Unified Codex session history" is a switch that FyAgent v3.16.x adds for Codex. You'll find it under **Settings -> General -> the "Codex App Enhancements" group** ("Codex App Enhancements" is the group title; the switch itself is called "Unified Codex session history"). Once enabled, **sessions from your official subscription (ChatGPT login / OpenAI API key) appear in the same history / resume list as sessions from every third-party provider FyAgent manages**—they are no longer split into two lists that can't see each other.
 
 ## What problem it solves
 
 Codex classifies sessions by a "provider tag" (a field called `model_provider`), and **the resume / history list only shows sessions whose tag matches your currently active provider**. As a result, sessions are naturally sorted into two separate "drawers":
 
 - Sessions from your official subscription go under Codex's built-in **`openai`** tag;
-- Every third-party provider CC Switch manages goes under the **`custom`** tag.
+- Every third-party provider FyAgent manages goes under the **`custom`** tag.
 
 The two drawers can't see each other. If you **switch frequently between official and third-party**, you'll hit this kind of fragmentation: "the session I was just chatting in with the official account disappeared from the history list after I switched to a third-party provider"—it isn't actually gone, it's just been sorted into the other drawer. This split both makes it easy to believe a session was lost, and makes it inconvenient to review and resume all your sessions in one place.
 
@@ -47,9 +47,9 @@ To understand this feature, you only need to remember two things: **drawers** an
 Every time you start a Codex session, Codex records a tag `model_provider` in the session file header, marking "which provider this session was chatted with." Codex's **resume / history list is filtered precisely by the currently active tag**—it only shows sessions whose tag matches "the provider you're on right now."
 
 - Sessions from your official subscription (ChatGPT login / OpenAI API key) carry the built-in tag **`openai`**.
-- Every third-party provider CC Switch manages uses the tag **`custom`**.
+- Every third-party provider FyAgent manages uses the tag **`custom`**.
 
-So by default, official sessions and third-party sessions are inherently invisible to each other—they live in two different drawers. This is **Codex's own design**, not CC Switch losing anything.
+So by default, official sessions and third-party sessions are inherently invisible to each other—they live in two different drawers. This is **Codex's own design**, not FyAgent losing anything.
 
 ```text
 Default state (unified switch off):
@@ -77,10 +77,10 @@ After the unified switch is on:
 
 ### Backups: a copy is made before every tag change
 
-"Merging the drawers" requires changing the tag of some official sessions from `openai` to `custom` (this step is called **migration**, and it's **optional and requires you to opt in**). And **before any rewrite, CC Switch first copies the original file untouched** to here:
+"Merging the drawers" requires changing the tag of some official sessions from `openai` to `custom` (this step is called **migration**, and it's **optional and requires you to opt in**). And **before any rewrite, FyAgent first copies the original file untouched** to here:
 
 ```text
-~/.cc-switch/backups/codex-official-history-unify-v1/<timestamp>/
+~/.fyagent/backups/codex-official-history-unify-v1/<timestamp>/
 ```
 
 This backup is the sole basis for "restore exactly from backup" later. It makes the whole process **reversible**: at any time you can turn off the switch and precisely flip the official sessions you migrated in back to the `openai` drawer.
@@ -109,14 +109,14 @@ Below it is a line of description text (verbatim):
 
 ### Step 2: Flip the switch from off to on -> a confirmation dialog pops up
 
-The moment you flip the switch on, CC Switch **does not save immediately**; instead it first pops up a confirmation dialog. The dialog text reads as follows (verbatim):
+The moment you flip the switch on, FyAgent **does not save immediately**; instead it first pops up a confirmation dialog. The dialog text reads as follows (verbatim):
 
 - **Title**: Unified Codex session history
 - **Body**:
 
   > When enabled, the official subscription and third-party providers share one session history list. Note: resuming an old session across providers may fail because its encrypted_content reasoning cannot be decrypted by another backend.
   >
-  > You can also migrate your existing official session history into the shared list (originals are backed up to ~/.cc-switch/backups first and can be restored when you turn this off).
+  > You can also migrate your existing official session history into the shared list (originals are backed up to ~/.fyagent/backups first and can be restored when you turn this off).
 
 - **Checkbox**: Also migrate existing official session history
 - **Confirm button**: I understand, enable
@@ -132,11 +132,11 @@ The moment you flip the switch on, CC Switch **does not save immediately**; inst
 > **If you want "my earlier official sessions to appear in the unified list too," you must opt in by checking this box.** Otherwise you'll run into "scenario A" in the reference table below—the old sessions look "gone," when in fact they're just sitting in the original drawer.
 
 Click "Cancel" or click outside the dialog: the switch flips straight back to off and nothing happens.
-Click "I understand, enable": the switch is saved as on, and CC Switch persists the configuration in the background (and runs the migration if you checked it).
+Click "I understand, enable": the switch is saved as on, and FyAgent persists the configuration in the background (and runs the migration if you checked it).
 
 ### Step 3 (only if you checked migration): how migration runs + data safety
 
-If you check "Also migrate existing official session history," CC Switch runs this procedure on your existing official sessions:
+If you check "Also migrate existing official session history," FyAgent runs this procedure on your existing official sessions:
 
 ```text
 For each official (openai tag) session file:
@@ -147,7 +147,7 @@ For each official (openai tag) session file:
    ③ Update the index database state_5.sqlite to switch the tag in the same transaction
 ```
 
-- **Backup location**: `~/.cc-switch/backups/codex-official-history-unify-v1/<timestamp>/`. Each migration produces one timestamped "generation directory," containing `jsonl/` (session copies), `state/` (index DB copy), and `meta.json` (recording which Codex directory this migration belongs to).
+- **Backup location**: `~/.fyagent/backups/codex-official-history-unify-v1/<timestamp>/`. Each migration produces one timestamped "generation directory," containing `jsonl/` (session copies), `state/` (index DB copy), and `meta.json` (recording which Codex directory this migration belongs to).
 - **What's changed**: only the value of the single field `model_provider`. Your conversation content, reasoning content, and all body text are **kept exactly as is**.
 - **What's deleted**: **nothing**. The backup is a "copy," the rewrite is an "atomic replacement of the same file," and at no point is any session or index deleted. The file is complete at every moment (either the old content or the new content, never empty or half-written).
 
@@ -161,7 +161,7 @@ After a successful migration, these existing official sessions show up in the un
 
 ### Step 1: Flip the switch from on to off -> probe for backups -> a confirmation dialog pops up
 
-When disabling, CC Switch **first spends a moment probing whether there's a migration backup**, then pops up a confirmation dialog (so the disable dialog has a slight delay, which is normal). The text reads as follows (verbatim):
+When disabling, FyAgent **first spends a moment probing whether there's a migration backup**, then pops up a confirmation dialog (so the disable dialog has a slight delay, which is normal). The text reads as follows (verbatim):
 
 - **Title**: Turn off unified session history
 - **Body**:
@@ -180,11 +180,11 @@ If the checkbox **doesn't appear**, the system has determined there's no backup 
 
 ### Step 2: How restore runs (precise flip-back per the backup ledger)
 
-If you keep the box checked and click "Turn off," CC Switch's restore flow goes like this:
+If you keep the box checked and click "Turn off," FyAgent's restore flow goes like this:
 
 ```text
 ① First copy the current state once more into a separate restore-backup directory
-   ~/.cc-switch/backups/codex-official-history-unify-restore-v1/<timestamp>/
+   ~/.fyagent/backups/codex-official-history-unify-restore-v1/<timestamp>/
    (restore itself backs up first, so restore won't lose data either)
 ② Comb through all migration backup generations, find the session ids "whose tag was originally openai," and assemble a "ledger"
 ③ Only for sessions that are [both in the ledger AND currently still custom], change the tag back to "openai"
@@ -206,7 +206,7 @@ Only the "disable + check restore" path pops a result toast. The toasts you may 
 | **Failed to restore official session history, please try again** | The restore process errored; just retry, the data is not corrupted |
 | **Save failed, please try again** | The disable save itself failed; in this case **restore is never triggered** and the switch flips back to its original position |
 
-> **A thoughtful safety design**: if the "disable the switch" save fails, CC Switch **never runs the restore**. Otherwise you'd end up in a torn state of "switch still on, but sessions flipped back to the openai bucket." When the save fails, the switch **automatically flips back to its original position**, so you won't be stuck in a fake state of "looks off but didn't actually save."
+> **A thoughtful safety design**: if the "disable the switch" save fails, FyAgent **never runs the restore**. Otherwise you'd end up in a torn state of "switch still on, but sessions flipped back to the openai bucket." When the save fails, the switch **automatically flips back to its original position**, so you won't be stuck in a fake state of "looks off but didn't actually save."
 
 ---
 
@@ -237,7 +237,7 @@ The six scenarios below are the situations where users most easily believe "sess
 
 **Symptom**: after unification, the list shows an old session chatted with "another provider." You switch to your current provider and click "Resume," but it errors out or can't connect.
 
-**The truth**: the session file is intact; what's lost is not data, it's "cross-backend decryption ability." A Codex session stores an encrypted block of reasoning content `encrypted_content`, and **this ciphertext can only be decrypted by the backend that originally generated it**. Using provider B to resume a session generated by provider A means B can't decrypt A's ciphertext -> resume fails. This is **a design limitation of upstream Codex (by design)** and has nothing to do with whether CC Switch touched the file. The text content of the session is readable at any time.
+**The truth**: the session file is intact; what's lost is not data, it's "cross-backend decryption ability." A Codex session stores an encrypted block of reasoning content `encrypted_content`, and **this ciphertext can only be decrypted by the backend that originally generated it**. Using provider B to resume a session generated by provider A means B can't decrypt A's ciphertext -> resume fails. This is **a design limitation of upstream Codex (by design)** and has nothing to do with whether FyAgent touched the file. The text content of the session is readable at any time.
 
 > This is the **only "looks like a real problem" genuine exception** in this whole guide—but note: it just means **you can't resume (can't generate a new turn)**, and **the original file is still fully present**, the conversation text readable at any time.
 
@@ -250,15 +250,15 @@ The six scenarios below are the situations where users most easily believe "sess
 
 **Symptom**: you enabled the switch and checked migration, but the old official sessions neither entered the unified list nor could be restored when you turned the switch off (or the restore checkbox didn't even appear in the disable dialog, see scenario E). You suspect migration lost the sessions during the process.
 
-**The truth**: migration **never ran**, so it couldn't have lost anything—not a single character of your sessions was changed. CC Switch has a safety gate before migration: it checks whether Codex's live config (`~/.codex/config.toml`) is **actually** routed to the shared `custom` drawer right now, and only migrates if the routing truly went there. The following two situations are judged "not yet unified" (internal reason code `live_not_unified`), so CC Switch **deliberately skips the migration, preserves your switch and migration intent, and migrates later once the conditions are met**:
+**The truth**: migration **never ran**, so it couldn't have lost anything—not a single character of your sessions was changed. FyAgent has a safety gate before migration: it checks whether Codex's live config (`~/.codex/config.toml`) is **actually** routed to the shared `custom` drawer right now, and only migrates if the routing truly went there. The following two situations are judged "not yet unified" (internal reason code `live_not_unified`), so FyAgent **deliberately skips the migration, preserves your switch and migration intent, and migrates later once the conditions are met**:
 
-- **During proxy takeover**: CC Switch's proxy has taken over the live config, and the live config during takeover doesn't carry the unified routing marker.
-- **Injection refused**: your `config.toml` already has a manually specified `model_provider`, or there's already a differently-shaped `[model_providers.custom]` table (possibly with a third-party address). To avoid incorrectly routing official traffic to a third-party backend, CC Switch would rather not inject and not migrate.
+- **During proxy takeover**: FyAgent's proxy has taken over the live config, and the live config during takeover doesn't carry the unified routing marker.
+- **Injection refused**: your `config.toml` already has a manually specified `model_provider`, or there's already a differently-shaped `[model_providers.custom]` table (possibly with a third-party address). To avoid incorrectly routing official traffic to a third-party backend, FyAgent would rather not inject and not migrate.
 
 Skipping migration = touching no session files. **No migration means nothing moved, so there's nothing to lose.** This is "safe deferral," not "failure with data loss."
 
 **What to do**:
-- Exit proxy takeover -> **restart CC Switch**: on startup it automatically retries migration (your migration intent is preserved the whole time).
+- Exit proxy takeover -> **restart FyAgent**: on startup it automatically retries migration (your migration intent is preserved the whole time).
 - Check `~/.codex/config.toml`: if there's a conflicting route you wrote by hand, clean up the conflict before enabling the switch.
 - If you'd rather not bother: just turn off the switch, the official sessions still display normally on the `openai` drawer, completely intact.
 
@@ -266,7 +266,7 @@ Skipping migration = touching no session files. **No migration means nothing mov
 
 **Symptom**: during the unified period, you chatted a few more new sessions with the official account. Later you turned off the switch, checked restore, and after restoring you find those new sessions didn't return to the official drawer.
 
-**The truth**: this is **intentional** design; the new sessions are perfectly fine in the `custom` drawer, visible and resumable. Restore is based on "the backup ledger from migration time"—**only sessions that were originally migrated in from the `openai` drawer** are recorded in the backup and get precisely flipped back to `openai`. The sessions you **created during the unified period** are in no backup ledger; and after unification both official and third-party use the `custom` tag, so **CC Switch can't tell whether a new session was chatted with the official account or a third-party**. To avoid wrongly stuffing third-party sessions into the official history, the product decision is: these new sessions all stay in the `custom` (third-party) history and are never moved automatically. The disable dialog's text says this explicitly too—"Sessions created while it was on cannot be attributed to a provider, so they stay in the third-party history."
+**The truth**: this is **intentional** design; the new sessions are perfectly fine in the `custom` drawer, visible and resumable. Restore is based on "the backup ledger from migration time"—**only sessions that were originally migrated in from the `openai` drawer** are recorded in the backup and get precisely flipped back to `openai`. The sessions you **created during the unified period** are in no backup ledger; and after unification both official and third-party use the `custom` tag, so **FyAgent can't tell whether a new session was chatted with the official account or a third-party**. To avoid wrongly stuffing third-party sessions into the official history, the product decision is: these new sessions all stay in the `custom` (third-party) history and are never moved automatically. The disable dialog's text says this explicitly too—"Sessions created while it was on cannot be attributed to a provider, so they stay in the third-party history."
 
 **What to do**:
 - Switch to any third-party provider (the `custom` drawer) to see these sessions in the history list.
@@ -285,28 +285,28 @@ Skipping migration = touching no session files. **No migration means nothing mov
 
 In all three cases, no session was deleted.
 
-**What to do**: use the end-of-guide commands to count the total session files in `~/.codex/sessions/` and confirm the files are all there; then check whether `~/.cc-switch/backups/` contains a `codex-official-history-unify-v1` directory—if even this directory is absent, you never triggered a migration and the sessions have been in their original drawer all along.
+**What to do**: use the end-of-guide commands to count the total session files in `~/.codex/sessions/` and confirm the files are all there; then check whether `~/.fyagent/backups/` contains a `codex-official-history-unify-v1` directory—if even this directory is absent, you never triggered a migration and the sessions have been in their original drawer all along.
 
 ### Scenario F: Restore refused, toast "Unified session history was re-enabled; restore skipped"
 
 **Symptom**: you turned off the switch -> checked restore -> but you were quick and immediately turned the switch back on, then saw the toast "Unified session history was re-enabled; restore skipped."
 
-**The truth**: this is a safeguard against putting your data into a "torn" state, and again no sessions are lost. The restore action is "flip session tags from `custom` back to `openai`," but if the switch is on again at this moment, the live config is routing to `custom`—flipping history back to `openai` on one side while new sessions land in `custom` on the other would artificially tear sessions in two. So when CC Switch detects "the switch is on again," it **deliberately abandons this restore and changes nothing**. Sessions stay as they are, with no deletion or corruption.
+**The truth**: this is a safeguard against putting your data into a "torn" state, and again no sessions are lost. The restore action is "flip session tags from `custom` back to `openai`," but if the switch is on again at this moment, the live config is routing to `custom`—flipping history back to `openai` on one side while new sessions land in `custom` on the other would artificially tear sessions in two. So when FyAgent detects "the switch is on again," it **deliberately abandons this restore and changes nothing**. Sessions stay as they are, with no deletion or corruption.
 
 **What to do**: to truly restore, **turn the switch off and keep it off** (don't immediately turn it back on), then do disable + check restore; to keep things unified, don't restore, and let the sessions stay in the `custom` shared drawer for normal use.
 
-**The overriding principle: CC Switch's unify / migrate / restore only ever changes a single tag field in a session, and automatically backs up before every rewrite. It never deletes your conversations. Out of sight ≠ gone—look in the other drawer, or use the commands below to confirm with your own eyes.**
+**The overriding principle: FyAgent's unify / migrate / restore only ever changes a single tag field in a session, and automatically backs up before every rewrite. It never deletes your conversations. Out of sight ≠ gone—look in the other drawer, or use the commands below to confirm with your own eyes.**
 
 ---
 
 ## Verify by hand: your session files are still on disk (the most important section)
 
-No amount of text beats seeing it for yourself. Below are the **real paths** (taken from the CC Switch source) and how to view session files and backup directories on different systems. **The whole process is read-only and changes nothing; you're strongly encouraged to try it by hand.**
+No amount of text beats seeing it for yourself. Below are the **real paths** (taken from the FyAgent source) and how to view session files and backup directories on different systems. **The whole process is read-only and changes nothing; you're strongly encouraged to try it by hand.**
 
 ### The simplest way: open it directly in a file manager (no command line at all)
 
-- **macOS (Finder)**: press `Cmd + Shift + G`, paste `~/.codex/sessions` and hit Enter to see a pile of `.jsonl` session files and their modification times; for the backup directory paste `~/.cc-switch/backups`.
-- **Windows (File Explorer)**: paste `%USERPROFILE%\.codex\sessions` into the address bar and hit Enter to see the session folders and the `.jsonl` files inside; for the backup directory paste `%USERPROFILE%\.cc-switch\backups`.
+- **macOS (Finder)**: press `Cmd + Shift + G`, paste `~/.codex/sessions` and hit Enter to see a pile of `.jsonl` session files and their modification times; for the backup directory paste `~/.fyagent/backups`.
+- **Windows (File Explorer)**: paste `%USERPROFILE%\.codex\sessions` into the address bar and hit Enter to see the session folders and the `.jsonl` files inside; for the backup directory paste `%USERPROFILE%\.fyagent\backups`.
 
 **As long as you can see a batch of `.jsonl` files here, that proves your session data is intact on disk.** The file count and modification times are more intuitive than any amount of text.
 
@@ -317,10 +317,10 @@ No amount of text beats seeing it for yourself. Below are the **real paths** (ta
 | **Session body (the core)** | `~/.codex/sessions/` (includes date-based subdirectories, recursive) | One `.jsonl` text file per session—**this is your conversation content** |
 | **Archived sessions** | `~/.codex/archived_sessions/` | Also `.jsonl` |
 | **Session index database** | `~/.codex/state_5.sqlite` | The `model_provider` column of the `threads` table is the "drawer tag"—**this is the actual classification source the resume list reads** |
-| **Migration backup** (auto-created when migration is enabled) | `~/.cc-switch/backups/codex-official-history-unify-v1/<timestamp>/` | Contains `jsonl/`, `state/`, `meta.json` |
-| **Restore backup** (auto-created when you restore) | `~/.cc-switch/backups/codex-official-history-unify-restore-v1/<timestamp>/` | A safety copy taken before restore |
+| **Migration backup** (auto-created when migration is enabled) | `~/.fyagent/backups/codex-official-history-unify-v1/<timestamp>/` | Contains `jsonl/`, `state/`, `meta.json` |
+| **Restore backup** (auto-created when you restore) | `~/.fyagent/backups/codex-official-history-unify-restore-v1/<timestamp>/` | A safety copy taken before restore |
 
-> **Note**: if you've changed the Codex directory in CC Switch, or set `sqlite_home` in `config.toml`, replace `~/.codex` above with your actual directory. Below, `~` = your user home directory.
+> **Note**: if you've changed the Codex directory in FyAgent, or set `sqlite_home` in `config.toml`, replace `~/.codex` above with your actual directory. Below, `~` = your user home directory.
 
 ### macOS / Linux commands
 
@@ -370,16 +370,16 @@ python3 -m json.tool < "<filename>.jsonl" 2>/dev/null | head -50
 open -e "<filename>.jsonl"      # macOS
 ```
 
-**5. Look at CC Switch's backup directory (proof that a copy was kept before migration / restore)**
+**5. Look at FyAgent's backup directory (proof that a copy was kept before migration / restore)**
 
 ```bash
-ls -la ~/.cc-switch/backups/codex-official-history-unify-v1/ 2>/dev/null
-ls -la ~/.cc-switch/backups/codex-official-history-unify-restore-v1/ 2>/dev/null
+ls -la ~/.fyagent/backups/codex-official-history-unify-v1/ 2>/dev/null
+ls -la ~/.fyagent/backups/codex-official-history-unify-restore-v1/ 2>/dev/null
 ```
 
 ### Windows commands (PowerShell)
 
-The session directory is usually at `C:\Users\<your username>\.codex\`, and backups at `C:\Users\<your username>\.cc-switch\backups\`.
+The session directory is usually at `C:\Users\<your username>\.codex\`, and backups at `C:\Users\<your username>\.fyagent\backups\`.
 
 ```powershell
 # 1. Total number of session files (hard evidence of "nothing lost")
@@ -396,8 +396,8 @@ Get-ChildItem "$env:USERPROFILE\.codex\sessions" -Recurse -Filter *.jsonl |
   Select-String -Pattern 'model_provider"\s*:\s*"custom"' -List).Count
 
 # 4. Look at the backup directories
-Get-ChildItem "$env:USERPROFILE\.cc-switch\backups\codex-official-history-unify-v1" -ErrorAction SilentlyContinue
-Get-ChildItem "$env:USERPROFILE\.cc-switch\backups\codex-official-history-unify-restore-v1" -ErrorAction SilentlyContinue
+Get-ChildItem "$env:USERPROFILE\.fyagent\backups\codex-official-history-unify-v1" -ErrorAction SilentlyContinue
+Get-ChildItem "$env:USERPROFILE\.fyagent\backups\codex-official-history-unify-restore-v1" -ErrorAction SilentlyContinue
 ```
 
 > Same reminder: the step-3 grep counting **fewer** than the total file count is normal (old sessions don't write that field); judge "nothing lost" by the **total file count** from step 1.
@@ -408,11 +408,11 @@ Get-ChildItem "$env:USERPROFILE\.cc-switch\backups\codex-official-history-unify-
 
 ### 1. The bucketing mechanism (the essence of the drawers)
 
-Codex's resume / history list filters by the currently active `model_provider` id with **exact string matching**. The **first line** of a session's `.jsonl` file is a `type:"session_meta"` record whose `payload.model_provider` is the drawer that session belongs to (`grep -rl` counts a file as long as the tag appears once anywhere in it, so no line-by-line parsing is needed; sessions from old versions that didn't write the field can't be counted). What actually drives the resume list is the `threads.model_provider` column of the index database `state_5.sqlite`. When `config.toml` has no explicit `model_provider`, the official subscription falls into the built-in default id `openai`; all of CC Switch's third-party providers uniformly use `custom`.
+Codex's resume / history list filters by the currently active `model_provider` id with **exact string matching**. The **first line** of a session's `.jsonl` file is a `type:"session_meta"` record whose `payload.model_provider` is the drawer that session belongs to (`grep -rl` counts a file as long as the tag appears once anywhere in it, so no line-by-line parsing is needed; sessions from old versions that didn't write the field can't be counted). What actually drives the resume list is the `threads.model_provider` column of the index database `state_5.sqlite`. When `config.toml` has no explicit `model_provider`, the official subscription falls into the built-in default id `openai`; all of FyAgent's third-party providers uniformly use `custom`.
 
 ### 2. What the switch does (injection, lives only in live)
 
-When enabled, CC Switch injects the following into the official live `config.toml`:
+When enabled, FyAgent injects the following into the official live `config.toml`:
 
 ```toml
 model_provider = "custom"
@@ -426,7 +426,7 @@ wire_api = "responses"
 
 Every field has a purpose: `requires_openai_auth = true` keeps authentication going through the ChatGPT login in `auth.json`, with the base_url defaulting back to the official Codex backend; `name = "OpenAI"` lets Codex's official feature gates (web search, remote compaction, etc.) keep matching; `supports_websockets = true` restores the capability that custom entries lose by default; `wire_api = "responses"` uses the official responses protocol. **The net effect is: authentication is unchanged, only the bucket name changed.**
 
-**Key invariant: this injection can only exist in the live `config.toml`, and is never written into the database's stored configuration.** When you switch away from the official provider and write live back to the database, CC Switch strips this injection precisely (it strips only when the shape exactly matches the injected artifact; a third-party-customized `custom` table is kept as is). Precisely because of this, "turning off the switch + switching once" fully restores live, and the database always holds your original clean official configuration—this is the cornerstone of the whole switch's reversibility.
+**Key invariant: this injection can only exist in the live `config.toml`, and is never written into the database's stored configuration.** When you switch away from the official provider and write live back to the database, FyAgent strips this injection precisely (it strips only when the shape exactly matches the injected artifact; a third-party-customized `custom` table is kept as is). Precisely because of this, "turning off the switch + switching once" fully restores live, and the database always holds your original clean official configuration—this is the cornerstone of the whole switch's reversibility.
 
 ### 3. The two refusal gates for injection (corresponding to scenario C)
 
@@ -458,10 +458,10 @@ The reasoning ciphertext inside a session can only be decrypted by the backend t
 
 ## References
 
-- [Keep Codex Remote Control and Official Plugins While Using Third-Party APIs: CC Switch Setup Guide](./codex-official-auth-preservation-guide-en.md)
-- [Using DeepSeek-Style Chat APIs in Codex: CC Switch Local Routing Guide](./codex-deepseek-routing-guide-en.md)
-- The "Codex App Enhancements" section in the CC Switch user manual
+- [Keep Codex Remote Control and Official Plugins While Using Third-Party APIs: FyAgent Setup Guide](./codex-official-auth-preservation-guide-en.md)
+- [Using DeepSeek-Style Chat APIs in Codex: FyAgent Local Routing Guide](./codex-deepseek-routing-guide-en.md)
+- The "Codex App Enhancements" section in the FyAgent user manual
 
 ---
 
-**One last word for you**: what you see as "sessions disappeared / resume failed" is essentially **the session being moved to another history list (drawer), or the other backend being unable to decrypt the old reasoning content**; the files always sit untouched in `~/.codex/sessions/` (and `state_5.sqlite`). Checking "restore from backup" when you turn off the switch precisely flips the official sessions you migrated in back to the official list; and even if you don't restore, both the original `.jsonl` files and the backup copies under `~/.cc-switch/backups/codex-official-history-unify-*/` are all still there—**the data is never truly lost.**
+**One last word for you**: what you see as "sessions disappeared / resume failed" is essentially **the session being moved to another history list (drawer), or the other backend being unable to decrypt the old reasoning content**; the files always sit untouched in `~/.codex/sessions/` (and `state_5.sqlite`). Checking "restore from backup" when you turn off the switch precisely flips the official sessions you migrated in back to the official list; and even if you don't restore, both the original `.jsonl` files and the backup copies under `~/.fyagent/backups/codex-official-history-unify-*/` are all still there—**the data is never truly lost.**

@@ -81,77 +81,77 @@ C:\Users\alice\AppData\Local\Temp\... -> %TEMP%\fyagent-codex-installer\...
 
 ### 4.1 平台
 
-| Code | 触发条件 | 中文主文案 | English | Retry | Action |
-|---|---|---|---|---|---|
-| `PLATFORM_UNSUPPORTED` | Linux/未知平台 | 当前平台不支持一键安装 Codex。 | This platform is not supported. | 否 | None |
-| `OS_VERSION_UNSUPPORTED` | OS低于包/产品要求 | 当前系统版本不满足最新版应用要求。 | Your OS version does not meet the app requirements. | 否 | None |
-| `ARCHITECTURE_UNSUPPORTED` | Intel Mac/未知架构/包不兼容 | 当前处理器架构不受 V1 支持。 | This CPU architecture is not supported in V1. | 否 | None |
+| Code                       | 触发条件                    | 中文主文案                         | English                                             | Retry | Action |
+| -------------------------- | --------------------------- | ---------------------------------- | --------------------------------------------------- | ----- | ------ |
+| `PLATFORM_UNSUPPORTED`     | Linux/未知平台              | 当前平台不支持一键安装 Codex。     | This platform is not supported.                     | 否    | None   |
+| `OS_VERSION_UNSUPPORTED`   | OS低于包/产品要求           | 当前系统版本不满足最新版应用要求。 | Your OS version does not meet the app requirements. | 否    | None   |
+| `ARCHITECTURE_UNSUPPORTED` | Intel Mac/未知架构/包不兼容 | 当前处理器架构不受 V1 支持。       | This CPU architecture is not supported in V1.       | 否    | None   |
 
 ### 4.2 源与元数据
 
-| Code | 触发条件 | 中文主文案 | English | Retry | Action |
-|---|---|---|---|---|---|
-| `SOURCE_UNAVAILABLE` | manifest/checksum源经重试仍不可达 | 暂时无法连接中国大陆优化镜像。 | Unable to reach the China-friendly mirror. | 是 | Retry |
-| `RELEASE_METADATA_INVALID` | JSON/schema/字段/size/version无效 | 最新版本信息无效，已停止安装。 | The release metadata is invalid. Installation was stopped. | 否 | OpenLogs |
-| `RELEASE_NOT_AVAILABLE` | 当前架构无可下载条目、catalog-only | 当前平台的最新版安装包暂不可用。 | The latest package for this platform is not available yet. | 是 | Refresh |
-| `METADATA_CHANGED` | expected release与重新解析不一致 | 最新版本已发生变化，请刷新后重新确认。 | The latest release changed. Refresh and try again. | 是 | Refresh |
-| `REDIRECT_REJECTED` | HTTP降级、超 hop、非法 URL | 下载重定向不符合安全策略。 | The download redirect was rejected by the security policy. | 否 | OpenLogs |
+| Code                       | 触发条件                                                                                                 | 中文主文案                             | English                                                         | Retry | Action   |
+| -------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------- | ----- | -------- |
+| `SOURCE_UNAVAILABLE`       | manifest/checksum源经重试仍不可达                                                                        | 暂时无法连接中国大陆优化镜像。         | Unable to reach the China-friendly mirror.                      | 是    | Retry    |
+| `RELEASE_METADATA_INVALID` | JSON/schema/字段/size/version无效                                                                        | 最新版本信息无效，已停止安装。         | The release metadata is invalid. Installation was stopped.      | 否    | OpenLogs |
+| `RELEASE_NOT_AVAILABLE`    | 当前架构无可下载条目、catalog-only                                                                       | 当前平台的最新版安装包暂不可用。       | The latest package for this platform is not available yet.      | 是    | Refresh  |
+| `METADATA_CHANGED`         | expected release与重新解析不一致，或锁定 metadata 后下载 hash 不匹配且刷新 metadata 的 release_id 已变化 | 最新版本已发生变化，请刷新后重新确认。 | The latest release changed. Refresh and try again.              | 是    | Refresh  |
+| `REDIRECT_REJECTED`        | metadata 或下载 HTTP降级、超 hop、非法 URL                                                               | 更新源重定向不符合安全策略。           | The update-source redirect was rejected by the security policy. | 否    | OpenLogs |
 
 ### 4.3 下载
 
-| Code | 触发条件 | 中文主文案 | English | Retry | Action |
-|---|---|---|---|---|---|
-| `DOWNLOAD_FAILED` | 非超时传输失败/长度不符 | 安装包下载失败。 | The installer download failed. | 是（按原因） | Retry |
-| `DOWNLOAD_TIMEOUT` | 连接/读取超时 | 安装包下载超时。 | The installer download timed out. | 是 | Retry |
-| `DOWNLOAD_CANCELLED` | 用户取消 | 下载已取消。 | The download was cancelled. | 是 | Retry |
-| `INSUFFICIENT_DISK_SPACE` | 任一必要卷少于包大小3倍 | 可用磁盘空间不足。 | Not enough free disk space. | 是 | FreeDiskSpace |
+| Code                      | 触发条件                | 中文主文案         | English                           | Retry        | Action        |
+| ------------------------- | ----------------------- | ------------------ | --------------------------------- | ------------ | ------------- |
+| `DOWNLOAD_FAILED`         | 非超时传输失败/长度不符 | 安装包下载失败。   | The installer download failed.    | 是（按原因） | Retry         |
+| `DOWNLOAD_TIMEOUT`        | 连接/读取超时           | 安装包下载超时。   | The installer download timed out. | 是           | Retry         |
+| `DOWNLOAD_CANCELLED`      | 用户取消                | 下载已取消。       | The download was cancelled.       | 是           | Retry         |
+| `INSUFFICIENT_DISK_SPACE` | 任一必要卷少于包大小3倍 | 可用磁盘空间不足。 | Not enough free disk space.       | 是           | FreeDiskSpace |
 
 ### 4.4 校验
 
-| Code | 触发条件 | 中文主文案 | English | Retry | Action |
-|---|---|---|---|---|---|
-| `CHECKSUM_MISSING` | 目标文件无精确 checksum | 镜像未提供该安装包的校验和。 | No checksum is available for this package. | 否 | OpenLogs |
-| `CHECKSUM_MISMATCH` | 下载 hash与预期不同 | 安装包完整性校验失败，已阻止安装。 | Package integrity verification failed. Installation was blocked. | 否 | OpenLogs |
-| `PACKAGE_PARSE_FAILED` | MSIX/DMG/manifest/Bundle无法解析 | 无法识别下载的安装包。 | The downloaded package could not be parsed. | 否 | OpenLogs |
-| `PACKAGE_IDENTITY_MISMATCH` | Stable身份/Publisher不匹配 | 安装包不是预期的 OpenAI 官方 Stable 应用。 | The package is not the expected official OpenAI Stable app. | 否 | OpenLogs |
-| `PACKAGE_ARCHITECTURE_MISMATCH` | 包架构与 endpoint/机器不符 | 安装包架构与当前设备不匹配。 | The package architecture does not match this device. | 否 | OpenLogs |
-| `PACKAGE_SIGNATURE_INVALID` | Win trust/codesign失败 | 安装包签名验证失败，已阻止安装。 | Package signature verification failed. Installation was blocked. | 否 | OpenLogs |
+| Code                            | 触发条件                         | 中文主文案                                 | English                                                          | Retry | Action   |
+| ------------------------------- | -------------------------------- | ------------------------------------------ | ---------------------------------------------------------------- | ----- | -------- |
+| `CHECKSUM_MISSING`              | 目标文件无精确 checksum          | 镜像未提供该安装包的校验和。               | No checksum is available for this package.                       | 否    | OpenLogs |
+| `CHECKSUM_MISMATCH`             | 下载 hash与预期不同              | 安装包完整性校验失败，已阻止安装。         | Package integrity verification failed. Installation was blocked. | 否    | OpenLogs |
+| `PACKAGE_PARSE_FAILED`          | MSIX/DMG/manifest/Bundle无法解析 | 无法识别下载的安装包。                     | The downloaded package could not be parsed.                      | 否    | OpenLogs |
+| `PACKAGE_IDENTITY_MISMATCH`     | Stable身份/Publisher不匹配       | 安装包不是预期的 OpenAI 官方 Stable 应用。 | The package is not the expected official OpenAI Stable app.      | 否    | OpenLogs |
+| `PACKAGE_ARCHITECTURE_MISMATCH` | 包架构与 endpoint/机器不符       | 安装包架构与当前设备不匹配。               | The package architecture does not match this device.             | 否    | OpenLogs |
+| `PACKAGE_SIGNATURE_INVALID`     | Win trust/codesign失败           | 安装包签名验证失败，已阻止安装。           | Package signature verification failed. Installation was blocked. | 否    | OpenLogs |
 
 ### 4.5 Windows
 
-| Code | 触发条件 | 中文主文案 | English | Retry | Action |
-|---|---|---|---|---|---|
-| `WINDOWS_UAC_CANCELLED` | 内部实验UAC被取消 | 已取消管理员授权。 | Administrator approval was cancelled. | 是 | Retry |
-| `WINDOWS_ELEVATION_FAILED` | runas/结果通道失败 | 无法启动管理员安装流程。 | The elevated installation process could not be started. | 是 | OpenLogs |
-| `WINDOWS_PACKAGE_IN_USE` | 部署因目标应用运行被拒绝 | 请关闭 ChatGPT/Codex 桌面应用后重试。 | Close the ChatGPT/Codex desktop app and try again. | 是 | CloseTargetAppAndRetry |
-| `WINDOWS_DEPLOYMENT_BLOCKED` | 组织/侧载/AppX策略阻断 | Windows 策略阻止了应用安装，请联系设备管理员。 | Windows policy blocked the installation. Contact your administrator. | 否 | ContactAdministrator |
-| `WINDOWS_DEPENDENCY_MISSING` | PackageManager报告缺少依赖 | Windows 缺少安装所需的系统依赖。 | A required Windows package dependency is missing. | 否 | ContactAdministrator |
-| `WINDOWS_ALL_USERS_UNSUPPORTED` | 实验预配/license/平台不支持 | 当前设备不支持所有用户预配，请使用当前用户安装。 | All-user provisioning is not supported on this device. | 否 | None |
-| `WINDOWS_DEPLOYMENT_FAILED` | 其他部署失败 | Windows 安装失败。 | Windows installation failed. | 视原因为准 | Retry/OpenLogs |
+| Code                            | 触发条件                       | 中文主文案                                       | English                                                              | Retry      | Action                 |
+| ------------------------------- | ------------------------------ | ------------------------------------------------ | -------------------------------------------------------------------- | ---------- | ---------------------- |
+| `WINDOWS_UAC_CANCELLED`         | 内部实验UAC被取消              | 已取消管理员授权。                               | Administrator approval was cancelled.                                | 是         | Retry                  |
+| `WINDOWS_ELEVATION_FAILED`      | runas/受限 headless 子进程失败 | 无法启动管理员安装流程。                         | The elevated installation process could not be started.              | 是         | OpenLogs               |
+| `WINDOWS_PACKAGE_IN_USE`        | 部署因目标应用运行被拒绝       | 请关闭 ChatGPT/Codex 桌面应用后重试。            | Close the ChatGPT/Codex desktop app and try again.                   | 是         | CloseTargetAppAndRetry |
+| `WINDOWS_DEPLOYMENT_BLOCKED`    | 组织/侧载/AppX策略阻断         | Windows 策略阻止了应用安装，请联系设备管理员。   | Windows policy blocked the installation. Contact your administrator. | 否         | ContactAdministrator   |
+| `WINDOWS_DEPENDENCY_MISSING`    | PackageManager报告缺少依赖     | Windows 缺少安装所需的系统依赖。                 | A required Windows package dependency is missing.                    | 否         | ContactAdministrator   |
+| `WINDOWS_ALL_USERS_UNSUPPORTED` | 实验预配/license/平台不支持    | 当前设备不支持所有用户预配，请使用当前用户安装。 | All-user provisioning is not supported on this device.               | 否         | None                   |
+| `WINDOWS_DEPLOYMENT_FAILED`     | 其他部署失败                   | Windows 安装失败。                               | Windows installation failed.                                         | 视原因为准 | Retry/OpenLogs         |
 
 ### 4.6 macOS
 
-| Code | 触发条件 | 中文主文案 | English | Retry | Action |
-|---|---|---|---|---|---|
-| `MAC_DMG_MOUNT_FAILED` | hdiutil attach失败 | 无法挂载安装镜像。 | The disk image could not be mounted. | 是 | Retry |
-| `MAC_APP_NOT_FOUND` | DMG中无唯一Stable app | 安装镜像中未找到预期应用。 | The expected app was not found in the disk image. | 否 | OpenLogs |
-| `MAC_BUNDLE_ID_MISMATCH` | Bundle ID不是Stable | 应用身份不匹配，已阻止安装。 | The app bundle identity does not match. | 否 | OpenLogs |
-| `MAC_TEAM_ID_MISMATCH` | Team ID不匹配 | 应用开发者签名身份不匹配。 | The app developer team identity does not match. | 否 | OpenLogs |
-| `MAC_GATEKEEPER_REJECTED` | spctl拒绝 | macOS 安全检查未接受该应用。 | macOS security assessment rejected the app. | 否 | OpenLogs |
-| `MAC_APP_RUNNING` | Stable运行中更新 | 请关闭 ChatGPT/Codex 桌面应用后重试。 | Close the ChatGPT/Codex desktop app and try again. | 是 | CloseTargetAppAndRetry |
-| `MAC_MULTIPLE_INSTALLATIONS` | 两处以上Stable | 检测到多个目标应用安装，请先手动处理。 | Multiple installations were found. Resolve them before updating. | 否 | ResolvePathConflict |
-| `MAC_TARGET_PATH_CONFLICT` | 两个候选路径均被其他Bundle占用 | 安装路径已被其他应用占用。 | The target app path is occupied by another app. | 否 | ResolvePathConflict |
-| `MAC_COPY_FAILED` | ditto/rename/权限失败 | 无法将应用复制到目标目录。 | The app could not be copied to the target folder. | 是（权限修复后） | OpenLogs |
-| `MAC_DMG_DETACH_FAILED` | hdiutil detach失败 | 安装镜像未能正常推出。 | The disk image could not be detached cleanly. | 是/警告 | OpenLogs |
+| Code                         | 触发条件                       | 中文主文案                             | English                                                          | Retry            | Action                 |
+| ---------------------------- | ------------------------------ | -------------------------------------- | ---------------------------------------------------------------- | ---------------- | ---------------------- |
+| `MAC_DMG_MOUNT_FAILED`       | hdiutil attach失败             | 无法挂载安装镜像。                     | The disk image could not be mounted.                             | 是               | Retry                  |
+| `MAC_APP_NOT_FOUND`          | DMG中无唯一Stable app          | 安装镜像中未找到预期应用。             | The expected app was not found in the disk image.                | 否               | OpenLogs               |
+| `MAC_BUNDLE_ID_MISMATCH`     | Bundle ID不是Stable            | 应用身份不匹配，已阻止安装。           | The app bundle identity does not match.                          | 否               | OpenLogs               |
+| `MAC_TEAM_ID_MISMATCH`       | Team ID不匹配                  | 应用开发者签名身份不匹配。             | The app developer team identity does not match.                  | 否               | OpenLogs               |
+| `MAC_GATEKEEPER_REJECTED`    | spctl拒绝                      | macOS 安全检查未接受该应用。           | macOS security assessment rejected the app.                      | 否               | OpenLogs               |
+| `MAC_APP_RUNNING`            | Stable运行中更新               | 请关闭 ChatGPT/Codex 桌面应用后重试。  | Close the ChatGPT/Codex desktop app and try again.               | 是               | CloseTargetAppAndRetry |
+| `MAC_MULTIPLE_INSTALLATIONS` | 两处以上Stable                 | 检测到多个目标应用安装，请先手动处理。 | Multiple installations were found. Resolve them before updating. | 否               | ResolvePathConflict    |
+| `MAC_TARGET_PATH_CONFLICT`   | 两个候选路径均被其他Bundle占用 | 安装路径已被其他应用占用。             | The target app path is occupied by another app.                  | 否               | ResolvePathConflict    |
+| `MAC_COPY_FAILED`            | ditto/rename/权限失败          | 无法将应用复制到目标目录。             | The app could not be copied to the target folder.                | 是（权限修复后） | OpenLogs               |
+| `MAC_DMG_DETACH_FAILED`      | hdiutil detach失败             | 安装镜像未能正常推出。                 | The disk image could not be detached cleanly.                    | 是/警告          | OpenLogs               |
 
 ### 4.7 通用任务
 
-| Code | 触发条件 | 中文主文案 | English | Retry | Action |
-|---|---|---|---|---|---|
-| `INSTALLATION_VERIFY_FAILED` | 平台API成功但重扫不匹配 | 安装结果验证失败。 | Installation completed but could not be verified. | 是 | Retry/OpenLogs |
-| `LAUNCH_FAILED` | 系统激活失败 | 无法启动 Codex 桌面应用。 | The Codex desktop app could not be launched. | 是 | Retry |
-| `JOB_ALREADY_RUNNING` | 已有非terminal job | 已有安装任务正在运行。 | Another installation task is already running. | 否 | None |
-| `INTERNAL_ERROR` | 不变量/未知错误 | FyAgent 安装器发生内部错误。 | The FyAgent installer encountered an internal error. | 视情况 | OpenLogs |
+| Code                         | 触发条件                | 中文主文案                   | English                                              | Retry  | Action         |
+| ---------------------------- | ----------------------- | ---------------------------- | ---------------------------------------------------- | ------ | -------------- |
+| `INSTALLATION_VERIFY_FAILED` | 平台API成功但重扫不匹配 | 安装结果验证失败。           | Installation completed but could not be verified.    | 是     | Retry/OpenLogs |
+| `LAUNCH_FAILED`              | 系统激活失败            | 无法启动 Codex 桌面应用。    | The Codex desktop app could not be launched.         | 是     | Retry          |
+| `JOB_ALREADY_RUNNING`        | 已有非terminal job      | 已有安装任务正在运行。       | Another installation task is already running.        | 否     | None           |
+| `INTERNAL_ERROR`             | 不变量/未知错误         | FyAgent 安装器发生内部错误。 | The FyAgent installer encountered an internal error. | 视情况 | OpenLogs       |
 
 ## 5. 非致命 Warning
 

@@ -1,5 +1,5 @@
 {
-  "name": "cc-switch",
+  "name": "fyagent",
   "version": "3.18.0",
   "description": "All-in-One Assistant for Claude Code, Codex & Gemini CLI",
   "type": "module",
@@ -74,7 +74,6 @@
     "@tauri-apps/plugin-log": "2.8.0",
     "@tauri-apps/plugin-process": "^2.0.0",
     "@tauri-apps/plugin-store": "^2.0.0",
-    "@tauri-apps/plugin-updater": "^2.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

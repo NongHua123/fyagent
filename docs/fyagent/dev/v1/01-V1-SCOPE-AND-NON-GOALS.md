@@ -174,14 +174,12 @@ Agent 可自由使用公开互联网和官方开发资源；不要求开发机�
 
 ### 8.3 产品与发布
 
-- 新 FyAgent Identifier；
-- 新配置目录、数据库目录、deep-link；
-- 与原 CC Switch 并存；
-- 新图标；
 - FyAgent 自更新；
 - 公开代码签名和 notarization；
-- 完整上游品牌迁移；
 - 国际化全语言翻译。
+
+FyAgent Identifier、配置/数据库目录、deep-link、内部包名和应用图标属于 V1
+clean break，不再是未来项。V1 不承诺对旧应用的并行安装、原位升级或数据兼容。
 
 ### 8.4 安全与企业能力
 
@@ -208,22 +206,22 @@ Agent 可自由使用公开互联网和官方开发资源；不要求开发机�
 
 ### V1 修改
 
-- `productName`、窗口和主要界面可见名称改为 FyAgent；
-- 移除 `ccswitch.io`、上游 GitHub 等可见链接；
-- 移除界面可见 “CC Switch” 文案；
+- 当前产品、运行时、构建、安装、落盘和协议身份统一为
+  `FyAgent` / `fyagent` / `fyagent_lib` / `com.fyagent.desktop` / `fyagent://`
+  / `~/.fyagent` / `fyagent.db`；
+- 不迁移、不读取、不接受旧数据目录、数据库、deep-link、自启动值或序列化标记；
+- 移除未确立的旧网站与过时运营路由，但保留真实仓库、必要上游引用和合作方契约值；
 - 禁用上游自动更新和更新 UI；
-- 日志启动标题可改为 FyAgent；
+- 日志、发布产物与平台安装身份使用 FyAgent；
 - 保留法律要求的 LICENSE、版权和第三方许可。
 
-### V1 暂时保留
+### V1 事实例外
 
-- `com.ccswitch.desktop`；
-- `ccswitch://`；
-- `~/.cc-switch`；
-- 数据库文件名；
-- Rust crate 与 npm 内部包名；
-- 当前图标；
-- 已有数据库与设置兼容。
+- 真实 GitHub 仓库名与 URL `NongHua123/cc-switch`；
+- 历史 changelog、release notes 与旧任务证据；
+- LICENSE、版权、必要上游 issue/PR/源码引用；
+- 外部合作方实际分配的 referral URL 参数、邀请码和优惠码；
+- 证明生产路径已无旧身份的负向测试/审计模式。
 
 ## 10. 成功标准
 

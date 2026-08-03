@@ -1,4 +1,5 @@
 pub mod balance;
+pub mod codex_desktop;
 pub mod codex_oauth_models;
 pub mod coding_plan;
 pub mod config;
@@ -32,6 +33,7 @@ pub mod webdav;
 pub mod webdav_auto_sync;
 pub mod webdav_sync;
 
+pub use codex_desktop::CodexDesktopService;
 pub use config::ConfigService;
 pub use mcp::McpService;
 pub use omo::OmoService;

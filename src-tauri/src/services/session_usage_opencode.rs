@@ -362,7 +362,7 @@ fn insert_opencode_message(
                 msg.cost.to_string(),
             )
         } else {
-            // opencode 费用为 0（如免费模型），尝试用 cc-switch 自带的模型定价计算
+            // opencode 费用为 0（如免费模型），尝试用 fyagent 自带的模型定价计算
             let usage = TokenUsage {
                 input_tokens: msg.input_tokens,
                 output_tokens: output_with_reasoning,

@@ -1,7 +1,7 @@
 # Frontend Development Guidelines
 
 These guidelines describe the renderer patterns observed in this checkout of
-CC Switch. They are evidence-based reference material for changes under
+FyAgent. They are evidence-based reference material for changes under
 `src/` and related renderer tests, not a proposed frontend redesign.
 
 ## Pre-Development Checklist
@@ -17,17 +17,25 @@ Before changing renderer code:
    locale files before adding a literal string.
 5. For a backend payload change, inspect both the TypeScript facade and the
    matching `src-tauri/` serialization/command code.
+6. For an application-brand icon change, read the shared
+   [Application Brand Asset Contract](../backend/application-brand-assets.md)
+   before regenerating Tauri or About assets.
+7. For product names, storage keys, serialized markers, deep links, or public
+   source/install links, read the shared
+   [Application Identity Contract](../backend/application-identity.md).
 
 ## Guidelines
 
-| Guide                                             | Use it for                                                                  |
-| ------------------------------------------------- | --------------------------------------------------------------------------- |
-| [Directory Structure](./directory-structure.md)   | Selecting the existing frontend layer and test location.                    |
-| [Component Guidelines](./component-guidelines.md) | UI primitives, props, styling, translation, and form composition.           |
-| [Hook Guidelines](./hook-guidelines.md)           | Naming, placement, effects, cleanup, and stateful hook APIs.                |
-| [State Management](./state-management.md)         | React state, Context, TanStack Query keys, mutations, and persistence.      |
-| [Type Safety](./type-safety.md)                   | Strict TypeScript, domain types, Zod schemas, and Tauri wire contracts.     |
-| [Quality Guidelines](./quality-guidelines.md)     | Runnable checks, Vitest/MSW setup, translations, and accessible primitives. |
+| Guide                                                              | Use it for                                                                  |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| [Directory Structure](./directory-structure.md)                    | Selecting the existing frontend layer and test location.                    |
+| [Component Guidelines](./component-guidelines.md)                  | UI primitives, props, styling, translation, and form composition.           |
+| [Hook Guidelines](./hook-guidelines.md)                            | Naming, placement, effects, cleanup, and stateful hook APIs.                |
+| [State Management](./state-management.md)                          | React state, Context, TanStack Query keys, mutations, and persistence.      |
+| [Type Safety](./type-safety.md)                                    | Strict TypeScript, domain types, Zod schemas, and Tauri wire contracts.     |
+| [Quality Guidelines](./quality-guidelines.md)                      | Runnable checks, Vitest/MSW setup, translations, and accessible primitives. |
+| [Application Brand Assets](../backend/application-brand-assets.md) | Cross-platform generated icons and renderer About reuse.                    |
+| [Application Identity](../backend/application-identity.md)         | FyAgent-owned runtime identity and factual repository/provenance boundaries. |
 
 ## Quality Check
 

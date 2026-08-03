@@ -5,7 +5,6 @@
 use once_cell::sync::Lazy;
 use tauri::menu::{CheckMenuItem, Menu, MenuBuilder, MenuItem, Submenu, SubmenuBuilder};
 use tauri::{Emitter, Manager};
-use tauri_plugin_opener::OpenerExt;
 
 use crate::app_config::AppType;
 use crate::error::AppError;
@@ -52,7 +51,6 @@ static TRAY_SECTION_SUBMENUS: Lazy<
 #[derive(Clone, Copy)]
 pub struct TrayTexts {
     pub show_main: &'static str,
-    pub open_website: &'static str,
     pub no_providers_label: &'static str,
     pub lightweight_mode: &'static str,
     pub quit: &'static str,
@@ -101,7 +99,6 @@ impl TrayTexts {
         match language {
             "en" => Self {
                 show_main: "Open main window",
-                open_website: "Open Official Website",
                 no_providers_label: "(no providers)",
                 lightweight_mode: "Lightweight Mode",
                 quit: "Quit",
@@ -111,7 +108,6 @@ impl TrayTexts {
             },
             "ja" => Self {
                 show_main: "メインウィンドウを開く",
-                open_website: "公式サイトを開く",
                 no_providers_label: "(プロバイダーなし)",
                 lightweight_mode: "軽量モード",
                 quit: "終了",
@@ -121,7 +117,6 @@ impl TrayTexts {
             },
             "zh-TW" => Self {
                 show_main: "開啟主介面",
-                open_website: "開啟官方網站",
                 no_providers_label: "(無供應商)",
                 lightweight_mode: "輕量模式",
                 quit: "退出",
@@ -131,7 +126,6 @@ impl TrayTexts {
             },
             _ => Self {
                 show_main: "打开主界面",
-                open_website: "打开官方网站",
                 no_providers_label: "(无供应商)",
                 lightweight_mode: "轻量模式",
                 quit: "退出",
@@ -154,7 +148,7 @@ pub struct TrayAppSection {
 
 /// Auto 菜单项后缀
 pub const AUTO_SUFFIX: &str = "auto";
-pub const TRAY_ID: &str = "cc-switch";
+pub const TRAY_ID: &str = "fyagent";
 
 pub const TRAY_SECTIONS: [TrayAppSection; 4] = [
     TrayAppSection {
@@ -657,22 +651,11 @@ pub fn create_tray_menu(
     let mut section_handles: std::collections::HashMap<AppType, Submenu<tauri::Wry>> =
         std::collections::HashMap::new();
 
-    // 顶部：打开主界面 / 打开官方网站
+    // 顶部：打开主界面
     let show_main_item =
         MenuItem::with_id(app, "show_main", tray_texts.show_main, true, None::<&str>)
             .map_err(|e| AppError::Message(format!("创建打开主界面菜单失败: {e}")))?;
-    let open_website_item = MenuItem::with_id(
-        app,
-        "open_website",
-        tray_texts.open_website,
-        true,
-        None::<&str>,
-    )
-    .map_err(|e| AppError::Message(format!("创建打开官方网站菜单失败: {e}")))?;
-    menu_builder = menu_builder
-        .item(&show_main_item)
-        .item(&open_website_item)
-        .separator();
+    menu_builder = menu_builder.item(&show_main_item).separator();
 
     // Pre-compute proxy running state (used to disable official providers in tray menu)
     let is_proxy_running = futures::executor::block_on(app_state.proxy_service.is_running());
@@ -969,11 +952,6 @@ pub fn handle_tray_menu_event(app: &tauri::AppHandle, event_id: &str) {
                 }
             }
         }
-        "open_website" => {
-            if let Err(e) = app.opener().open_url("https://ccswitch.io", None::<String>) {
-                log::error!("打开官方网站失败: {e}");
-            }
-        }
         "lightweight_mode" => {
             if crate::lightweight::is_lightweight_mode() {
                 if let Err(e) = crate::lightweight::exit_lightweight_mode(app) {
@@ -1136,7 +1114,7 @@ mod tests {
 
     #[test]
     fn tray_id_is_unique_to_app() {
-        assert_eq!(TRAY_ID, "cc-switch");
+        assert_eq!(TRAY_ID, "fyagent");
         assert_ne!(TRAY_ID, "main");
     }
 

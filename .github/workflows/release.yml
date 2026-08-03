@@ -3,7 +3,8 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -14,19 +15,12 @@ concurrency:
 
 jobs:
   release:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch')
     runs-on: ${{ matrix.os }}
     environment: release
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: windows-2022
-          - os: windows-11-arm
-            arch: arm64
-          - os: ubuntu-22.04
-          - os: ubuntu-22.04-arm
-            arch: arm64
-          - os: macos-14
+      matrix: ${{ fromJSON(github.ref_type == 'tag' && '{"include":[{"os":"windows-2022"},{"os":"windows-11-arm","arch":"arm64"},{"os":"ubuntu-22.04"},{"os":"ubuntu-22.04-arm","arch":"arm64"},{"os":"macos-14"}]}' || '{"include":[{"os":"macos-14"}]}') }}
 
     steps:
       - name: Checkout
@@ -35,7 +29,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -130,64 +124,8 @@ jobs:
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
 
-      - name: Prepare Tauri signing key
-        shell: bash
-        run: |
-          # 调试：检查 Secret 是否存在
-          if [ -z "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
-            echo "❌ TAURI_SIGNING_PRIVATE_KEY Secret 为空或不存在" >&2
-            echo "请检查 GitHub 仓库 Settings > Secrets and variables > Actions" >&2
-            exit 1
-          fi
-          
-          RAW="${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
-          # 目标：提供正确的私钥“文件路径”给 Tauri CLI，避免内容解码歧义
-          KEY_PATH="$RUNNER_TEMP/tauri_signing.key"
-          # 情况 1：原始两行文本（第一行以 "untrusted comment:" 开头）
-          if echo "$RAW" | head -n1 | grep -q '^untrusted comment:'; then
-            printf '%s\n' "$RAW" > "$KEY_PATH"
-            echo "✅ 使用原始两行密钥文件格式"
-          else
-            # 情况 2：整体被 base64 包裹（解包后应当是两行）
-            if DECODED=$(printf '%s' "$RAW" | (base64 --decode 2>/dev/null || base64 -D 2>/dev/null)) \
-               && echo "$DECODED" | head -n1 | grep -q '^untrusted comment:'; then
-              printf '%s\n' "$DECODED" > "$KEY_PATH"
-              echo "✅ 成功解码 base64 包裹密钥，已还原为两行文件"
-            else
-              # 情况 3：已是第二行（纯 Base64 一行）→ 构造两行文件
-              if echo "$RAW" | grep -Eq '^[A-Za-z0-9+/=]+$'; then
-                ONE=$(printf '%s' "$RAW" | tr -d '\r\n')
-                printf '%s\n%s\n' "untrusted comment: tauri signing key" "$ONE" > "$KEY_PATH"
-                echo "✅ 使用一行 Base64 私钥，已构造两行文件"
-              else
-                echo "❌ TAURI_SIGNING_PRIVATE_KEY 格式无法识别：既不是两行原文，也不是其 base64，亦非一行 base64" >&2
-                echo "密钥前10个字符: $(echo "$RAW" | head -c 10)..." >&2
-                exit 1
-              fi
-            fi
-          fi
-          # 将“完整两行内容”作为环境变量注入（Tauri 支持传入完整私钥文本或文件路径）
-          # 使用多行写入语法，保持换行以便解析
-          # 将完整两行私钥内容进行 base64 编码，作为单行内容注入环境变量
-          if command -v base64 >/dev/null 2>&1; then
-            KEY_B64=$(base64 < "$KEY_PATH" | tr -d '\r\n')
-          elif command -v openssl >/dev/null 2>&1; then
-            KEY_B64=$(openssl base64 -A -in "$KEY_PATH")
-          else
-            KEY_B64=$(KEY_PATH="$KEY_PATH" node -e "process.stdout.write(require('fs').readFileSync(process.env.KEY_PATH).toString('base64'))")
-          fi
-          if [ -z "$KEY_B64" ]; then
-            echo "❌ 无法生成私钥 base64 内容" >&2
-            exit 1
-          fi
-          echo "TAURI_SIGNING_PRIVATE_KEY=$KEY_B64" >> "$GITHUB_ENV"
-          if [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" ]; then
-            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" >> $GITHUB_ENV
-          fi
-          echo "✅ Tauri signing key prepared"
-
       - name: Import Apple signing certificate
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && github.ref_type == 'tag'
         shell: bash
         run: |
           set -euo pipefail
@@ -229,7 +167,7 @@ jobs:
           rm -f "$CERT_PATH"
 
       - name: Build Tauri App (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && github.ref_type == 'tag'
         shell: bash
         timeout-minutes: 60
         env:
@@ -257,6 +195,15 @@ jobs:
             sleep "$sleep_seconds"
           done
 
+      - name: Build unsigned Tauri App (macOS branch)
+        if: runner.os == 'macOS' && github.ref_type != 'tag'
+        shell: bash
+        timeout-minutes: 60
+        run: |
+          set -euo pipefail
+          pnpm tauri build --target universal-apple-darwin --bundles app
+          echo "Unsigned macOS branch app build succeeded; no signing or notarization was requested."
+
       - name: Build Tauri App (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -275,30 +222,29 @@ jobs:
         run: pnpm tauri build --bundles appimage,deb,rpm
 
       - name: Prepare macOS Assets
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && github.ref_type == 'tag'
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p release-assets
-          VERSION="${GITHUB_REF_NAME}"  # e.g., v3.5.0
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME}"  # e.g., v3.5.0
+          else
+            VERSION=$(printf '%s' "${GITHUB_REF_NAME}" | sed 's/[^A-Za-z0-9._-]/-/g')
+          fi
 
           # Locate bundle artifacts
-          TAR_GZ=""; APP_PATH=""
+          APP_PATH=""
           for path in \
             "src-tauri/target/universal-apple-darwin/release/bundle/macos" \
             "src-tauri/target/aarch64-apple-darwin/release/bundle/macos" \
             "src-tauri/target/x86_64-apple-darwin/release/bundle/macos" \
             "src-tauri/target/release/bundle/macos"; do
             if [ -d "$path" ]; then
-              [ -z "$TAR_GZ" ]   && TAR_GZ=$(find "$path" -maxdepth 1 -name "*.tar.gz" -type f | head -1 || true)
               [ -z "$APP_PATH" ] && APP_PATH=$(find "$path" -maxdepth 1 -name "*.app" -type d | head -1 || true)
             fi
           done
 
-          if [ -z "$TAR_GZ" ]; then
-            echo "❌ No macOS .tar.gz updater artifact found" >&2
-            exit 1
-          fi
           if [ -z "$APP_PATH" ]; then
             echo "❌ No .app found" >&2
             exit 1
@@ -308,38 +254,33 @@ jobs:
           xcrun stapler staple "$APP_PATH"
           echo "✅ .app stapled"
 
-          # 1) Collect .tar.gz (updater artifact)
-          NEW_TAR_GZ="CC-Switch-${VERSION}-macOS.tar.gz"
-          cp "$TAR_GZ" "release-assets/$NEW_TAR_GZ"
-          [ -f "$TAR_GZ.sig" ] && cp "$TAR_GZ.sig" "release-assets/$NEW_TAR_GZ.sig" || echo ".sig for macOS not found yet"
-          echo "macOS updater artifact copied: $NEW_TAR_GZ"
-
-          # 2) Collect .app as zip
-          NEW_ZIP="CC-Switch-${VERSION}-macOS.zip"
+          # Collect the signed app as a normal user-downloadable ZIP. V1 has
+          # no in-app automatic-update artifact or signature sidecar.
+          NEW_ZIP="FyAgent-${VERSION}-macOS.zip"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "release-assets/$NEW_ZIP"
           echo "macOS zip ready: $NEW_ZIP"
 
-          # 3) Create styled DMG with create-dmg (Tauri's built-in DMG styling doesn't work on CI)
+          # Create a styled DMG with create-dmg (Tauri's built-in DMG styling doesn't work on CI)
           if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
             echo "❌ APPLE_SIGNING_IDENTITY is missing before DMG creation" >&2
             exit 1
           fi
 
           HOMEBREW_NO_AUTO_UPDATE=1 brew install create-dmg
-          NEW_DMG="CC-Switch-${VERSION}-macOS.dmg"
+          NEW_DMG="FyAgent-${VERSION}-macOS.dmg"
           DMG_STAGE_DIR="$RUNNER_TEMP/dmg-stage"
           rm -rf "$DMG_STAGE_DIR"
           mkdir -p "$DMG_STAGE_DIR"
-          ditto "$APP_PATH" "$DMG_STAGE_DIR/CC Switch.app"
+          ditto "$APP_PATH" "$DMG_STAGE_DIR/FyAgent.app"
 
           create-dmg \
-            --volname "CC Switch" \
+            --volname "FyAgent" \
             --background "src-tauri/icons/dmg-background.png" \
             --window-size 660 400 \
             --window-pos 200 120 \
             --icon-size 80 \
-            --icon "CC Switch.app" 180 220 \
-            --hide-extension "CC Switch.app" \
+            --icon "FyAgent.app" 180 220 \
+            --hide-extension "FyAgent.app" \
             --app-drop-link 480 220 \
             --codesign "$APPLE_SIGNING_IDENTITY" \
             --no-internet-enable \
@@ -349,8 +290,71 @@ jobs:
           rm -rf "$DMG_STAGE_DIR"
           echo "✅ Styled DMG created: $NEW_DMG"
 
+      - name: Prepare and verify unsigned macOS branch assets
+        if: runner.os == 'macOS' && github.ref_type != 'tag'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          VERSION=$(printf '%s' "${GITHUB_REF_NAME}" | sed 's/[^A-Za-z0-9._-]/-/g')
+          if [ -z "$VERSION" ]; then
+            echo "Unable to derive a safe branch asset name" >&2
+            exit 1
+          fi
+
+          APP_PATH=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos \
+            -maxdepth 1 -name "FyAgent.app" -type d | head -1 || true)
+          if [ -z "$APP_PATH" ]; then
+            echo "No FyAgent.app found in the unsigned macOS bundle output" >&2
+            exit 1
+          fi
+
+          NEW_ZIP="FyAgent-${VERSION}-macOS-unsigned.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "release-assets/$NEW_ZIP"
+
+          DMG_STAGE_DIR="$RUNNER_TEMP/unsigned-dmg-stage"
+          MOUNT_POINT="$RUNNER_TEMP/unsigned-dmg-mount"
+          rm -rf "$DMG_STAGE_DIR" "$MOUNT_POINT"
+          mkdir -p "$DMG_STAGE_DIR" "$MOUNT_POINT"
+          detach_required=false
+          cleanup() {
+            exit_code=$?
+            trap - EXIT
+            set +e
+            if [ "$detach_required" = true ]; then
+              hdiutil detach "$MOUNT_POINT"
+              if [ "$?" -ne 0 ]; then
+                echo "Failed to detach unsigned DMG from $MOUNT_POINT" >&2
+                exit_code=1
+              fi
+            fi
+            rm -rf "$DMG_STAGE_DIR" "$MOUNT_POINT"
+            if [ "$?" -ne 0 ]; then
+              echo "Failed to clean unsigned DMG temporary directories" >&2
+              exit_code=1
+            fi
+            exit "$exit_code"
+          }
+          trap cleanup EXIT
+
+          ditto "$APP_PATH" "$DMG_STAGE_DIR/FyAgent.app"
+
+          NEW_DMG="FyAgent-${VERSION}-macOS-unsigned.dmg"
+          DMG_PATH="release-assets/$NEW_DMG"
+          hdiutil create -volname "FyAgent unsigned" -srcfolder "$DMG_STAGE_DIR" \
+            -ov -format UDZO "$DMG_PATH"
+          hdiutil verify "$DMG_PATH"
+
+          detach_required=true
+          hdiutil attach "$DMG_PATH" -readonly -nobrowse -noautoopen -mountpoint "$MOUNT_POINT"
+          if [ ! -d "$MOUNT_POINT/FyAgent.app" ]; then
+            echo "Mounted unsigned DMG does not contain FyAgent.app" >&2
+            exit 1
+          fi
+          echo "Unsigned DMG verified and mounted with FyAgent.app present; no signing, notarization, or Gatekeeper claim is made."
+
       - name: Notarize macOS DMG
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && github.ref_type == 'tag'
         shell: bash
         timeout-minutes: 30
         env:
@@ -392,7 +396,7 @@ jobs:
           done
 
       - name: Verify macOS code signing and notarization
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && github.ref_type == 'tag'
         shell: bash
         run: |
           set -euo pipefail
@@ -449,63 +453,54 @@ jobs:
           $targetRoot = if ($isArm64) { 'src-tauri/target/aarch64-pc-windows-msvc/release' } else { 'src-tauri/target/release' }
           $assetSuffix = if ($isArm64) { '-arm64' } else { '' }
 
-          # 仅打包 MSI 安装器 + .sig（用于 Updater）
+          # 仅打包 MSI 手动安装器。
           $msi = Get-ChildItem -Path (Join-Path $targetRoot 'bundle/msi') -Recurse -Include *.msi -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($null -eq $msi) {
             # 兜底：全局搜索 .msi
             $msi = Get-ChildItem -Path (Join-Path $targetRoot 'bundle') -Recurse -Include *.msi -ErrorAction SilentlyContinue | Select-Object -First 1
           }
           if ($null -ne $msi) {
-            $dest = "CC-Switch-$VERSION-Windows$assetSuffix.msi"
+            $dest = "FyAgent-$VERSION-Windows$assetSuffix.msi"
             Copy-Item $msi.FullName (Join-Path release-assets $dest)
             Write-Host "Installer copied: $dest"
-            $sigPath = "$($msi.FullName).sig"
-            if (Test-Path $sigPath) {
-              Copy-Item $sigPath (Join-Path release-assets ("$dest.sig"))
-              Write-Host "Signature copied: $dest.sig"
-            } elseif ($isArm64) {
-              throw "Signature not found for $($msi.Name)"
-            } else {
-              Write-Warning "Signature not found for $($msi.Name)"
-            }
           } elseif ($isArm64) {
             throw 'No Windows ARM64 MSI installer found'
           } else {
             Write-Warning 'No Windows MSI installer found'
           }
 
-          # 绿色版（portable）：仅可执行文件打 zip（不参与 Updater）
+          # 绿色版（portable）：仅可执行文件打 zip。
           $exeCandidates = if ($isArm64) {
-            @('src-tauri/target/aarch64-pc-windows-msvc/release/cc-switch.exe')
+            @('src-tauri/target/aarch64-pc-windows-msvc/release/fyagent.exe')
           } else {
             @(
-              'src-tauri/target/release/cc-switch.exe',
-              'src-tauri/target/x86_64-pc-windows-msvc/release/cc-switch.exe'
+              'src-tauri/target/release/fyagent.exe',
+              'src-tauri/target/x86_64-pc-windows-msvc/release/fyagent.exe'
             )
           }
           $exePath = $exeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
           if ($null -ne $exePath) {
-            $portableDir = 'release-assets/CC-Switch-Portable'
+            $portableDir = 'release-assets/FyAgent-Portable'
             New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
             Copy-Item $exePath $portableDir
             $portableIniPath = Join-Path $portableDir 'portable.ini'
             $portableContent = if ($isArm64) {
               @(
-                '# CC Switch portable ARM64 build marker',
+                '# FyAgent portable ARM64 build marker',
                 'portable=true',
                 'arch=arm64'
               )
             } else {
               @(
-                '# CC Switch portable build marker',
+                '# FyAgent portable build marker',
                 'portable=true'
               )
             }
             $portableContent | Set-Content -Path $portableIniPath -Encoding UTF8
-            $portableZip = "release-assets/CC-Switch-$VERSION-Windows$assetSuffix-Portable.zip"
+            $portableZip = "release-assets/FyAgent-$VERSION-Windows$assetSuffix-Portable.zip"
             Compress-Archive -Path "$portableDir/*" -DestinationPath $portableZip -Force
             Remove-Item -Recurse -Force $portableDir
-            Write-Host "Windows portable zip created: CC-Switch-$VERSION-Windows$assetSuffix-Portable.zip"
+            Write-Host "Windows portable zip created: FyAgent-$VERSION-Windows$assetSuffix-Portable.zip"
           } elseif ($isArm64) {
             throw 'Portable ARM64 exe not found'
           } else {
@@ -520,29 +515,28 @@ jobs:
           mkdir -p release-assets
           VERSION="${GITHUB_REF_NAME}"  # e.g., v3.5.0
           ARCH="${{ matrix.arch || 'x86_64' }}"
-          # Updater artifact: AppImage（含对应 .sig）
+          # 手动安装 AppImage。
           APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" | head -1 || true)
           if [ -n "$APPIMAGE" ]; then
-            NEW_APPIMAGE="CC-Switch-${VERSION}-Linux-${ARCH}.AppImage"
+            NEW_APPIMAGE="FyAgent-${VERSION}-Linux-${ARCH}.AppImage"
             cp "$APPIMAGE" "release-assets/$NEW_APPIMAGE"
-            [ -f "$APPIMAGE.sig" ] && cp "$APPIMAGE.sig" "release-assets/$NEW_APPIMAGE.sig" || echo ".sig for AppImage not found"
             echo "AppImage copied: $NEW_APPIMAGE"
           else
             echo "No AppImage found under target/release/bundle" >&2
           fi
-          # 额外上传 .deb（用于手动安装，不参与 Updater）
+          # 额外上传 .deb（用于手动安装）。
           DEB=$(find src-tauri/target/release/bundle -name "*.deb" | head -1 || true)
           if [ -n "$DEB" ]; then
-            cp "$DEB" "release-assets/CC-Switch-${VERSION}-Linux-${ARCH}.deb"
-            echo "Deb package copied: CC-Switch-${VERSION}-Linux-${ARCH}.deb"
+            cp "$DEB" "release-assets/FyAgent-${VERSION}-Linux-${ARCH}.deb"
+            echo "Deb package copied: FyAgent-${VERSION}-Linux-${ARCH}.deb"
           else
             echo "No .deb found (optional)"
           fi
-          # 额外上传 .rpm（用于 Fedora/RHEL/openSUSE 等，不参与 Updater）
+          # 额外上传 .rpm（用于 Fedora/RHEL/openSUSE 等的手动安装）。
           RPM=$(find src-tauri/target/release/bundle -name "*.rpm" | head -1 || true)
           if [ -n "$RPM" ]; then
-            cp "$RPM" "release-assets/CC-Switch-${VERSION}-Linux-${ARCH}.rpm"
-            echo "RPM package copied: CC-Switch-${VERSION}-Linux-${ARCH}.rpm"
+            cp "$RPM" "release-assets/FyAgent-${VERSION}-Linux-${ARCH}.rpm"
+            echo "RPM package copied: FyAgent-${VERSION}-Linux-${ARCH}.rpm"
           else
             echo "No .rpm found (optional)"
           fi
@@ -551,13 +545,6 @@ jobs:
         shell: bash
         run: |
           ls -la release-assets || true
-
-      - name: Collect Signatures
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Collected signatures (if any alongside artifacts):"
-          ls -la release-assets/*.sig || echo "No signatures found"
 
       - name: Upload release artifacts to workflow
         uses: actions/upload-artifact@v7
@@ -586,6 +573,7 @@ jobs:
 
   publish-release:
     name: Publish GitHub Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
     needs: release
     permissions:
@@ -608,217 +596,23 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
-          name: CC Switch ${{ github.ref_name }}
+          name: FyAgent ${{ github.ref_name }}
           prerelease: true
           body: |
-            ## CC Switch ${{ github.ref_name }}
-
-            🌐 **Only Official Website / 唯一官方网站 / 唯一の公式サイト**: [ccswitch.io](https://ccswitch.io)
+            ## FyAgent ${{ github.ref_name }}
 
             Claude Code 供应商切换工具
 
             ### 下载
 
-            - **macOS**: `CC-Switch-${{ github.ref_name }}-macOS.dmg`（推荐）或 `CC-Switch-${{ github.ref_name }}-macOS.zip`（解压即用）
-            - **Windows (x86_64)**: `CC-Switch-${{ github.ref_name }}-Windows.msi`（安装版）或 `CC-Switch-${{ github.ref_name }}-Windows-Portable.zip`（绿色版）
-            - **Windows (ARM64)**: `CC-Switch-${{ github.ref_name }}-Windows-arm64.msi`（安装版）或 `CC-Switch-${{ github.ref_name }}-Windows-arm64-Portable.zip`（绿色版）
-            - **Linux (x86_64)**: `CC-Switch-${{ github.ref_name }}-Linux-x86_64.AppImage` / `.deb` / `.rpm`
-            - **Linux (ARM64)**: `CC-Switch-${{ github.ref_name }}-Linux-arm64.AppImage` / `.deb` / `.rpm`
-
-            > `.tar.gz` 为 Tauri updater 自动更新专用，无需手动下载。
+            - **macOS**: `FyAgent-${{ github.ref_name }}-macOS.dmg`（推荐）或 `FyAgent-${{ github.ref_name }}-macOS.zip`（解压即用）
+            - **Windows (x86_64)**: `FyAgent-${{ github.ref_name }}-Windows.msi`（安装版）或 `FyAgent-${{ github.ref_name }}-Windows-Portable.zip`（绿色版）
+            - **Windows (ARM64)**: `FyAgent-${{ github.ref_name }}-Windows-arm64.msi`（安装版）或 `FyAgent-${{ github.ref_name }}-Windows-arm64-Portable.zip`（绿色版）
+            - **Linux (x86_64)**: `FyAgent-${{ github.ref_name }}-Linux-x86_64.AppImage` / `.deb` / `.rpm`
+            - **Linux (ARM64)**: `FyAgent-${{ github.ref_name }}-Linux-arm64.AppImage` / `.deb` / `.rpm`
 
             ---
             macOS 版本已通过 Apple 代码签名和公证，可直接安装使用。
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  assemble-latest-json:
-    name: Assemble latest.json
-    runs-on: ubuntu-22.04
-    needs: publish-release
-    permissions:
-      contents: write
-    steps:
-      - name: Prepare GH
-        run: |
-          gh --version || (type -p curl >/dev/null && sudo apt-get update && sudo apt-get install -y gh || true)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Download all release assets
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euxo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          mkdir -p dl
-          gh release download "$TAG" --dir dl --repo "$GITHUB_REPOSITORY"
-          ls -la dl || true
-      - name: Generate latest.json
-        env:
-          REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          VERSION="${TAG#v}"
-          PUB_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          base_url="https://github.com/$REPO/releases/download/$TAG"
-          # 初始化空平台映射
-          mac_url=""; mac_sig=""
-          win_x64_url=""; win_x64_sig=""
-          win_arm64_url=""; win_arm64_sig=""
-          linux_x64_url=""; linux_x64_sig=""
-          linux_arm64_url=""; linux_arm64_sig=""
-          shopt -s nullglob
-          for sig in dl/*.sig; do
-            base=${sig%.sig}
-            fname=$(basename "$base")
-            url="$base_url/$fname"
-            sig_content=$(cat "$sig")
-            case "$fname" in
-              *.tar.gz)
-                # 视为 macOS updater artifact
-                mac_url="$url"; mac_sig="$sig_content";;
-              *-Windows-arm64.msi)
-                win_arm64_url="$url"; win_arm64_sig="$sig_content";;
-              *-Windows.msi)
-                win_x64_url="$url"; win_x64_sig="$sig_content";;
-              *-Linux-arm64.AppImage|*-Linux-arm64.appimage)
-                linux_arm64_url="$url"; linux_arm64_sig="$sig_content";;
-              *-Linux-x86_64.AppImage|*-Linux-x86_64.appimage)
-                linux_x64_url="$url"; linux_x64_sig="$sig_content";;
-            esac
-          done
-          # 构造 JSON（仅包含存在的目标）
-          tmp_json=$(mktemp)
-          {
-            echo '{'
-            echo "  \"version\": \"$VERSION\",";
-            echo "  \"notes\": \"Release $TAG\",";
-            echo "  \"pub_date\": \"$PUB_DATE\",";
-            echo '  "platforms": {'
-            first=1
-            if [ -n "$mac_url" ] && [ -n "$mac_sig" ]; then
-              # 为兼容 arm64 / x64，重复写入两个键，指向同一 universal 包
-              for key in darwin-aarch64 darwin-x86_64; do
-                [ $first -eq 0 ] && echo ','
-                echo "    \"$key\": {\"signature\": \"$mac_sig\", \"url\": \"$mac_url\"}"
-                first=0
-              done
-            fi
-            if [ -n "$win_x64_url" ] && [ -n "$win_x64_sig" ]; then
-              [ $first -eq 0 ] && echo ','
-              echo "    \"windows-x86_64\": {\"signature\": \"$win_x64_sig\", \"url\": \"$win_x64_url\"}"
-              first=0
-            fi
-            if [ -n "$win_arm64_url" ] && [ -n "$win_arm64_sig" ]; then
-              [ $first -eq 0 ] && echo ','
-              echo "    \"windows-aarch64\": {\"signature\": \"$win_arm64_sig\", \"url\": \"$win_arm64_url\"}"
-              first=0
-            fi
-            if [ -n "$linux_x64_url" ] && [ -n "$linux_x64_sig" ]; then
-              [ $first -eq 0 ] && echo ','
-              echo "    \"linux-x86_64\": {\"signature\": \"$linux_x64_sig\", \"url\": \"$linux_x64_url\"}"
-              first=0
-            fi
-            if [ -n "$linux_arm64_url" ] && [ -n "$linux_arm64_sig" ]; then
-              [ $first -eq 0 ] && echo ','
-              echo "    \"linux-aarch64\": {\"signature\": \"$linux_arm64_sig\", \"url\": \"$linux_arm64_url\"}"
-              first=0
-            fi
-            echo '  }'
-            echo '}'
-          } > "$tmp_json"
-          echo "Generated latest.json:" && cat "$tmp_json"
-          mv "$tmp_json" latest.json
-      - name: Upload latest.json to release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euxo pipefail
-          gh release upload "$GITHUB_REF_NAME" latest.json --clobber --repo "$GITHUB_REPOSITORY"
-
-  # Mirror the release assets to Cloudflare R2 so ccswitch.io/download can
-  # serve them directly (dl.ccswitch.io). Skips itself when the R2 secrets
-  # are not configured (e.g. on forks). Required secrets:
-  #   R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY
-  sync-to-r2:
-    name: Sync release to R2
-    runs-on: ubuntu-22.04
-    needs: assemble-latest-json
-    permissions:
-      contents: read
-    env:
-      R2_BUCKET: cc-switch-releases
-      R2_PUBLIC_BASE_URL: https://dl.ccswitch.io
-      KEEP_VERSIONS: "5"
-      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      AWS_DEFAULT_REGION: auto
-      # aws-cli >= 2.23 defaults to CRC checksums that R2 rejects.
-      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
-      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
-      R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
-    steps:
-      - name: Check R2 secrets
-        id: r2
-        run: |
-          if [ -n "$AWS_ACCESS_KEY_ID" ]; then
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "R2 secrets not configured; skipping download mirror sync."
-          fi
-
-      - name: Checkout scripts
-        if: steps.r2.outputs.configured == 'true'
-        uses: actions/checkout@v6
-        with:
-          sparse-checkout: scripts
-
-      - name: Download release assets
-        if: steps.r2.outputs.configured == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          mkdir -p r2-assets
-          gh release download "$GITHUB_REF_NAME" --dir r2-assets --repo "$GITHUB_REPOSITORY"
-          ls -la r2-assets
-
-      - name: Generate download manifest
-        if: steps.r2.outputs.configured == 'true'
-        run: node scripts/generate-download-manifest.mjs r2-assets "$GITHUB_REF_NAME" "$R2_PUBLIC_BASE_URL" manifest.json
-
-      - name: Upload assets and manifest to R2
-        if: steps.r2.outputs.configured == 'true'
-        run: |
-          set -euo pipefail
-          # Versioned asset paths never change — cache hard at the edge.
-          aws s3 cp r2-assets "s3://$R2_BUCKET/$GITHUB_REF_NAME/" \
-            --recursive \
-            --exclude "*.sig" --exclude "*.tar.gz" --exclude "latest.json" \
-            --cache-control "public, max-age=31536000, immutable" \
-            --endpoint-url "$R2_ENDPOINT"
-          # The manifest is replaced on every release — keep edge cache short.
-          aws s3 cp manifest.json "s3://$R2_BUCKET/manifest.json" \
-            --content-type "application/json" \
-            --cache-control "public, max-age=300" \
-            --endpoint-url "$R2_ENDPOINT"
-
-      - name: Prune old versions
-        if: steps.r2.outputs.configured == 'true'
-        run: |
-          set -euo pipefail
-          versions=$(aws s3 ls "s3://$R2_BUCKET/" --endpoint-url "$R2_ENDPOINT" \
-            | awk '$1 == "PRE" {print $2}' | tr -d '/' | grep -E '^v[0-9]' | sort -V || true)
-          count=$(printf '%s\n' "$versions" | grep -c . || true)
-          if [ "$count" -le "$KEEP_VERSIONS" ]; then
-            echo "Nothing to prune ($count versions, keeping up to $KEEP_VERSIONS)."
-            exit 0
-          fi
-          printf '%s\n' "$versions" | head -n "-$KEEP_VERSIONS" | while read -r old; do
-            [ -n "$old" ] || continue
-            echo "Pruning s3://$R2_BUCKET/$old/"
-            aws s3 rm "s3://$R2_BUCKET/$old/" --recursive --endpoint-url "$R2_ENDPOINT"
-          done

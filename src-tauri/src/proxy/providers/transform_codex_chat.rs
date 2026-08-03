@@ -1,6 +1,6 @@
 //! Codex Responses ↔ OpenAI Chat Completions conversion.
 //!
-//! This module is used when the Codex client talks to CC Switch through the
+//! This module is used when the Codex client talks to FyAgent through the
 //! Responses API, while the selected upstream provider only exposes an
 //! OpenAI-compatible Chat Completions endpoint.
 
@@ -1815,7 +1815,7 @@ pub(crate) fn chat_usage_to_responses_usage(usage: Option<&Value>) -> Value {
 }
 
 pub(crate) fn response_id_from_chat_id(id: Option<&str>) -> String {
-    let id = id.unwrap_or("ccswitch");
+    let id = id.unwrap_or("fyagent");
     if id.starts_with("resp_") {
         id.to_string()
     } else {
@@ -1910,7 +1910,7 @@ mod tests {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
 
     fn large_test_image_data_url() -> String {
-        let bytes = b"CC_SWITCH_TOOL_MEDIA_SENTINEL".repeat(400);
+        let bytes = b"FYAGENT_TOOL_MEDIA_SENTINEL".repeat(400);
         format!("data:image/png;base64,{}", STANDARD.encode(bytes))
     }
 
@@ -3204,7 +3204,7 @@ mod tests {
 
         assert_eq!(
             messages[2]["content"][0]["text"],
-            "[cc-switch: media output of tool call call_image]"
+            "[fyagent: media output of tool call call_image]"
         );
         assert_eq!(messages[2]["content"][1]["type"], "image_url");
         assert_eq!(messages[2]["content"][1]["image_url"]["url"], data_url);
@@ -3581,7 +3581,7 @@ mod tests {
             serde_json::from_str(messages[1]["content"].as_str().unwrap()).unwrap();
         let rewritten = tool_item["output"].as_str().unwrap();
 
-        assert!(rewritten.contains("[cc-switch: omitted 20000 bytes]"));
+        assert!(rewritten.contains("[fyagent: omitted 20000 bytes]"));
         assert!(!rewritten.contains(&"A".repeat(64)));
         assert!(!rewritten.contains("CUSTOM_STRING_IMAGE_SENTINEL"));
         assert_eq!(messages[2]["content"][1]["type"], "image_url");
@@ -3720,7 +3720,7 @@ mod tests {
         assert!(tool_content[2]["data"]
             .as_str()
             .unwrap()
-            .starts_with("[cc-switch: omitted 20000 bytes]"));
+            .starts_with("[fyagent: omitted 20000 bytes]"));
         assert!(!tool_content_text.contains(&data_url));
         assert!(!tool_content_text.contains("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"));
     }

@@ -152,13 +152,13 @@ mod tests {
             #[cfg(windows)]
             let original_local_app_data = env::var("LOCALAPPDATA").ok();
             let original_userprofile = env::var("USERPROFILE").ok();
-            let original_test_home = env::var("CC_SWITCH_TEST_HOME").ok();
+            let original_test_home = env::var("FYAGENT_TEST_HOME").ok();
 
             env::set_var("HOME", dir.path());
             #[cfg(windows)]
             env::set_var("LOCALAPPDATA", dir.path().join("AppData").join("Local"));
             env::set_var("USERPROFILE", dir.path());
-            env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+            env::set_var("FYAGENT_TEST_HOME", dir.path());
 
             Self {
                 dir,
@@ -192,8 +192,8 @@ mod tests {
             }
 
             match &self.original_test_home {
-                Some(value) => env::set_var("CC_SWITCH_TEST_HOME", value),
-                None => env::remove_var("CC_SWITCH_TEST_HOME"),
+                Some(value) => env::set_var("FYAGENT_TEST_HOME", value),
+                None => env::remove_var("FYAGENT_TEST_HOME"),
             }
         }
     }
@@ -226,9 +226,9 @@ mod tests {
     fn with_test_home<T>(test: impl FnOnce(&AppState, &Path) -> T) -> T {
         let _guard = test_guard();
         let temp = tempfile::tempdir().expect("tempdir");
-        let old_test_home = std::env::var_os("CC_SWITCH_TEST_HOME");
+        let old_test_home = std::env::var_os("FYAGENT_TEST_HOME");
         let old_home = std::env::var_os("HOME");
-        std::env::set_var("CC_SWITCH_TEST_HOME", temp.path());
+        std::env::set_var("FYAGENT_TEST_HOME", temp.path());
         std::env::set_var("HOME", temp.path());
 
         let db = Arc::new(Database::memory().expect("in-memory database"));
@@ -236,8 +236,8 @@ mod tests {
         let result = test(&state, temp.path());
 
         match old_test_home {
-            Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
-            None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+            Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
+            None => std::env::remove_var("FYAGENT_TEST_HOME"),
         }
         match old_home {
             Some(value) => std::env::set_var("HOME", value),
@@ -892,7 +892,7 @@ mod tests {
     #[test]
     fn extract_codex_common_config_strips_provider_fields_and_injected_artifacts() {
         // 顶层 experimental_bearer_token 模拟无活跃路由时的 fallback 注入；
-        // web_search = "disabled" 是 cc-switch 对黑名单网关注入的哨兵；
+        // web_search = "disabled" 是 fyagent 对黑名单网关注入的哨兵；
         // 顶层 wire_api 模拟无 model_provider 时的 fallback 写法；
         // [mcp.servers] 是历史错误格式，sync_all_enabled 清不掉它。
         let config_toml = r#"model_provider = "azure"
@@ -900,7 +900,7 @@ model = "gpt-4"
 wire_api = "chat"
 disable_response_storage = true
 experimental_bearer_token = "sk-live-secret"
-model_catalog_json = "cc-switch-model-catalog.json"
+model_catalog_json = "fyagent-model-catalog.json"
 web_search = "disabled"
 
 [model_providers.azure]
@@ -962,7 +962,7 @@ command = "legacy-cmd"
         );
         assert!(
             !extracted.contains("web_search"),
-            "should strip the cc-switch web_search disabled sentinel, got: {extracted}"
+            "should strip the fyagent web_search disabled sentinel, got: {extracted}"
         );
         // 真正可共享的键保留
         assert!(
@@ -2889,7 +2889,7 @@ impl ProviderService {
     /// 不会误删其它供应商共享的内容。
     ///
     /// **作用域**：Claude + Codex。Codex 提取器（`extract_codex_common_config`）
-    /// 已剥离全部供应商专属与 cc-switch 注入内容：`model` / `model_provider` /
+    /// 已剥离全部供应商专属与 fyagent 注入内容：`model` / `model_provider` /
     /// 顶层 `base_url` / 整张 `model_providers` 表（含端点与统一会话桶）、
     /// `mcp_servers`（SSOT 在 DB 表）、顶层 `experimental_bearer_token`
     /// fallback、`model_catalog_json`、`web_search = "disabled"` 哨兵——密钥与
@@ -3195,14 +3195,14 @@ impl ProviderService {
             }
         }
 
-        // cc-switch 写 live 时注入的产物一律不进共享片段：
+        // fyagent 写 live 时注入的产物一律不进共享片段：
         // - experimental_bearer_token 正常写在 [model_providers.<id>] 内（上面
         //   整表已剥），但无活跃路由 / 内建保留 id / 路由表缺失三种 fallback
         //   会落在顶层——不剥等于把 API 密钥写进共享片段。
         root.remove("experimental_bearer_token");
         // - model_catalog_json 指向按供应商生成的 catalog 投影文件（DB 为 SSOT）。
         root.remove("model_catalog_json");
-        // - web_search 只剥 cc-switch 注入的 "disabled" 哨兵；用户手设的其它值
+        // - web_search 只剥 fyagent 注入的 "disabled" 哨兵；用户手设的其它值
         //   属于可共享偏好，保留。
         if root
             .get(crate::codex_config::CODEX_WEB_SEARCH_FIELD)

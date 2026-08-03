@@ -59,7 +59,7 @@ pub(crate) fn image_input_capability_from_modalities(
     resolve_image_input_capability(model, declared_support, true)
 }
 
-/// Models that CC Switch is willing to advertise to clients as text-only.
+/// Models that FyAgent is willing to advertise to clients as text-only.
 ///
 /// This registry is deliberately exact and fail-open. A new suffix is not
 /// inherited automatically: it remains image-capable until its capability is

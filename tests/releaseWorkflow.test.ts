@@ -1,0 +1,140 @@
+import fs from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+
+const RELEASE_WORKFLOW = path.resolve(
+  __dirname,
+  "..",
+  ".github",
+  "workflows",
+  "release.yml",
+);
+const README = path.resolve(__dirname, "..", "README.md");
+const CARGO_TOML = path.resolve(__dirname, "..", "src-tauri", "Cargo.toml");
+const PER_USER_WIX_TEMPLATE = path.resolve(
+  __dirname,
+  "..",
+  "src-tauri",
+  "wix",
+  "per-user-main.wxs",
+);
+
+describe("FyAgent release workflow", () => {
+  const source = fs.readFileSync(RELEASE_WORKFLOW, "utf8");
+
+  it("builds the unsigned macOS branch DMG only by manual dispatch", () => {
+    const normalizedWorkflow = source.replace(/\r\n/g, "\n");
+    const triggerSection = normalizedWorkflow
+      .slice(0, normalizedWorkflow.indexOf("\npermissions:"))
+      .trimEnd();
+    const releaseJobStart = normalizedWorkflow.indexOf("\n  release:\n");
+    const publishJobStart = normalizedWorkflow.indexOf(
+      "\n  publish-release:\n",
+    );
+    expect(releaseJobStart).toBeGreaterThan(-1);
+    expect(publishJobStart).toBeGreaterThan(releaseJobStart);
+    const releaseJobSection = normalizedWorkflow.slice(
+      releaseJobStart,
+      publishJobStart,
+    );
+    const publishJobSection = normalizedWorkflow.slice(publishJobStart);
+    const releaseJobHeader = releaseJobSection
+      .slice(1, releaseJobSection.indexOf("\n    steps:"))
+      .trimEnd();
+
+    expect(triggerSection).toBe(
+      [
+        "name: Release",
+        "",
+        "on:",
+        "  push:",
+        "    tags:",
+        '      - "v*"',
+        "  workflow_dispatch:",
+      ].join("\n"),
+    );
+    expect(releaseJobHeader).toBe(
+      [
+        "  release:",
+        "    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch')",
+        "    runs-on: ${{ matrix.os }}",
+        "    environment: release",
+        "    strategy:",
+        "      fail-fast: false",
+        '      matrix: ${{ fromJSON(github.ref_type == \'tag\' && \'{"include":[{"os":"windows-2022"},{"os":"windows-11-arm","arch":"arm64"},{"os":"ubuntu-22.04"},{"os":"ubuntu-22.04-arm","arch":"arm64"},{"os":"macos-14"}]}\' || \'{"include":[{"os":"macos-14"}]}\') }}',
+      ].join("\n"),
+    );
+    expect(releaseJobSection).toContain(
+      "Build unsigned Tauri App (macOS branch)",
+    );
+    expect(publishJobSection).toContain(
+      "  publish-release:\n    name: Publish GitHub Release\n    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')",
+    );
+  });
+
+  it("publishes only manual-install assets without an updater chain", () => {
+    const normalizedSource = source.toLowerCase();
+
+    expect(source).not.toContain("TAURI_SIGNING_PRIVATE_KEY");
+    expect(normalizedSource).not.toContain("updater");
+    expect(normalizedSource).not.toContain("latest.json");
+    expect(normalizedSource).not.toContain(".tar.gz");
+    expect(normalizedSource).not.toContain(".sig");
+    expect(source).toContain("FyAgent-${VERSION}-macOS.dmg");
+    expect(source).toContain("FyAgent-$VERSION-Windows$assetSuffix.msi");
+    expect(source).toContain(
+      'NEW_APPIMAGE="FyAgent-${VERSION}-Linux-${ARCH}.AppImage"',
+    );
+    expect(source).toContain(
+      '"release-assets/FyAgent-${VERSION}-Linux-${ARCH}.deb"',
+    );
+    expect(source).toContain(
+      '"release-assets/FyAgent-${VERSION}-Linux-${ARCH}.rpm"',
+    );
+  });
+
+  it("does not reintroduce old public branding or website links", () => {
+    expect(source).not.toContain("CC Switch");
+    expect(source).not.toContain("CC-Switch");
+    expect(source).not.toContain("ccswitch.io");
+    expect(source).not.toContain("cc-switch.exe");
+    expect(source).toContain("release/fyagent.exe");
+    expect(source).toContain("name: FyAgent ${{ github.ref_name }}");
+    expect(source).toContain('--volname "FyAgent"');
+  });
+
+  it("documents manual release delivery rather than an application updater", () => {
+    const readmeSource = fs.readFileSync(README, "utf8");
+    const readme = readmeSource.toLowerCase();
+
+    expect(readme).toContain("manual release downloads");
+    expect(readme).not.toContain("auto-updater");
+    expect(readme).not.toContain("tauri-plugin-updater");
+    expect(readmeSource).toContain("FyAgent-v{version}-Linux-{arch}.AppImage");
+    expect(readmeSource).toContain("FyAgent-v{version}-Linux-{arch}.deb");
+    expect(readmeSource).toContain("FyAgent-v{version}-Linux-{arch}.rpm");
+  });
+});
+
+describe("FyAgent per-user WiX template", () => {
+  const source = fs.readFileSync(PER_USER_WIX_TEMPLATE, "utf8");
+  const cargoToml = fs.readFileSync(CARGO_TOML, "utf8");
+
+  it("uses HKCU registry key paths for bundled binaries", () => {
+    expect(source).toContain('InstallScope="perUser"');
+    expect(source).toContain(
+      '<File Id="Bin_{{ bin.id }}" Source="{{bin.path}}" KeyPath="no"/>',
+    );
+    expect(source).toContain(
+      'Name="BundledBinary_{{ bin.id }}" Type="integer" Value="1" KeyPath="yes"',
+    );
+    expect(source).not.toContain(
+      '<File Id="Bin_{{ bin.id }}" Source="{{bin.path}}" KeyPath="yes"/>',
+    );
+  });
+
+  it("does not produce an unused cdylib for the desktop-only per-user MSI", () => {
+    expect(cargoToml).toContain('crate-type = ["staticlib", "rlib"]');
+    expect(cargoToml).not.toContain('"cdylib"');
+  });
+});

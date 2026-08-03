@@ -1,12 +1,12 @@
-# 在 Codex 中用 DeepSeek 这类 Chat 格式 API：CC Switch 本地路由攻略
+# 在 Codex 中用 DeepSeek 这类 Chat 格式 API：FyAgent 本地路由攻略
 
-> 适用版本：CC Switch 3.16.0 及附近版本。本文根据仓库内文档与代码整理，并用 DeepSeek 作为 OpenAI Chat Completions 兼容接口的示例。截图来自当前前端界面，使用去敏示例数据生成，避免泄露真实 API Key 或账户余额。
+> 适用版本：FyAgent 3.16.0 及附近版本。本文根据仓库内文档与代码整理，并用 DeepSeek 作为 OpenAI Chat Completions 兼容接口的示例。截图来自当前前端界面，使用去敏示例数据生成，避免泄露真实 API Key 或账户余额。
 
 ## 为什么需要本地路由
 
 新版 Codex CLI 面向的是 OpenAI Responses API，而 DeepSeek、Kimi、MiniMax、SiliconFlow 等很多供应商实际暴露的是 OpenAI Chat Completions 形态，也就是 `/chat/completions`。这两种协议的请求体、流式事件和返回结构不同，直接把 Chat 接口填进 Codex 配置里，常见结果就是模型列表不对、请求 404/400，或者流式响应无法被 Codex 正确解析。
 
-CC Switch 的做法是让 Codex 始终连本机路由，仍以 Responses API 发送请求；路由在内部识别当前供应商是否是 Chat 格式，再把请求改写成 Chat Completions 发给上游，最后把 Chat 响应转换回 Responses 形态返回给 Codex。
+FyAgent 的做法是让 Codex 始终连本机路由，仍以 Responses API 发送请求；路由在内部识别当前供应商是否是 Chat 格式，再把请求改写成 Chat Completions 发给上游，最后把 Chat 响应转换回 Responses 形态返回给 Codex。
 
 ![Codex 供应商列表里的需要路由标记](../images/codex-deepseek-routing/01-codex-providers-require-routing.png)
 
@@ -21,15 +21,15 @@ CC Switch 的做法是让 Codex 始终连本机路由，仍以 Responses API 发
 
 你需要先准备好三样东西：
 
-- 已安装并能启动的 CC Switch。
+- 已安装并能启动的 FyAgent。
 - 已安装 Codex CLI，并至少运行过一次，让 `~/.codex/config.toml` 目录结构存在。
 - DeepSeek 或同类 Chat Completions 供应商的 API Key。
 
-DeepSeek 官方文档目前写明 OpenAI 兼容 base URL 是 `https://api.deepseek.com`（其他供应商常见的是带 `/v1` 后缀的 base URL），Chat API 路径是 `/chat/completions`；CC Switch 的 DeepSeek 预设已经按这些信息配好，请优先使用预设，不需要手动拼接口路径。
+DeepSeek 官方文档目前写明 OpenAI 兼容 base URL 是 `https://api.deepseek.com`（其他供应商常见的是带 `/v1` 后缀的 base URL），Chat API 路径是 `/chat/completions`；FyAgent 的 DeepSeek 预设已经按这些信息配好，请优先使用预设，不需要手动拼接口路径。
 
 ## 第一步：添加 Codex 供应商
 
-打开 CC Switch，切到顶部的 `Codex` 标签，点击右上角的加号添加供应商。
+打开 FyAgent，切到顶部的 `Codex` 标签，点击右上角的加号添加供应商。
 
 选择内置预设里的 `DeepSeek`，只需要做两件事：
 
@@ -49,11 +49,11 @@ DeepSeek 官方文档目前写明 OpenAI 兼容 base URL 是 `https://api.deepse
 
 ![本地路由页面中启用 Codex 接管](../images/codex-deepseek-routing/03-local-route-codex-takeover.png)
 
-接管后，CC Switch 会把 Codex 的 live 配置指向本机路由，并用占位符管理认证。真实 DeepSeek Key 仍保存在 CC Switch 的 Provider 配置里，由本地路由在转发时注入，不需要你把 Key 暴露给 Codex live 配置。
+接管后，FyAgent 会把 Codex 的 live 配置指向本机路由，并用占位符管理认证。真实 DeepSeek Key 仍保存在 FyAgent 的 Provider 配置里，由本地路由在转发时注入，不需要你把 Key 暴露给 Codex live 配置。
 
 ## 第三步：切换供应商并重启 Codex
 
-回到 Codex 供应商列表，点击 DeepSeek 供应商的 `启用`。如果看到 `需要路由` 标记，说明这个供应商必须在路由运行时使用；没有启动路由时，CC Switch 会弹出“需要路由服务才能正常使用”的提示。
+回到 Codex 供应商列表，点击 DeepSeek 供应商的 `启用`。如果看到 `需要路由` 标记，说明这个供应商必须在路由运行时使用；没有启动路由时，FyAgent 会弹出“需要路由服务才能正常使用”的提示。
 
 切换后建议重启当前 Codex 终端会话。原因是：
 
@@ -64,9 +64,9 @@ DeepSeek 官方文档目前写明 OpenAI 兼容 base URL 是 `https://api.deepse
 
 ## 其它 Chat 供应商怎么处理
 
-DeepSeek、Kimi、MiniMax、SiliconFlow 等常见 Chat 格式供应商在 CC Switch 里已有预设，优先用预设即可。只有预设里没有的供应商，才需要选择自定义配置；这时按对方文档填 API Key、base URL 和模型，并把 `API 格式` 选为 `OpenAI Chat Completions (需开启路由)`。
+DeepSeek、Kimi、MiniMax、SiliconFlow 等常见 Chat 格式供应商在 FyAgent 里已有预设，优先用预设即可。只有预设里没有的供应商，才需要选择自定义配置；这时按对方文档填 API Key、base URL 和模型，并把 `API 格式` 选为 `OpenAI Chat Completions (需开启路由)`。
 
-如果上游直接支持 OpenAI Responses API，就不需要打开 `需要本地路由映射`；这时 CC Switch 可以按 Responses 直连，不做 Chat 转换。
+如果上游直接支持 OpenAI Responses API，就不需要打开 `需要本地路由映射`；这时 FyAgent 可以按 Responses 直连，不做 Chat 转换。
 
 ## 常见问题
 
@@ -80,7 +80,7 @@ DeepSeek、Kimi、MiniMax、SiliconFlow 等常见 Chat 格式供应商在 CC Swi
 
 **`/model` 看不到 DeepSeek 模型**
 
-保存供应商后重启 Codex。CC Switch 会生成 `cc-switch-model-catalog.json` 并把路径写入 `model_catalog_json`，但正在运行的 Codex 进程不一定会热加载模型目录。
+保存供应商后重启 Codex。FyAgent 会生成 `fyagent-model-catalog.json` 并把路径写入 `model_catalog_json`，但正在运行的 Codex 进程不一定会热加载模型目录。
 目前 Codex app 不支持多模型选择，默认使用配置的第一个模型。
 
 **开了路由但请求仍走错供应商**
@@ -89,13 +89,13 @@ DeepSeek、Kimi、MiniMax、SiliconFlow 等常见 Chat 格式供应商在 CC Swi
 
 **可以用官方 OpenAI Codex 账号走本地路由吗**
 
-不建议。CC Switch 会在本地路由接管模式下阻止切到官方供应商，因为用代理访问官方 API 可能带来账号风险。路由主要用于第三方、聚合或协议转换场景。
+不建议。FyAgent 会在本地路由接管模式下阻止切到官方供应商，因为用代理访问官方 API 可能带来账号风险。路由主要用于第三方、聚合或协议转换场景。
 
 ## 参考链接
 
-- [CC Switch 用户手册：添加供应商](../user-manual/zh/2-providers/2.1-add.md)
-- [CC Switch 用户手册：代理服务](../user-manual/zh/4-proxy/4.1-service.md)
-- [CC Switch 用户手册：应用路由](../user-manual/zh/4-proxy/4.2-routing.md)
+- [FyAgent 用户手册：添加供应商](../user-manual/zh/2-providers/2.1-add.md)
+- [FyAgent 用户手册：代理服务](../user-manual/zh/4-proxy/4.1-service.md)
+- [FyAgent 用户手册：应用路由](../user-manual/zh/4-proxy/4.2-routing.md)
 - [DeepSeek API 文档：Your First API Call](https://api-docs.deepseek.com/)
 - [DeepSeek API 文档：Create Chat Completion](https://api-docs.deepseek.com/api/create-chat-completion)
 - [DeepSeek API 文档：Multi-round Conversation](https://api-docs.deepseek.com/guides/multi_round_chat)

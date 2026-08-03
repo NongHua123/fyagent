@@ -1,5 +1,7 @@
 # 人工验收计划
 
+> 2026-07-30 clean-break 决策：当前构建使用 `com.fyagent.desktop`、`fyagent://`、`~/.fyagent/fyagent.db` 与 `fyagent` 二进制，不迁移、不读取旧应用身份。历史设备记录仍按执行当时事实保留。
+
 ## 1. 原则
 
 - 真实安装只由人工在明确授权的测试设备执行；
@@ -235,6 +237,13 @@
 - 普通 UI不受影响；
 - 不阻断 V1。
 
+### WALL-05 本地路径与重解析点边界（HIL）
+
+- 将 `TEMP`/job root 指向 mapped network drive，确认 hidden all-users 流程在 `GetDriveTypeW != DRIVE_FIXED` 时 fail closed；
+- 在 parent 创建 job 后，将 source file 或中间目录替换为 junction/reparse，确认 elevated child 的 final-handle path guard 拒绝；
+- 确认 ProgramData protected staging 仅允许 SYSTEM/Administrators 写入，且 PackageManager 只接收该复制件；
+- 该项需要真实 Windows 管理员/UAC 环境，不由 fake 自动化签收。
+
 ## 8. macOS Apple Silicon 阻断性矩阵
 
 ### M-01 未安装 → `/Applications`
@@ -343,18 +352,25 @@
 ## 12. FyAgent 品牌和更新回归
 
 - 窗口/About显示 FyAgent；
+- About 显示新的 FyAgent 图标，且没有旧 CC Switch 图标；
+- Windows 构建检查安装器、开始菜单/桌面快捷方式、任务栏和应用窗口图标；不同尺寸下无
+  明显裁切、透明边缘异常或旧图缓存，并记录截图；
+- macOS 构建检查 `.app`/Finder、Dock、应用切换器和 About 彩色图标；菜单栏图标为清晰的
+  单色 template，在浅色/深色菜单栏和 1x/2x/3x 显示下可辨识且没有彩色方块，并记录截图；
 - 无 ccswitch.io/上游 GitHub可见跳转；
 - 无启动自动检查 FyAgent更新；
 - 网络抓取无 CC Switch GitHub latest请求；
+- 真实 GitHub Actions release 仅生成 FyAgent 手动安装资产；不生成 updater `.tar.gz`/`latest.json`，release 标题、资产名和 macOS DMG 卷名均不显示旧品牌或旧官网；
 - 当前应用版本仍显示；
 - LICENSE仍存在；
-- identifier/data dir仍保持。
+- identifier 为 `com.fyagent.desktop`，deep-link 只接受 `fyagent://`，默认数据只写入 `~/.fyagent/fyagent.db`；旧身份不被迁移或识别；
+- DMG 背景、provider/partner/Claude/OpenAI 图标和截图未被应用品牌替换波及。
 
 ## 13. 签收规则
 
 ### Agent implementation complete
 
-自动化全通过即可标记，人工平台为 pending。
+自动化全通过即可标记，Windows/macOS 原生图标视觉和其他人工平台项保持 pending。
 
 ### Platform accepted
 

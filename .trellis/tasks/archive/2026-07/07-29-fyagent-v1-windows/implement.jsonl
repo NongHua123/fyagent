@@ -1,0 +1,3 @@
+{"file":"docs/fyagent/dev/v1/07-WINDOWS-IMPLEMENTATION.md","reason":"Windows current-user、MSIX、AUMID 与实验 all-users 规范"}
+{"file":"docs/fyagent/dev/v1/05-DOMAIN-MODEL-STATE-MACHINE-IPC.md","reason":"固定 platform trait 和禁止 scope 的普通 IPC 契约"}
+{"file":"docs/fyagent/dev/v1/18-REFERENCES.md","reason":"动态 Windows identity/Publisher 重新核验门槛"}

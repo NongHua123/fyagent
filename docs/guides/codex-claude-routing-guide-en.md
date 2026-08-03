@@ -1,6 +1,6 @@
-# Using Claude Models in Codex with CC Switch
+# Using Claude Models in Codex with FyAgent
 
-> Applies to CC Switch 3.17.0 and later (the Anthropic Messages upstream was introduced in 3.17.0). This guide is based on the repository documentation and code, and uses a Claude-family relay gateway as the example. Screenshots are generated from the current frontend UI with de-identified sample data to avoid exposing a real API key.
+> Applies to FyAgent 3.17.0 and later (the Anthropic Messages upstream was introduced in 3.17.0). This guide is based on the repository documentation and code, and uses a Claude-family relay gateway as the example. Screenshots are generated from the current frontend UI with de-identified sample data to avoid exposing a real API key.
 
 ## Why local routing is needed
 
@@ -8,7 +8,7 @@ The newer Codex CLI targets the OpenAI Responses API, while the various Claude-f
 
 This feature targets the scenario where all you have is a `/v1/messages` endpoint: you have a key for some Claude-family relay gateway and want to run Claude-family models with Codex's interaction style; or your company has banned the Claude Code client for compliance reasons and kept only an approved Claude-family gateway — the model itself is available, and all that's missing is a permitted client, which Codex can now fill.
 
-CC Switch's approach is to keep Codex always talking to the local route and still sending Responses API requests; once the route detects that the active provider is Anthropic-format, it converts the request into Anthropic Messages for the upstream, then converts the response back into the Responses shape it returns to Codex.
+FyAgent's approach is to keep Codex always talking to the local route and still sending Responses API requests; once the route detects that the active provider is Anthropic-format, it converts the request into Anthropic Messages for the upstream, then converts the response back into the Responses shape it returns to Codex.
 
 ![Needs routing marker in the Codex provider list](../images/codex-claude-routing/01-codex-providers-require-routing.png)
 
@@ -23,7 +23,7 @@ The chain has four main steps:
 
 Prepare these three things first:
 
-- CC Switch installed and able to start (3.17.0 or later).
+- FyAgent installed and able to start (3.17.0 or later).
 - Codex CLI installed and run at least once, so the `~/.codex/` directory structure exists.
 - An API key that can reach an Anthropic Messages protocol endpoint (`/v1/messages`) — from some Claude-family relay gateway, or an internal enterprise Claude gateway; follow the gateway's documentation for its endpoint and auth method. Note: some providers restrict their Claude API to Claude Code only, so such a key may error out when used through Codex — if you're unsure, check with your provider first.
 
@@ -31,10 +31,10 @@ The Codex tab currently has no built-in Anthropic preset, so the steps below use
 
 ## Step 1: Add a Codex provider
 
-Open CC Switch, switch to the top-level `Codex` tab, click the plus button in the upper-right corner to add a provider, keep the default `Custom Configuration`, then fill in:
+Open FyAgent, switch to the top-level `Codex` tab, click the plus button in the upper-right corner to add a provider, keep the default `Custom Configuration`, then fill in:
 
 - **Provider Name**: anything you like, e.g. `Claude Gateway`.
-- **API Key**: your gateway key. The real key is stored only in CC Switch and injected by the local route when forwarding, so it never enters Codex's live config.
+- **API Key**: your gateway key. The real key is stored only in FyAgent and injected by the local route when forwarding, so it never enters Codex's live config.
 - **API Request URL**: just the gateway's service root, e.g. `https://claude-gateway.example.com`. It works with or without a trailing `/v1` — the route sends requests to `/v1/messages` automatically; don't assemble `/v1/messages` yourself (if your gateway documentation gives you a complete messages URL, you can turn on the `Full URL` toggle next to it and paste it verbatim). The yellow hint below the address bar, "compatible with OpenAI Response format", is generic copy written for the direct Responses scenario; when you choose the Anthropic format, just fill it in as this guide describes.
 - **Default Model**: enter a Claude model id the gateway recognizes, e.g. `claude-sonnet-5`; follow the model names in the gateway's documentation.
 
@@ -52,7 +52,7 @@ After selecting Anthropic Messages, three supporting fields appear below:
 - **Emulate Claude Code client**: off by default. Turn it on only when the gateway or its upstream restricts usage to "Claude Code only"; when enabled, it spoofs the User-Agent, `anthropic-beta`, and `x-app` headers and injects the Claude Code identity as the first line of the system prompt. Ordinary gateways don't need it; if you're still rejected after enabling it, see "FAQ".
 - **Max output tokens**: the Anthropic protocol's `max_tokens` is required, and when a Codex request carries no output ceiling the route falls back to a conservative 8192, which may truncate long answers or deep reasoning (showing up as an incomplete reply, `stop_reason=max_tokens`). If you hit truncation, raise this to the model's real ceiling here — but don't exceed it, or the upstream will 400 outright.
 
-The `Model Mapping` in the same area is optional: add model ids like `claude-opus-4-8`, `claude-sonnet-5`, and `claude-haiku-4-5-20251001` (use the names your upstream recognizes) one per row, and CC Switch generates a model catalog so Codex's `/model` menu can list them; you can also leave it empty, in which case Codex just requests the default model.
+The `Model Mapping` in the same area is optional: add model ids like `claude-opus-4-8`, `claude-sonnet-5`, and `claude-haiku-4-5-20251001` (use the names your upstream recognizes) one per row, and FyAgent generates a model catalog so Codex's `/model` menu can list them; you can also leave it empty, in which case Codex just requests the default model.
 
 After you save the provider, a `Needs Routing` marker appears on the card — providers like this only work while local routing is running.
 
@@ -65,11 +65,11 @@ Go to the `Routing` page in Settings, expand `Local Routing`, and complete two t
 
 ![Enabling Codex takeover on the local routing page](../images/codex-claude-routing/04-local-route-codex-takeover.png)
 
-After takeover, CC Switch points Codex's live config at the local route (`base_url = http://127.0.0.1:15721/v1`), with only a placeholder in `auth.json`. The real Claude key stays in the CC Switch provider config and is injected by the local route on forward, using the auth field you selected.
+After takeover, FyAgent points Codex's live config at the local route (`base_url = http://127.0.0.1:15721/v1`), with only a placeholder in `auth.json`. The real Claude key stays in the FyAgent provider config and is injected by the local route on forward, using the auth field you selected.
 
 ## Step 3: Switch providers and restart Codex
 
-Return to the Codex provider list and click `Enable` on the Claude provider. If routing isn't running, CC Switch shows "This provider uses Anthropic Messages API format, requires the routing service to work properly. Start routing first." — just go back to Step 2 and turn it on.
+Return to the Codex provider list and click `Enable` on the Claude provider. If routing isn't running, FyAgent shows "This provider uses Anthropic Messages API format, requires the routing service to work properly. Start routing first." — just go back to Step 2 and turn it on.
 
 After switching, restart the current Codex terminal session: `config.toml` and the model catalog are read when the Codex process starts, and a running process isn't guaranteed to hot-load them.
 
@@ -123,7 +123,7 @@ Before using this in the "company bans the client but keeps only the gateway" sc
 
 ## References
 
-- [CC Switch User Manual: Proxy Service](../user-manual/en/4-proxy/4.1-service.md)
-- [CC Switch User Manual: App Routing](../user-manual/en/4-proxy/4.2-routing.md)
-- [CC Switch v3.17.0 Release Notes](../release-notes/v3.17.0-en.md)
+- [FyAgent User Manual: Proxy Service](../user-manual/en/4-proxy/4.1-service.md)
+- [FyAgent User Manual: App Routing](../user-manual/en/4-proxy/4.2-routing.md)
+- [FyAgent v3.17.0 Release Notes](../release-notes/v3.17.0-en.md)
 - This feature comes from community contribution [#5071](https://github.com/farion1231/cc-switch/pull/5071); thanks @yeeyzy.

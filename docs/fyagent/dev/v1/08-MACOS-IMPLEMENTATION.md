@@ -69,18 +69,24 @@ Team 相同但 Bundle ID 不同
 
 对每个候选：
 
-1. 用 `plutil` 或可靠 plist parser 读取 `Contents/Info.plist`；
-2. 只对 `CFBundleIdentifier == com.openai.codex` 进一步深检；
+1. 用 `plutil` 或可靠 plist parser 做仅含 `CFBundleIdentifier` 的容错 probe；缺少、非
+   regular、`plutil` 非零、JSON 无法解析或缺少 identity 的无关候选直接跳过；
+2. 只对 probe 得到 `CFBundleIdentifier == com.openai.codex` 的候选进一步严格深检；
 3. 读取 `CFBundleVersion`、`CFBundleShortVersionString`、`CFBundleExecutable`、`LSMinimumSystemVersion`；
 4. 获取 codesign TeamIdentifier；
 5. 确认候选为顶层 `.app` 且 canonical path 仍位于两个标准目录。
 
+无关 Classic、Beta 或第三方 `.app` 的损坏 plist 不得阻断 Stable 检测或首次安装。
+但 probe 已识别为 Stable 后，第二次严格读取的版本、可执行文件、架构、Team、codesign
+或 Gatekeeper 任一失败仍必须 fail closed；路径逃逸、非目录、标准目录枚举错误，或
+`plutil` runner 的基础设施错误也不能因“无关候选”而降级忽略。
+
 结果：
 
-| 数量 | 行为 |
-|---|---|
-| 0 Stable | NotInstalled |
-| 1 Stable | 管理该实际路径，不主动改名或迁移 |
+| 数量      | 行为                                                 |
+| --------- | ---------------------------------------------------- |
+| 0 Stable  | NotInstalled                                         |
+| 1 Stable  | 管理该实际路径，不主动改名或迁移                     |
 | >1 Stable | `MAC_MULTIPLE_INSTALLATIONS`，阻断更新和启动自动选择 |
 
 `com.openai.chat` 不算 Stable，但用于目标路径冲突保护。
@@ -122,6 +128,8 @@ hdiutil attach <dmg> -readonly -nobrowse -plist
 
 - 参数独立传给 `Command`，不拼 shell 字符串；
 - timeout；
+- 每次 `hdiutil attach` 前重新打开 job temp 中固定的 DMG，确认它仍是受控目录内的
+  regular/non-link 文件，且 size/SHA-256 与同一锁定 descriptor 精确一致；
 - parse plist 输出获取 mount point；
 - mount point canonical；
 - 使用 RAII guard 确保最终 detach；
@@ -358,6 +366,9 @@ open <verified-actual-bundle-path>
 - wrong arch；
 - min OS > current；
 - malformed plist；
+- malformed unrelated `.app` + valid Stable；
+- malformed unrelated `.app` only；
+- identifier 已识别为 Stable、但严格字段缺失/损坏；
 - multiple Stable。
 
 ### CommandRunner fake

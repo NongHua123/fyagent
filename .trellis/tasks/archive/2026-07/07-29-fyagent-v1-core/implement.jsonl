@@ -1,0 +1,3 @@
+{"file":"docs/fyagent/dev/v1/05-DOMAIN-MODEL-STATE-MACHINE-IPC.md","reason":"Core DTO、状态机、普通 IPC 和平台 trait 契约"}
+{"file":"docs/fyagent/dev/v1/06-DOWNLOAD-SOURCE-AND-VALIDATION.md","reason":"镜像 source、下载、redirect、校验和临时目录规则"}
+{"file":"docs/fyagent/dev/v1/10-ERROR-CODES-AND-DIAGNOSTICS.md","reason":"稳定错误码和诊断脱敏规则"}

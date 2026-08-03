@@ -1,18 +1,18 @@
-# Contributing to CC Switch
+# Contributing to FyAgent
 
 > [中文版本](#贡献指南)
 
-Thank you for your interest in contributing to CC Switch! Please read our [Code of Conduct](./CODE_OF_CONDUCT.md) before participating.
+Thank you for your interest in contributing to FyAgent! Please read our [Code of Conduct](./CODE_OF_CONDUCT.md) before participating.
 
 ## How to Contribute
 
 There are many ways to contribute:
 
-- **Report bugs** — Found something broken? [Open a bug report](https://github.com/farion1231/cc-switch/issues/new?template=bug_report.yml).
-- **Suggest features** — Have an idea? [Submit a feature request](https://github.com/farion1231/cc-switch/issues/new?template=feature_request.yml).
-- **Improve docs** — Spot a typo or missing info? [Report a doc issue](https://github.com/farion1231/cc-switch/issues/new?template=doc_issue.yml).
+- **Report bugs** — Found something broken? [Open a bug report](https://github.com/NongHua123/cc-switch/issues/new?template=bug_report.yml).
+- **Suggest features** — Have an idea? [Submit a feature request](https://github.com/NongHua123/cc-switch/issues/new?template=feature_request.yml).
+- **Improve docs** — Spot a typo or missing info? [Report a doc issue](https://github.com/NongHua123/cc-switch/issues/new?template=doc_issue.yml).
 - **Contribute code** — Fix bugs or implement features via pull requests.
-- **Translate** — Help us improve translations for English, Chinese, and Japanese.
+- **Translate** — Help us improve English, Simplified Chinese, Traditional Chinese, and Japanese translations.
 
 > **Security vulnerabilities**: Please do NOT use public issues. See our [Security Policy](./SECURITY.md) instead.
 
@@ -20,7 +20,7 @@ There are many ways to contribute:
 
 ### Prerequisites
 
-- Node.js 18+ and pnpm 8+
+- Node.js 20+ and pnpm 10.12.3
 - Rust 1.85+ and Cargo
 - [Tauri 2.0 prerequisites](https://v2.tauri.app/start/prerequisites/)
 
@@ -42,7 +42,6 @@ pnpm dev
 | `pnpm build` | Production build |
 | `pnpm typecheck` | TypeScript type checking |
 | `pnpm test:unit` | Run unit tests |
-| `pnpm lint` | ESLint check |
 | `pnpm format` | Format code (Prettier) |
 | `pnpm format:check` | Check code formatting |
 
@@ -57,7 +56,7 @@ cargo test       # Run tests
 
 ## Code Style
 
-- **Frontend**: Prettier for formatting, ESLint for linting, strict TypeScript (`pnpm typecheck`)
+- **Frontend**: Prettier for formatting and strict TypeScript (`pnpm typecheck`)
 - **Backend**: `cargo fmt` for formatting, `cargo clippy` for linting
 - **Tauri 2.0**: Command names must use camelCase
 
@@ -110,37 +109,38 @@ By submitting a PR, you agree to the following:
 
 ## Internationalization (i18n)
 
-CC Switch supports three languages. When modifying user-facing text:
+FyAgent maintains four locale resources. When modifying user-facing text:
 
-1. Update **all three** locale files:
-   - `src/locales/en/translation.json`
-   - `src/locales/zh/translation.json`
-   - `src/locales/ja/translation.json`
+1. Update **all four** locale files:
+   - `src/i18n/locales/en.json`
+   - `src/i18n/locales/ja.json`
+   - `src/i18n/locales/zh.json`
+   - `src/i18n/locales/zh-TW.json`
 2. Use the `t()` function from i18next for all UI text.
 3. Never hardcode user-facing strings.
 
 ## Questions?
 
-- [Open a question](https://github.com/farion1231/cc-switch/issues/new?template=question.yml)
-- [GitHub Discussions](https://github.com/farion1231/cc-switch/discussions)
+- [Open a question](https://github.com/NongHua123/cc-switch/issues/new?template=question.yml)
+- [GitHub Discussions](https://github.com/NongHua123/cc-switch/discussions)
 
 ---
 
 # 贡献指南
 
-> [English Version](#contributing-to-cc-switch)
+> [English Version](#contributing-to-fyagent)
 
-感谢你对 CC Switch 的贡献兴趣！参与之前请阅读我们的[行为准则](./CODE_OF_CONDUCT.md)。
+感谢你对 FyAgent 的贡献兴趣！参与之前请阅读我们的[行为准则](./CODE_OF_CONDUCT.md)。
 
 ## 如何贡献
 
 你可以通过多种方式参与贡献：
 
-- **报告 Bug** — 发现问题？[提交 Bug 报告](https://github.com/farion1231/cc-switch/issues/new?template=bug_report.yml)。
-- **建议功能** — 有想法？[提交功能请求](https://github.com/farion1231/cc-switch/issues/new?template=feature_request.yml)。
-- **改进文档** — 发现错误或缺失？[报告文档问题](https://github.com/farion1231/cc-switch/issues/new?template=doc_issue.yml)。
+- **报告 Bug** — 发现问题？[提交 Bug 报告](https://github.com/NongHua123/cc-switch/issues/new?template=bug_report.yml)。
+- **建议功能** — 有想法？[提交功能请求](https://github.com/NongHua123/cc-switch/issues/new?template=feature_request.yml)。
+- **改进文档** — 发现错误或缺失？[报告文档问题](https://github.com/NongHua123/cc-switch/issues/new?template=doc_issue.yml)。
 - **贡献代码** — 通过 Pull Request 修复 Bug 或实现新功能。
-- **翻译** — 帮助改进英文、中文和日文的翻译。
+- **翻译** — 帮助改进英文、简体中文、繁体中文和日文翻译。
 
 > **安全漏洞**：请不要使用公开 Issue 报告。请参阅我们的[安全策略](./SECURITY.md)。
 
@@ -148,7 +148,7 @@ CC Switch supports three languages. When modifying user-facing text:
 
 ### 前提条件
 
-- Node.js 18+ 和 pnpm 8+
+- Node.js 20+ 和 pnpm 10.12.3
 - Rust 1.85+ 和 Cargo
 - [Tauri 2.0 开发环境](https://v2.tauri.app/start/prerequisites/)
 
@@ -170,7 +170,6 @@ pnpm dev
 | `pnpm build` | 构建生产版本 |
 | `pnpm typecheck` | TypeScript 类型检查 |
 | `pnpm test:unit` | 运行单元测试 |
-| `pnpm lint` | ESLint 检查 |
 | `pnpm format` | 格式化代码（Prettier） |
 | `pnpm format:check` | 检查代码格式 |
 
@@ -185,7 +184,7 @@ cargo test       # 运行测试
 
 ## 代码规范
 
-- **前端**：使用 Prettier 格式化、ESLint 检查、严格 TypeScript（`pnpm typecheck`）
+- **前端**：使用 Prettier 格式化和严格 TypeScript（`pnpm typecheck`）
 - **后端**：使用 `cargo fmt` 格式化、`cargo clippy` 检查
 - **Tauri 2.0**：命令名必须使用 camelCase
 
@@ -238,16 +237,17 @@ chore(deps): update dependencies
 
 ## 国际化（i18n）
 
-CC Switch 支持三种语言。修改用户可见文本时：
+FyAgent 维护四份 locale 资源。修改用户可见文本时：
 
-1. **同时更新三个**语言文件：
-   - `src/locales/en/translation.json`
-   - `src/locales/zh/translation.json`
-   - `src/locales/ja/translation.json`
+1. **同时更新四份**语言文件：
+   - `src/i18n/locales/en.json`
+   - `src/i18n/locales/ja.json`
+   - `src/i18n/locales/zh.json`
+   - `src/i18n/locales/zh-TW.json`
 2. 所有 UI 文本使用 i18next 的 `t()` 函数。
 3. 不要硬编码用户可见的字符串。
 
 ## 有疑问？
 
-- [提问](https://github.com/farion1231/cc-switch/issues/new?template=question.yml)
-- [GitHub 讨论区](https://github.com/farion1231/cc-switch/discussions)
+- [提问](https://github.com/NongHua123/cc-switch/issues/new?template=question.yml)
+- [GitHub 讨论区](https://github.com/NongHua123/cc-switch/discussions)

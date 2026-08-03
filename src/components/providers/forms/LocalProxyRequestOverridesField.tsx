@@ -49,7 +49,7 @@ export function LocalProxyRequestOverridesField({
           <Textarea
             value={headersJson}
             onChange={(event) => onHeadersJsonChange(event.target.value)}
-            placeholder={'{\n  "X-Provider": "cc-switch"\n}'}
+            placeholder={'{\n  "X-Provider": "fyagent"\n}'}
             className="min-h-[132px] resize-y font-mono text-xs"
             aria-invalid={Boolean(headerError)}
           />

@@ -2,9 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Download,
   Copy,
-  ExternalLink,
-  Github,
-  Globe,
   Info,
   Loader2,
   RefreshCw,
@@ -31,7 +28,6 @@ import type {
   ToolInstallation,
   ToolInstallationReport,
 } from "@/lib/api/settings";
-import { useUpdate } from "@/contexts/UpdateContext";
 import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
 import appIcon from "@/assets/icons/app-icon.png";
@@ -70,6 +66,11 @@ const TOOL_NAMES = [
 ] as const;
 type ToolName = (typeof TOOL_NAMES)[number];
 type ToolLifecycleAction = "install" | "update";
+
+const isLifecycleWritableTool = (toolName: ToolName): boolean =>
+  toolName !== "codex";
+
+const LIFECYCLE_TOOLS = TOOL_NAMES.filter(isLifecycleWritableTool);
 
 type WslShellPreference = {
   wslShell?: string | null;
@@ -127,8 +128,6 @@ const HERMES_WINDOWS_INSTALL_COMMAND = `powershell -NoProfile -ExecutionPolicy B
 
 const POSIX_ONE_CLICK_INSTALL_COMMANDS = `# Claude Code
 ${posixScriptInstallCommand("https://claude.ai/install.sh")} || npm i -g @anthropic-ai/claude-code@latest
-# Codex
-npm i -g @openai/codex@latest
 # Gemini CLI
 npm i -g @google/gemini-cli@latest
 # Grok Build
@@ -142,8 +141,6 @@ ${posixScriptInstallCommand("https://raw.githubusercontent.com/NousResearch/herm
 
 const WINDOWS_ONE_CLICK_INSTALL_COMMANDS = `# Claude Code
 npm i -g @anthropic-ai/claude-code@latest
-# Codex
-npm i -g @openai/codex@latest
 # Gemini CLI
 npm i -g @google/gemini-cli@latest
 # Grok Build
@@ -161,7 +158,7 @@ const ONE_CLICK_INSTALL_COMMANDS = isWindows()
 
 const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   claude: "Claude Code",
-  codex: "Codex",
+  codex: "Codex CLI",
   gemini: "Gemini CLI",
   grok: "Grok Build",
   opencode: "OpenCode",
@@ -221,7 +218,6 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
   const [isLoadingVersion, setIsLoadingVersion] = useState(
     () => appVersionCache === null,
   );
-  const [isDownloading, setIsDownloading] = useState(false);
   const [toolVersions, setToolVersions] = useState<ToolVersion[]>(
     () => toolVersionsCache?.data ?? [],
   );
@@ -237,9 +233,6 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
     null,
   );
   const [showInstallCommands, setShowInstallCommands] = useState(false);
-
-  const { hasUpdate, updateInfo, checkUpdate, resetDismiss, isChecking } =
-    useUpdate();
 
   const [wslShellByTool, setWslShellByTool] = useState<
     Record<string, WslShellPreference>
@@ -274,7 +267,7 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
 
   const updatableToolNames = useMemo(
     () =>
-      TOOL_NAMES.filter((toolName) => {
+      LIFECYCLE_TOOLS.filter((toolName) => {
         const tool = toolVersionByName.get(toolName);
         return isUpdateAvailable(tool?.version, tool?.latest_version);
       }),
@@ -423,82 +416,6 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
     // refreshes are handled by refreshToolVersions in the shell/flag handlers.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // ... (handlers like handleOpenReleaseNotes, handleCheckUpdate) ...
-
-  const handleOpenReleaseNotes = useCallback(async () => {
-    try {
-      const targetVersion = updateInfo?.availableVersion ?? version ?? "";
-      const displayVersion = targetVersion.startsWith("v")
-        ? targetVersion
-        : targetVersion
-          ? `v${targetVersion}`
-          : "";
-
-      if (!displayVersion) {
-        await settingsApi.openExternal(
-          "https://github.com/farion1231/cc-switch/releases",
-        );
-        return;
-      }
-
-      await settingsApi.openExternal(
-        `https://github.com/farion1231/cc-switch/releases/tag/${displayVersion}`,
-      );
-    } catch (error) {
-      console.error("[AboutSection] Failed to open release notes", error);
-      toast.error(t("settings.openReleaseNotesFailed"));
-    }
-  }, [t, updateInfo?.availableVersion, version]);
-
-  const handleCheckUpdate = useCallback(async () => {
-    if (hasUpdate) {
-      if (isPortable) {
-        try {
-          await settingsApi.checkUpdates();
-        } catch (error) {
-          console.error("[AboutSection] Portable update failed", error);
-        }
-        return;
-      }
-
-      setIsDownloading(true);
-      try {
-        resetDismiss();
-        const installed = await settingsApi.installUpdateAndRestart();
-        if (!installed) {
-          toast.success(t("settings.upToDate"), { closeButton: true });
-        }
-      } catch (error) {
-        console.error("[AboutSection] Update failed", error);
-        toast.error(t("settings.updateFailed"), {
-          description: extractErrorMessage(error) || undefined,
-          closeButton: true,
-        });
-        try {
-          await settingsApi.checkUpdates();
-        } catch (fallbackError) {
-          console.error(
-            "[AboutSection] Failed to open fallback updater",
-            fallbackError,
-          );
-        }
-      } finally {
-        setIsDownloading(false);
-      }
-      return;
-    }
-
-    try {
-      const available = await checkUpdate();
-      if (!available) {
-        toast.success(t("settings.upToDate"), { closeButton: true });
-      }
-    } catch (error) {
-      console.error("[AboutSection] Check update failed", error);
-      toast.error(t("settings.checkUpdateFailed"));
-    }
-  }, [checkUpdate, hasUpdate, isPortable, resetDismiss, t]);
 
   const handleCopyInstallCommands = useCallback(async () => {
     try {
@@ -836,9 +753,9 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
           <div className="flex items-center gap-8">
             <div className="flex flex-col items-center gap-2">
               <div className="flex items-center gap-2">
-                <img src={appIcon} alt="CC Switch" className="h-5 w-5" />
+                <img src={appIcon} alt="FyAgent" className="h-5 w-5" />
                 <h4 className="text-lg font-semibold text-foreground">
-                  CC Switch
+                  FyAgent
                 </h4>
               </div>
               <div className="flex items-center gap-2">
@@ -861,94 +778,7 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
               </div>
             </div>
           </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => settingsApi.openExternal("https://ccswitch.io")}
-              className="h-8 gap-1.5 text-xs"
-            >
-              <Globe className="h-3.5 w-3.5" />
-              {t("settings.officialWebsite")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                settingsApi.openExternal(
-                  "https://github.com/farion1231/cc-switch",
-                )
-              }
-              className="h-8 gap-1.5 text-xs"
-            >
-              <Github className="h-3.5 w-3.5" />
-              {t("settings.github")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleOpenReleaseNotes}
-              className="h-8 gap-1.5 text-xs"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              {t("settings.releaseNotes")}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={handleCheckUpdate}
-              disabled={isChecking || isDownloading}
-              className="h-8 gap-1.5 text-xs"
-            >
-              {isDownloading ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  {t("settings.updating")}
-                </>
-              ) : hasUpdate ? (
-                <>
-                  <Download className="h-3.5 w-3.5" />
-                  {t("settings.updateTo", {
-                    version: updateInfo?.availableVersion ?? "",
-                  })}
-                </>
-              ) : isChecking ? (
-                <>
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                  {t("settings.checking")}
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  {t("settings.checkForUpdates")}
-                </>
-              )}
-            </Button>
-          </div>
         </div>
-
-        {hasUpdate && updateInfo && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            className="rounded-lg bg-primary/10 border border-primary/20 px-4 py-3 text-sm"
-          >
-            <p className="font-medium text-primary mb-1">
-              {t("settings.updateAvailable", {
-                version: updateInfo.availableVersion,
-              })}
-            </p>
-            {updateInfo.notes && (
-              <p className="text-muted-foreground line-clamp-3 leading-relaxed">
-                {updateInfo.notes}
-              </p>
-            )}
-          </motion.div>
-        )}
       </motion.div>
 
       <div className="space-y-3">
@@ -1025,9 +855,11 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
             // 已安装却跑不起来（如 Node 版本不达标）：用它区分卡片文案与按钮，避免把
             // "装了跑不起来"误判成"未安装"而给出无用的安装按钮（重装同一版本解决不了）。
             const installedButBroken = Boolean(tool?.installed_but_broken);
-            // loading 和 broken 都没有可执行动作；其余按是否已装/是否过期选择。
+            // loading、broken 和只读工具均没有可执行动作；其余按是否已装/是否过期选择。
             const action: ToolLifecycleAction | null =
-              isToolVersionLoading || installedButBroken
+              isToolVersionLoading ||
+              installedButBroken ||
+              !isLifecycleWritableTool(toolName)
                 ? null
                 : !tool?.version
                   ? "install"

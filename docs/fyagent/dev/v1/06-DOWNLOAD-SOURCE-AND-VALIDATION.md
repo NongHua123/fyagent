@@ -19,18 +19,17 @@ AgentsMirrorSource
 
 内置端点：
 
-| 目的 | URL |
-|---|---|
-| Release manifest | `https://codexapp.agentsmirror.com/latest/manifest` |
-| SHA-256 清单 | `https://codexapp.agentsmirror.com/latest/checksums` |
-| Windows x64 | `https://codexapp.agentsmirror.com/latest/win-x64` |
-| Windows ARM64 | `https://codexapp.agentsmirror.com/latest/win-arm64` |
-| macOS ARM64 | `https://codexapp.agentsmirror.com/latest/mac-arm64` |
+| 目的             | URL                                                  |
+| ---------------- | ---------------------------------------------------- |
+| Release manifest | `https://codexapp.agentsmirror.com/latest/manifest`  |
+| SHA-256 清单     | `https://codexapp.agentsmirror.com/latest/checksums` |
+| Windows x64      | `https://codexapp.agentsmirror.com/latest/win-x64`   |
+| Windows ARM64    | `https://codexapp.agentsmirror.com/latest/win-arm64` |
+| macOS ARM64      | `https://codexapp.agentsmirror.com/latest/mac-arm64` |
 
 不实现：
 
-- source 切换；
--测速；
+- source 切换；-测速；
 - official fallback；
 - GitHub fallback；
 - 自定义 URL；
@@ -98,7 +97,8 @@ UI expected_release_id
 - 必需字段缺失、类型错误、空字符串、无效版本、无效 hash、size 为 0 均失败；
 - Windows x64、ARM64 分支独立；
 - macOS 使用 arm64 分支；
-- root 聚合版本只用于展示参考，更新比较使用平台版本。
+- root 聚合版本只能作为明确标注为跨平台的非操作性参考；当前平台卡片的“最新版本”展示和更新比较都使用该平台/架构已校验的
+  版本。
 
 建议保留镜像响应 fixture，并在开发时根据真实 schema 调整专用 raw DTO：
 
@@ -306,9 +306,11 @@ required_free_space = expected_installer_size × 3
 9. 包架构匹配当前 CPU
 10. 包版本与 descriptor 匹配
 11. 平台发布者/Team/signature/OS trust 验证
-12. 执行安装
-13. OS 查询本地 Stable identity
-14. 安装版本 >= 目标版本且不低于原本版本
+12. 紧接实际平台消费前，重新打开受控 job 目录内的固定 artifact，确认 regular/non-link、
+    size 和 SHA-256 仍精确匹配同一锁定 descriptor
+13. 执行安装
+14. OS 查询本地 Stable identity
+15. 安装版本 >= 目标版本且不低于原本版本
 ```
 
 任一步失败均不进入后续步骤。
@@ -361,5 +363,7 @@ required_free_space = expected_installer_size × 3
 - release ID canonicalization collision；
 - metadata changed between page check and start；
 - short link switches artifact during download；
+- package verification 后、平台 mount/deploy 前替换同长度 artifact；必须在重新校验时
+  拒绝，且不得调用平台部署或挂载；
 - cancel race before rename；
 - old job event cannot mutate new job。

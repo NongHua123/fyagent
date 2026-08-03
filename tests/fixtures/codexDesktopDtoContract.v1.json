@@ -1,0 +1,241 @@
+{
+  "contractVersion": 1,
+  "desktopPlatforms": ["windows", "macos"],
+  "cpuArchitectures": [
+    "x86_64",
+    "aarch64",
+    "x86_64_unsupported_mac",
+    "unsupported"
+  ],
+  "platformVersions": [
+    {
+      "kind": "windows_msix",
+      "major": 26,
+      "minor": 721,
+      "build": 4979,
+      "revision": 0
+    },
+    {
+      "kind": "mac_bundle",
+      "bundleVersion": "5848.0.0"
+    }
+  ],
+  "unsupportedReasons": ["platform", "architecture", "os_version"],
+  "localInstallStatuses": [
+    {
+      "state": "not_installed",
+      "platform": "windows",
+      "architecture": "x86_64"
+    },
+    {
+      "state": "installed",
+      "application": {
+        "stableIdentity": "OpenAI.Codex",
+        "displayName": "ChatGPT",
+        "displayVersion": "26.721.4979",
+        "platformVersion": {
+          "kind": "windows_msix",
+          "major": 26,
+          "minor": 721,
+          "build": 4979,
+          "revision": 0
+        },
+        "architecture": "x86_64"
+      }
+    },
+    {
+      "state": "unsupported",
+      "reason": "platform"
+    },
+    {
+      "state": "unsupported",
+      "reason": "architecture"
+    },
+    {
+      "state": "unsupported",
+      "reason": "os_version"
+    },
+    {
+      "state": "ambiguous",
+      "candidates": [
+        {
+          "stableIdentity": "OpenAI.Codex",
+          "displayVersion": "26.721.4979",
+          "platformVersion": {
+            "kind": "windows_msix",
+            "major": 26,
+            "minor": 721,
+            "build": 4979,
+            "revision": 0
+          },
+          "architecture": "x86_64"
+        },
+        {
+          "stableIdentity": "com.openai.codex",
+          "displayVersion": "26.721.41059",
+          "platformVersion": {
+            "kind": "mac_bundle",
+            "bundleVersion": "5848.0.0"
+          },
+          "architecture": "aarch64"
+        }
+      ],
+      "error": {
+        "code": "DOWNLOAD_FAILED",
+        "stage": "downloading",
+        "messageKey": "codexDesktop.error.downloadFailed",
+        "retryable": true,
+        "suggestedAction": "retry",
+        "details": {
+          "endpointKind": "mac-arm64",
+          "attempt": 2,
+          "maxAttempts": 3,
+          "httpStatus": 503,
+          "platformErrorCode": "0x80004005",
+          "redactedMessage": "download interrupted",
+          "context": {
+            "source": "agentsmirror"
+          }
+        }
+      }
+    }
+  ],
+  "installerWarningCodes": [
+    "temp_cleanup_failed",
+    "mac_dmg_detach_warning",
+    "log_write_failed",
+    "event_emit_failed",
+    "remote_check_failed_local_available"
+  ],
+  "jobStages": [
+    "checking",
+    "preflight",
+    "downloading",
+    "verifying_download",
+    "installing",
+    "verifying_installation",
+    "succeeded",
+    "failed",
+    "cancelled"
+  ],
+  "progressPhases": ["download", "verification", "installation"],
+  "installerErrorCodes": [
+    "PLATFORM_UNSUPPORTED",
+    "OS_VERSION_UNSUPPORTED",
+    "ARCHITECTURE_UNSUPPORTED",
+    "SOURCE_UNAVAILABLE",
+    "RELEASE_METADATA_INVALID",
+    "RELEASE_NOT_AVAILABLE",
+    "METADATA_CHANGED",
+    "REDIRECT_REJECTED",
+    "DOWNLOAD_FAILED",
+    "DOWNLOAD_TIMEOUT",
+    "DOWNLOAD_CANCELLED",
+    "INSUFFICIENT_DISK_SPACE",
+    "CHECKSUM_MISSING",
+    "CHECKSUM_MISMATCH",
+    "PACKAGE_PARSE_FAILED",
+    "PACKAGE_IDENTITY_MISMATCH",
+    "PACKAGE_ARCHITECTURE_MISMATCH",
+    "PACKAGE_SIGNATURE_INVALID",
+    "WINDOWS_UAC_CANCELLED",
+    "WINDOWS_ELEVATION_FAILED",
+    "WINDOWS_PACKAGE_IN_USE",
+    "WINDOWS_DEPLOYMENT_BLOCKED",
+    "WINDOWS_DEPENDENCY_MISSING",
+    "WINDOWS_ALL_USERS_UNSUPPORTED",
+    "WINDOWS_DEPLOYMENT_FAILED",
+    "MAC_DMG_MOUNT_FAILED",
+    "MAC_APP_NOT_FOUND",
+    "MAC_BUNDLE_ID_MISMATCH",
+    "MAC_TEAM_ID_MISMATCH",
+    "MAC_GATEKEEPER_REJECTED",
+    "MAC_APP_RUNNING",
+    "MAC_MULTIPLE_INSTALLATIONS",
+    "MAC_TARGET_PATH_CONFLICT",
+    "MAC_COPY_FAILED",
+    "MAC_DMG_DETACH_FAILED",
+    "INSTALLATION_VERIFY_FAILED",
+    "LAUNCH_FAILED",
+    "JOB_ALREADY_RUNNING",
+    "JOB_NOT_FOUND",
+    "INTERNAL_ERROR"
+  ],
+  "suggestedActions": [
+    "retry",
+    "refresh",
+    "close_target_app_and_retry",
+    "contact_administrator",
+    "free_disk_space",
+    "resolve_path_conflict",
+    "open_logs",
+    "none"
+  ],
+  "startInstallRequest": {
+    "expectedReleaseId": "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "installResult": {
+    "installed": {
+      "stableIdentity": "com.openai.codex",
+      "displayVersion": "26.721.41059",
+      "platformVersion": {
+        "kind": "mac_bundle",
+        "bundleVersion": "5848.0.0"
+      },
+      "architecture": "aarch64"
+    },
+    "warnings": [
+      "temp_cleanup_failed",
+      "mac_dmg_detach_warning",
+      "log_write_failed",
+      "event_emit_failed",
+      "remote_check_failed_local_available"
+    ]
+  },
+  "jobSnapshot": {
+    "jobId": "contract-job-001",
+    "sequence": 7,
+    "stage": "failed",
+    "release": {
+      "releaseId": "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "displayVersion": "26.721.4979",
+      "platformVersion": {
+        "kind": "windows_msix",
+        "major": 26,
+        "minor": 721,
+        "build": 4979,
+        "revision": 0
+      },
+      "expectedSize": 1048576,
+      "checkedAt": "2026-07-29T00:00:00Z"
+    },
+    "startedAt": "2026-07-29T00:00:00Z",
+    "updatedAt": "2026-07-29T00:00:03Z",
+    "progress": {
+      "phase": "download",
+      "completedBytes": 524288,
+      "totalBytes": 1048576,
+      "percent": 50.0
+    },
+    "cancellable": false,
+    "result": null,
+    "error": {
+      "code": "DOWNLOAD_FAILED",
+      "stage": "downloading",
+      "messageKey": "codexDesktop.error.downloadFailed",
+      "retryable": true,
+      "suggestedAction": "retry",
+      "details": {
+        "endpointKind": "mac-arm64",
+        "attempt": 2,
+        "maxAttempts": 3,
+        "httpStatus": 503,
+        "platformErrorCode": "0x80004005",
+        "redactedMessage": "download interrupted",
+        "context": {
+          "source": "agentsmirror"
+        }
+      }
+    }
+  }
+}

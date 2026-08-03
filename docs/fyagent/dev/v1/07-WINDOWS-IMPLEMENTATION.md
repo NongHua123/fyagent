@@ -166,6 +166,9 @@ DeploymentResult
 
 要求：
 
+- 在生成 `file:///` URI 并交给 PackageManager 前，重新打开 job temp 中固定的 MSIX，
+  校验它仍是受控目录内的 regular/non-reparse 文件，且 size/SHA-256 与同一锁定
+  descriptor 精确一致；不得把早期通过校验的裸路径直接延后消费；
 - 使用本地已验证文件，不让 PackageManager 再下载远程 URI；
 - 默认不启用 `ForceApplicationShutdown`；
 - 不启用绕过策略/开发模式选项；
@@ -227,13 +230,13 @@ AUMID = PackageFamilyName + "!" + ApplicationId
 
 明确映射：
 
-| 场景 | 错误码 |
-|---|---|
-| 组策略/侧载/组织策略阻断 | `WINDOWS_DEPLOYMENT_BLOCKED` |
+| 场景                      | 错误码                       |
+| ------------------------- | ---------------------------- |
+| 组策略/侧载/组织策略阻断  | `WINDOWS_DEPLOYMENT_BLOCKED` |
 | 缺少 framework/dependency | `WINDOWS_DEPENDENCY_MISSING` |
-| 文件占用 | `WINDOWS_PACKAGE_IN_USE` |
-| 签名/证书不受信 | `PACKAGE_SIGNATURE_INVALID` |
-| 通用部署 HRESULT | `WINDOWS_DEPLOYMENT_FAILED` |
+| 文件占用                  | `WINDOWS_PACKAGE_IN_USE`     |
+| 签名/证书不受信           | `PACKAGE_SIGNATURE_INVALID`  |
+| 通用部署 HRESULT          | `WINDOWS_DEPLOYMENT_FAILED`  |
 
 不修改注册表、不开启开发者模式、不绕过策略、不调用第三方 Store 抓包工具。
 
@@ -278,11 +281,12 @@ jobId
 nonceHash / nonce binding
 canonicalPackagePath
 expectedSha256
+expectedSize
 expectedIdentity
 expectedPublisher
 expectedVersion
 expectedArchitecture
-resultPath
+minimumOsVersion
 createdAt / expiresAt
 ```
 
@@ -295,8 +299,9 @@ createdAt / expiresAt
 - 参数数量和 schema；
 - job 过期；
 - canonical path 位于 FyAgent temp root；
-- 文件不是 symlink/reparse 到外部；
-- SHA-256；
+- elevated child独立刷新固定官方 metadata，并逐项比对 job 的 SHA-256、大小、版本、最低 OS 和架构；
+- 源文件以 no-follow handle 打开，handle 最终路径必须仍等于 capability path 且为固定本地磁盘；
+- 复制到 ProgramData 的受保护 staging 后，再对复制件校验 SHA-256；
 - MSIX manifest；
 - Identity、Publisher、版本、架构；
 - 当前 OS API；
@@ -316,12 +321,13 @@ StagePackageByUriAsync
        ↓
 ProvisionPackageForAllUsersAsync
        ↓
-写入受限结果文件
+受限 headless exit code / 无敏感日志
 ```
 
 注意：
 
 - Provision 要管理员权限；
+- elevated child 不向 parent-owned temp tree 写入结果文件；
 - 包必须 staged 且位于系统卷；
 - Windows 版本/API 可能限制；
 - Store/machine license 或设备策略可能使官方 MSIX 不可预配；
@@ -338,7 +344,7 @@ fn main() {
     if let Some(exit_code) = maybe_run_codex_desktop_headless() {
         std::process::exit(exit_code);
     }
-    cc_switch_lib::run();
+    fyagent_lib::run();
 }
 ```
 
@@ -384,7 +390,7 @@ parser 只接受精确命令，未知参数走正常应用或明确失败。不�
 - hash changed after parent verify；
 - identity changed；
 - UAC cancelled；
-- result file redaction；
+- 不向 user-temp 写入结果文件；
 - no arbitrary command parsing。
 
 ## 15. Windows 完成定义
@@ -399,3 +405,25 @@ parser 只接受精确命令，未知参数走正常应用或明确失败。不�
 - post-check 和 AUMID launch 有测试；
 - all-users 仅隐藏入口且重新验证；
 - 未执行真实安装自动化。
+
+## 16. FyAgent 自身 MSI 打包边界
+
+V1 只交付桌面宿主，不声明移动端构建支持。因此 `src-tauri/Cargo.toml` 只保留
+`staticlib` 和 `rlib` 输出，不产生未被桌面宿主消费的 `cdylib`。
+
+原因是 Tauri 的 WiX bundler 会扫描 release 目录中的 DLL 并作为 resource 写入 MSI；对于
+`InstallScope="perUser"`，WiX ICE38 要求组件使用 HKCU registry value 而非文件作为
+KeyPath。自定义 WiX template 已让主程序与未来显式 bundled binary 的 `File` 使用
+`KeyPath="no"`，并以 `Software\\{{manufacturer}}\\{{product_name}}` 下的 HKCU value 作为
+KeyPath；当前构建输入的产品与 bundle 身份均为 FyAgent。渲染后的精确 registry path、
+UpgradeCode 和 AppUserModelID 由 Draft PR CI 生成的 WiX 证据确认。不能靠
+关闭 ICE 验证或忽略链接错误来规避这一约束。
+
+本地 Windows x64 已从全新的、忽略的 `src-tauri/target/v1-msi` 目录运行
+`pnpm tauri build --bundles msi`，并完成 Tauri `candle`/`light` 链接。产物为
+`FyAgent_3.18.0_x64_en-US.msi`，SHA-256 为
+`49214C116A9DFE0D1E7FF1CE2A8EA1665FEF3F0961F1A613B6F842D046063948`；生成的
+`main.wxs` 不含 `cc_switch_lib.dll` resource；这是 clean-break 重命名之前的历史构建证据，
+仅证明当时的 ICE38 边界。重命名后的 `fyagent`/`fyagent_lib` 产物必须以 Draft PR CI
+结果为准。该本地产物的 Authenticode 状态为
+`NotSigned`，不构成发布签名或真实安装验收证据。

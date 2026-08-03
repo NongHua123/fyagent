@@ -1,0 +1,3 @@
+{"file":"docs/fyagent/dev/v1/08-MACOS-IMPLEMENTATION.md","reason":"macOS scan、DMG、安全替换和 launch 规范"}
+{"file":"docs/fyagent/dev/v1/05-DOMAIN-MODEL-STATE-MACHINE-IPC.md","reason":"固定 platform trait、post-check 和 unsupported 语义"}
+{"file":"docs/fyagent/dev/v1/18-REFERENCES.md","reason":"Bundle/Team 等动态身份重新核验门槛"}

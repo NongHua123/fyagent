@@ -25,7 +25,7 @@ use crate::store::AppState;
 
 /// Profile 操作的应用分组：项目实体全应用共享，但快照/应用/当前指针按组进行。
 ///
-/// Claude Code 与 Claude Desktop 的供应商在 cc-switch 中是独立切换的，
+/// Claude Code 与 Claude Desktop 的供应商在 fyagent 中是独立切换的，
 /// 因此各自拥有独立的项目分组。两者 live 文件零交集
 ///（`~/.claude` / `Application Support/Claude-3p`），分组切换互不干扰。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
