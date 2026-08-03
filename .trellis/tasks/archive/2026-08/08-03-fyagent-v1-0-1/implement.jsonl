@@ -5,4 +5,4 @@
 {"file":".trellis/spec/backend/application-identity.md","reason":"FyAgent 独立版本、打包身份与历史事实保留规则。"}
 {"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"可信 Codex Desktop 安装、运行与重启边界。"}
 {"file":".trellis/spec/frontend/index.md","reason":"前端 API、类型、状态、翻译与测试入口规范。"}
-{"file":".trellis/tasks/08-03-fyagent-v1-0-1/research/implementation-baseline.md","reason":"当前版本、模块和本地验证基线。"}
+{"file":".trellis/tasks/archive/2026-08/08-03-fyagent-v1-0-1/research/implementation-baseline.md","reason":"当前版本、模块和本地验证基线。"}
