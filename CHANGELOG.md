@@ -9,8 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.18.0] - 2026-07-21
 
-Development since v3.17.0 is headlined by Grok Build joining as the eighth managed app — full provider switching, proxy takeover on its own route namespace, MCP/Skills/prompts sync, a curated preset list, and a Grok Official entry with official-login import (schema v14/v15) — and by xAI Grok account sign-in over an OAuth device flow for Claude Code, Claude Desktop, and Codex, including a strict-gateway compatibility layer that lets codex 0.142+ drive a Grok subscription over native Responses. A usage-accounting repair wave fixes the v3.17.0 fork/sub-agent double count with a one-time automatic rebuild (schema v16) plus a manual rebuild action, makes proxy usage logging idempotent, and stops the usage page freezing during large imports. Diagnostics mature: logs persist across restarts under size rotation, every log egress redacts secrets, and renderer crashes are captured to disk behind an error boundary with a reload screen. The Codex conversion layer gets four correctness fixes — tool schemas normalized to object type, reasoning attached forward across turns, streamed tool-call identity and order preserved, and parser-required catalog fields backfilled so codex 0.144.5+ starts — while managed-OAuth providers are now reliably flagged as routing-required and Windows provider switches no longer flash a console window or freeze the UI. Rounded out by Kimi K3 presets and pricing, corrected OpenClaw preset costs, SudoCode.us restored beside SudoCode.chat, sponsor-grouped preset ordering, first-run tray language detection, and permanently deletable default Skill repositories.
-
 **Stats**: 52 commits | 217 files changed | +21,452 insertions | -6,285 deletions
 
 ### Added
@@ -23,13 +21,10 @@ Development since v3.17.0 is headlined by Grok Build joining as the eighth manag
 - **"Rebuild Codex Usage" Maintenance Action**: The usage dashboard's maintenance section gains a "Rebuild Codex Usage" button that backs up the database, wipes only `codex_session`-sourced detail rows, their `_codex_session` daily rollups, and the Codex sync cursors, then re-imports every rollout file from scratch with the corrected parser — the recovery path for databases already inflated by the fork double-count bug below, and the retry path for deferred fork files whose parent log has since been restored. The manual rebuild fails hard when the pre-rebuild backup cannot be written (unlike the automatic migration variant, which only warns, since blocking startup on an unwritable backup directory would leave the app unable to launch after upgrade), holds the session-sync lock across the whole backup → reset → reimport sequence so the 60-second background sync cannot interleave with the wipe, and always sends exactly one frontend refresh notification on completion — including when the reimport returns zero rows or fails after the reset — so the dashboard never keeps showing pre-reset numbers (`finish_codex_rebuild` in `commands/usage.rs`, pinned by two regression tests). Cursor deletion matches rollout paths purely by shape (`rollout-{uuid}` filename under a `sessions`/`archived_sessions` segment), so cursors recorded under an old `CODEX_HOME` are still cleaned. Localized in all four locales (zh/en/ja/zh-TW).
 - **Session Import Observability: Deferred Files and Suspected Duplicates**: Session sync results now report `filesScanned`, `deferredFiles` — fork rollouts whose parent log is missing or whose parent markers conflict, held back without writing a cursor so a later sync or manual rebuild retries them, instead of being imported on a guess — and `suspectedDuplicates`, backed by a post-insert probe that checks each imported row for a pre-existing same-fingerprint row (via the `idx_request_logs_dedup_lookup_expr` expression index) and logs a warning per hit, so any future regression of the double-count bug announces itself in the logs instead of silently inflating totals.
 - **Kimi K3 in Presets and Built-In Pricing**: The Kimi open-platform presets for Codex, Hermes, OpenClaw, and OpenCode gain the Kimi K3 model (1M context window), appended after K2.7 Code so existing default-model behavior is unchanged, and the built-in pricing table gains `kimi-k3` at the official list price ($3 input / $15 output / $0.30 cache-read per 1M tokens) plus a bare `k3` alias — the Kimi For Coding subscription reports its model under the short id `k3`, which would otherwise match no pricing row (same precedent as the existing `hunyuan-hy3`/`hy3` pair). Existing databases pick both rows up automatically on next launch without touching user-edited pricing.
-- **SudoCode.us Restored Alongside SudoCode.chat**: The two unrelated companies sharing the "SudoCode" name are now separate presets: the sponsor is renamed "SudoCode.chat", and the legacy "SudoCode.us" (which an earlier release had replaced in place) returns with its original endpoints and models, its own icon, and a distinct Hermes slug so both can coexist in the additive `~/.hermes/config.yaml`. Counting the new Grok Build preset list, SudoCode.chat now ships in seven apps and SudoCode.us in all eight.
 
 ### Changed
 
 - **Diagnostic Logs Persist Across Restarts, Are Size-Rotated, and Never Record Secrets**: `cc-switch.log` is no longer wiped on every startup — the log that explained a crash used to be gone by the time the app reopened — and instead rotates at 20 MB with 4 archives kept (~100 MB cap, versus a single 1 GB file before); `crash.log`, previously unbounded, rotates at 5 MB with 2 archives, with the size-check/rotate/append sequence under one lock so concurrent panics cannot lose an archive. Because persistent logs make verbatim secrets a real exposure (users attach these files to public issues), every backend log egress was scrubbed in the same change: upstream URLs are logged with userinfo, query, and fragment stripped (origin-only when no known secret is available to scrub, since a credential could be embedded in the path), request and response bodies are never logged — replaced by byte counts, a short hash, or a safe classification (`sse`/`html`/`json-like`/`binary-or-encoded`/…) that preserves the transform-debugging signal without the content — response headers go through an allowlist (unlisted headers log name-only), the exact secret values in use (API key, access token) are scrubbed out of any logged URL that carries them, and MCP custom-field values are omitted. The log plugin also registers earlier (so updater/startup failures are diagnosable), the persisted log level applies as soon as the database opens and fails closed to Info, and the "Enable Diagnostic Logs" switch now gates frontend-originated log writes too. Pre-upgrade log files are not retroactively scrubbed — see upgrade notes.
-- **Preset Picker Groups Sponsors and Alphabetizes the Rest**: The picker's default ordering now has four tiers — official first, then the prime partner, then sponsor presets (in the same order as the README sponsor table, which the preset files were physically reordered to match), then all remaining presets sorted alphabetically by display name instead of file order. An entry matching multiple tiers lands only in the earliest, so nothing is listed twice.
-- **Preset "Get API Key" Links Updated to Current Referral URLs**: The key-application links on the RunAPI, ClaudeCN, ZetaAPI, and APINebula presets now open each provider's current registration/referral page (ClaudeCN also moved domains, claudecn.top → claudecn.ai). Referral tags remain confined to these links and the README — website links and API endpoints stay untouched.
 
 ### Fixed
 
@@ -54,7 +49,6 @@ Development since v3.17.0 is headlined by Grok Build joining as the eighth manag
 
 - **Codex + Claude Local Routing Guide (Three Languages)**: New guide in Chinese, English, and Japanese on pointing Codex at a Claude-family `/v1/messages` gateway via the native Anthropic Messages upstream format introduced in v3.17.0, with screenshots; the v3.17.0 release notes now link to it.
 - **Claude Code via Codex Providers Guide (Chinese)**: New Chinese guide on using Responses-speaking providers (a gateway API key, or a ChatGPT subscription's Codex service) from Claude Code: Claude Code keeps talking Anthropic Messages to the local `/v1/messages` route, and the proxy converts each request to the upstream's Responses protocol. With screenshots.
-- **README Sponsor Updates**: SubRouter added as a sponsor across the four README languages; the pinned Kimi sponsor copy refreshed to K3 with banners served from the Moonshot CDN; RunAPI benefit copy refreshed and sponsor rows reordered to match the in-app preset order.
 
 ### Internal
 
@@ -73,8 +67,6 @@ Development since v3.17.0 is headlined by Grok Build joining as the eighth manag
 - New built-in pricing rows (`grok-4.5`, `kimi-k3`, `k3`) are appended automatically on next launch via insert-if-absent; user-edited pricing rows are never overwritten.
 
 ## [3.17.0] - 2026-07-13
-
-Development since v3.16.5 is headlined by project profiles — named snapshots of provider/MCP/Skills/prompt state, switchable per scope from a new header switcher or the tray (schema v12) — and a deep Codex push: official ChatGPT-subscription sessions can now route through the local proxy takeover with a corrected client identity, gpt-5.6 lands across context-window injection and Sol/Terra/Luna pricing with 1.25× cache-write rates, and a native Anthropic Messages upstream joins the Codex format options. A proxy-correctness wave makes the Responses↔Anthropic bridges fail closed and round-trip reasoning/tool results losslessly, strengthens prompt-cache breakpoint injection, and fixes cache-write accounting across historical token semantics (schema v13); a config.toml hardening batch stops deleted MCP servers from resurrecting, fails MCP sync closed on unparseable files, extends switch-time common-config autosync to Codex, and moves the common-config merge to backend toml_edit. Usage tooling gains Zhipu team-plan quota queries, Codex sub-agent and free-plan accounting, and transient-failure retry, while Kimi For Coding's 256K window finally takes effect — rounded out by a Codex default-model form field, renamed-session titles, OpenCode form and live-sync fixes, and preset updates (SudoCode sponsorship, LongCat-2.0, GPT-5.6 defaults, Hunyuan Hy3 pricing).
 
 **Stats**: 69 commits | 172 files changed | +21,067 insertions | -2,464 deletions
 
@@ -101,10 +93,7 @@ Development since v3.16.5 is headlined by project profiles — named snapshots o
 - **Codex Image Capabilities Are Inferred Without a User Toggle**: Generated Codex model catalogs now advertise only models in CC Switch's confirmed, exact text-only registry as `input_modalities = ["text"]`; GPT, aliases, new suffix variants, and all unknown models fail open to `["text", "image"]`. The rectifier's “Text-Only Model Preflight” switch continues to control only proactive proxy request-body replacement and does not change Codex's catalog declaration. Live catalog reverse-import also collapses inferred modalities instead of persisting them as hidden row overrides, so a later registry correction or a model's multimodal upgrade takes effect automatically; only declarations that differ from inference survive a DB-missing/import round-trip.
 - **Context Window Values Pinned in Presets Instead of Editable Form Fields**: The `Codex` (ChatGPT/GPT-5.6) and `Kimi For Coding` presets no longer surface the "Max Context Tokens" and "Auto Compact Window" inputs in the provider form; the numbers are now hardcoded directly in the preset env (`372000`/`372000` for Codex, `262144`/`262144` for Kimi For Coding) instead of being exposed as editable `templateValues`. This drops two fields most users never need to touch while keeping both env keys present on purpose: since Claude Code resolves the compact window as `min(model window, value)`, setting it equal to the declared context window is behavior-neutral today, but pinning it explicitly shields the local compaction trigger against remote-config experiments that dial it down. The rare user who wants different numbers can still edit `CLAUDE_CODE_MAX_CONTEXT_TOKENS` / `CLAUDE_CODE_AUTO_COMPACT_WINDOW` directly in the provider's JSON editor. The change is confined to `claudeProviderPresets.ts` and its tests.
 - **Universal Provider Auto-Syncs to Live Configs After Being Added**: Adding a universal (multi-app) provider through the Add Provider dialog now immediately pushes it to its live target configs instead of only saving it to the database, so the cross-app config lands in Claude/Codex/Gemini without a separate manual sync step. After `universalProvidersApi.upsert` succeeds, `AddProviderDialog` calls `universalProvidersApi.sync(provider.id)` and reports the combined outcome: a success toast (`universalProvider.addedAndSynced`) when the sync lands, or a non-blocking warning toast (`universalProvider.addedButSyncFailed`) when the provider was saved but the sync failed — while a save failure still aborts early with the existing error toast (`universalProvider.addFailed`) and never attempts the sync. The now-unused `universalProvider.addSuccess` key was removed from all four locales (zh/en/ja/zh-TW) and a new `universalProvider.addedButSyncFailed` key was added alongside the pre-existing `addedAndSynced` key. (#2811)
-- **SudoCode Promoted to Paid Sponsor Across Six Clients**: The existing SudoCode preset — previously a `sudocode.us` provider that collided by name with an unrelated service — is replaced in place by the new paid sponsor SudoCode on `sudocode.chat`, now marked `isPartner` (gold star) with `partnerPromotionKey: "sudocode"` and a four-locale promo blurb (zh/en/ja/zh-TW). The preset spans six clients: Claude Code, Claude Desktop, Codex, OpenCode, OpenClaw, and Hermes; the Gemini entry was removed as outside sponsor scope. All endpoints move to `api.sudocode.chat` (the presets that carry an `endpointCandidates` list — Claude Code, Claude Desktop, Codex — collapse it to that single host, dropping the old `sudocode.run` fallback), and the `apiKeyUrl` points to the attributed `sudocode.chat/register?utm_source=ccswitch&utm_medium=partner` signup while `websiteUrl` moves to `sudocode.chat`. Claude Code and Claude Desktop use direct Anthropic passthrough with no model mapping, whereas Codex/OpenCode/OpenClaw/Hermes default to `gpt-5.6-sol` (replacing the old `gpt-5.5`) — Codex/Hermes/OpenClaw over the native Responses format and OpenCode via `@ai-sdk/openai`. The provider icon is refreshed to the new brand PNG, and the promo copy surfaces that one key drives Claude Opus 4.8 on the Claude apps and GPT-5.6 on Codex plus a CNY ¥10 trial-credit offer.
 - **LongCat Presets Updated to LongCat-2.0**: The LongCat presets across Claude Code, Claude Desktop, Codex, Hermes, OpenClaw, and OpenCode now default to `LongCat-2.0` in place of the retired `LongCat-Flash-Chat` / `LongCat-2.0-Preview`, advertising the model's real 1M (1048576) context window and — for the Claude Code preset — a raised `CLAUDE_CODE_MAX_OUTPUT_TOKENS` of 131072 plus an added `ANTHROPIC_SMALL_FAST_MODEL` pin. OpenClaw's and OpenCode's base URL move to the `.../openai/v1` path (Codex and Hermes already used it), and the OpenClaw model entry gains `reasoning: false`, `input: ["text"]`, `maxTokens: 131072`, a bumped `contextWindow` of 1048576, and a new `compat.maxTokensField` (`max_tokens`) hint backed by a new optional `compat` field on the `OpenClawModel` type. Because LongCat-2.0 is text-only, the proxy's media sanitizer allowlist now classifies `longcat-2.0` (case-insensitively, keeping the retired `longcat-flash-chat` name for saved configs) so images pasted into a LongCat-2.0 session are replaced with the unsupported-image marker instead of being forwarded upstream and hard-rejected; a regression test covers the classification. (#4838)
-- **Volcengine/Doubao/BytePlus Website Links Restored to Invite Pages**: Reverts the v3.16.5 change (`56248087`) that had pointed the `火山Agentplan`, `DouBaoSeed`, and `BytePlus` presets' `websiteUrl` at their product homepages. Per the commit, the `websiteUrl` for these three presets is intentionally the same ccswitch-attributed campaign/invite link as `apiKeyUrl`, so it is restored across all six app preset files — `火山Agentplan` back to its `activity/codingplan` link, `BytePlus` to its `product/modelark` link, and `DouBaoSeed` to the Ark console API-key page, each carrying the `utm_*` attribution params. The `apiKeyUrl` links were already left intact by the reverted commit and are unchanged.
-- **Code0.ai Invite Link Updated to Agent Register URL**: The Code0.ai sponsor's `apiKeyUrl` moves from the `?source=ccswitch` referral to the new agent-register invite link `https://code0.ai/agent/register/B2XHxGjGmRvqgznY`, updated across all seven app presets and the Code0 sponsor rows in all four READMEs (`README.md`, `README_ZH.md`, `README_JA.md`, `README_DE.md`). The bare `code0.ai` API endpoint stays untouched.
 - **Dropped the Redundant OpenAI Compatible Preset**: Removed the `OpenAI Compatible` custom-template preset from the OpenCode and OpenClaw preset lists so the picker no longer shows two entries pointing at the same place. It was a duplicate entry point — the built-in `custom` provider flow already exposes an interface-format selector whose default (`@ai-sdk/openai-compatible` / `openai-completions`) seeds a byte-identical starting config. Existing providers are unaffected, since presets only seed form defaults on creation and saved providers store concrete `npm`/`baseUrl`/`apiKey`/`models` values; the `@ai-sdk/openai-compatible` dropdown label is deliberately kept as the format option users pick in the custom flow, not the deleted preset.
 
 ### Fixed
@@ -135,7 +124,6 @@ Development since v3.16.5 is headlined by project profiles — named snapshots o
 ### Docs
 
 - **Codex + Kimi Local Routing Guides**: New step-by-step guides explain how to run Kimi inside the Codex CLI through CC Switch's local routing, motivated by a protocol mismatch: the newer Codex CLI targets the OpenAI Responses API while both Kimi Open Platform and Kimi For Coding expose the OpenAI Chat Completions shape (`/chat/completions`), so pointing a Kimi endpoint straight at Codex typically 404s on `/responses` or yields streams Codex cannot parse. The guides walk through adding a Codex provider from the built-in `Kimi` (Open Platform, pay-as-you-go, `kimi-k2.7-code`) or `Kimi For Coding` (membership, `kimi-for-coding`) preset, and lay out the four-step conversion chain: Codex is written to talk to `http://127.0.0.1:15721/v1` with `wire_api = "responses"` kept in place, the provider's `meta.apiFormat = "openai_chat"` flags the real upstream as Chat, the route rewrites `/responses` to `/chat/completions` and converts the body, then converts the upstream Chat JSON/SSE back into the Responses shape Codex expects. Added under `docs/guides/` in English, Japanese, and Chinese with accompanying UI screenshots.
-- **new-api Sponsor Row in READMEs**: The open-source AI infrastructure project `new-api` is appended as the newest entry in the sponsor table across all four localized READMEs (`README.md`, `README_ZH.md`, `README_JA.md`, `README_DE.md`), along with its banner asset.
 
 ### Internal
 
@@ -145,20 +133,12 @@ Development since v3.16.5 is headlined by project profiles — named snapshots o
 
 ## [3.16.5] - 2026-07-01
 
-Development since v3.16.4 reworks the Codex native-Responses path — restoring a generated model catalog for proxy-less direct-connect, decoupling model mapping from the local-routing toggle, and adding a host/model-prefix blacklist that disables Codex's built-in web_search on gateways that reject it — alongside a broad wave of new provider presets (Qiniu and Code0.ai across all seven apps, the FennoAI/ZetaAPI/TeamoRouter/NekoCode partners, and the non-partner Amux), Claude Sonnet 5 pricing plus a default-tier bump to it, a categorized two-level session view with group-level batch selection, live auto-sync of the shared Claude common config on switch, and a run of credential-safety, tool-detection, Doubao model-id, branding, and icon-size fixes.
-
 **Stats**: 36 commits | 93 files changed | +5,678 insertions | -2,804 deletions
 
 ### Added
 
 - **Codex Native Responses Direct-Connect Regenerates a Model Catalog**: Reverses the v3.16.4 direction that dropped the catalog — Codex providers now run in two explicit modes, and native direct-connect once again ships a catalog file. Providers with `apiFormat: "openai_responses"` run with no proxy, and cc-switch generates `~/.codex/cc-switch-model-catalog.json` (`CC_SWITCH_CODEX_MODEL_CATALOG_FILENAME`, provider id `custom`) so Codex Desktop actually shows the custom models and tools work without the freeform `apply_patch` (`type=custom`) tool that native gateways like MiMo reject — editing falls back to `shell_command`. Catalog generation is keyed on `apiFormat` via `CodexCatalogToolProfile` and decoupled from the route-takeover toggle, so a native provider persists a catalog without enabling local route mapping, while `openai_chat` keeps the existing Responses↔Chat proxy conversion unchanged. Codex's parser requires `base_instructions` on every entry, so the native template (`codex_native_responses_template.json`, slug `gpt-5.5`) carries a neutral default that per-vendor official text overrides (MiMo, MiniMax); synthesized catalogs for Qwen/Doubao/LongCat use the neutral default. Existing native providers must be re-saved once to regenerate a valid catalog (no DB migration).
 - **Categorized Session View With Two-Level Grouping**: The Session Manager gains a grouped view mode alongside the flat list, toggled via a List/ListTree Select in the toolbar and persisted to `localStorage` under `cc-switch.sessionManager.listViewMode`. The new `groupSessionsByProviderAndDirectory` helper builds a two-level hierarchy (provider group → project-directory group): directory groups are keyed by `getSessionDirectoryGroupKey(providerId, projectDir)` and labeled with `getBaseName(projectDir)`, and sessions lacking a `projectDir` fall into an "unknown directory" bucket (`UNKNOWN_PROJECT_DIR_KEY = __unknown_project_dir__`). Both levels are Radix Collapsible sections whose expansion state is serialized to `cc-switch.sessionManager.groupExpansionState` (pruned to valid keys after load), with a "collapse all" button; in batch mode each group header gains a tri-state checkbox that selects/deselects every selectable session (those with a `sourcePath`) at once, backed by a `Minus`-glyph indeterminate state added to `ui/checkbox.tsx` and a selected/selectable count badge. New keys were added across all four locales (zh/en/ja/zh-TW). The change is entirely frontend — no Tauri commands or DAO changes. (#4776)
-- **Qiniu (七牛云) Provider Preset Across All Seven Apps**: Added the Qiniu Cloud AI gateway as a partner aggregator spanning Claude Code, Claude Desktop, Codex, Gemini, OpenCode, OpenClaw, and Hermes — the widest coverage of the batch and the only one carrying a Gemini preset. Because Qiniu relays native Claude/GPT/Gemini rather than remapping to domestic models, Claude Code/Desktop use the Anthropic-compatible bare host with native passthrough (no model pinning), Codex hits native Responses at `https://api.qnaigc.com/bypass/openai/v1` defaulting to `gpt-5.5`, and Gemini uses `gemini-3.1-pro-preview` via `https://api.qnaigc.com/bypass/vertex`; OpenCode/OpenClaw/Hermes default to `gpt-5.5` over the OpenAI-compatible `/v1`. Each type carries `endpointCandidates` listing the `api.qnaigc.com` primary plus the `api.modelink.ai` overseas mirror for failover. It is marked `isPartner` with referral `https://s.qiniu.com/nMvAvy`, a localized display name via `nameKey` (`providerForm.presets.qiniu`) and a partner-promotion blurb in all four locales (zh/en/ja/zh-TW), and registers the `qiniu.png` icon through URL import plus `iconUrls` and metadata.
-- **FennoAI, ZetaAPI, and TeamoRouter Partner Presets**: Added three partner aggregators — FennoAI (`api.fenno.ai`), ZetaAPI (`api.zetaapi.ai`), and TeamoRouter (`api.teamorouter.com`) — each covering Claude Code, Claude Desktop, Codex, OpenCode, OpenClaw, and Hermes with no Gemini preset, since these relay native Claude/GPT only. In every case Claude Code/Desktop use the Anthropic-compatible bare host with native passthrough, Codex uses native Responses (FennoAI at `api.fenno.ai`, ZetaAPI and TeamoRouter at their `/v1` paths) defaulting to `gpt-5.5`, and OpenCode/OpenClaw/Hermes default to `gpt-5.5` over the OpenAI-compatible `/v1`. All three are `isPartner` with referral `apiKeyUrls` (FennoAI's ¥9.9 Coding Plan link, ZetaAPI's `zetaapi.ai/go/ccs`, TeamoRouter's `teamorouter.com` with `utm_source=cc_switch` — its in-app link stays English while README links are per-language), each ships a localized promo blurb in zh/en/ja/zh-TW plus a sponsor row in all four READMEs, and each registers its own icon (`fenno-icon.webp`, `zetaapi-icon.png`, `teamorouter`). Two carry surfaced discount codes: ZetaAPI gives a first-recharge 10% discount with promo code `CC-SWITCH`, and TeamoRouter gives new users 10% off their first top-up.
-- **Amux Aggregator Preset**: Added Amux (`api.amux.ai`) as a non-partner aggregator across Claude Code, Claude Desktop, Codex, OpenCode, OpenClaw, and Hermes, with no Gemini preset. Claude Code/Desktop use the bare Anthropic-compatible host, Codex uses native Responses over the `/v1` path, and the remaining three apps default to `gpt-5.5` over the OpenAI-compatible endpoint. Unlike the partner presets in this batch it carries no `isPartner` flag, referral link, or promo copy; the `amuxapi-icon.svg` is registered as an inline `currentColor` icon in `src/icons/extracted/index.ts` and `metadata.ts` rather than a raster URL import.
-- **Code0.ai Partner Preset Across All Seven Apps**: Added Code0.ai (`code0.ai`) as a partner aggregator spanning all seven apps — Claude Code, Claude Desktop, Codex, Gemini, OpenCode, OpenClaw, and Hermes. Claude Code, Claude Desktop, and Gemini use the bare `https://code0.ai` host (Anthropic-native passthrough with no model pinning for the two Claude apps, `gemini-3.1-pro-preview` for Gemini), Codex hits native Responses at `https://code0.ai/v1`, and OpenCode/OpenClaw/Hermes default to `gpt-5.5` over the OpenAI-compatible `/v1`. It is marked `isPartner` with a `?source=ccswitch` referral on the API-key signup link, a partner-promotion blurb surfacing the CC Switch test-credit offer in all four locales (zh/en/ja/zh-TW), a sponsor row in all four READMEs, and the `code0.png` icon registered via URL import.
-- **NekoCode Partner Preset Across Six Apps**: Added NekoCode (`nekocode.ai`) as a partner aggregator spanning six apps — Claude Code, Claude Desktop, Codex, OpenCode, OpenClaw, and Hermes (no Gemini preset). Claude Code and Claude Desktop use the bare `https://nekocode.ai` host (Anthropic-native passthrough with no model pinning), Codex hits native Responses at `https://nekocode.ai/v1`, and OpenCode/OpenClaw/Hermes default to `gpt-5.5` over the OpenAI-compatible `/v1`. It is marked `isPartner` with a `?aff=CCSWITCH` referral on the API-key signup link (kept off the actual request endpoints), a partner-promotion blurb in all four locales (zh/en/ja/zh-TW), and a sponsor row in all four READMEs, both surfacing the CC Switch offer — 10% off top-ups with promo code `cc-switch` at recharge. The `nekocode-icon.png` icon is registered via URL import.
-- **Claude Sonnet 5 Model Pricing**: Seeded a `claude-sonnet-5` pricing row in `schema.rs` at Anthropic list price — $3/$15 per Mtok input/output and $0.30/$3.75 cache read/write, identical to the Sonnet 4.6 rates. The introductory $2/$10 promo (valid through 2026-08-31) is deliberately not seeded, so accounting reflects steady-state list pricing rather than a temporary discount. The row is applied on next app start via `ensure_model_pricing_seeded` and requires no `SCHEMA_VERSION` bump.
 
 ### Changed
 
@@ -168,8 +148,6 @@ Development since v3.16.4 reworks the Codex native-Responses path — restoring 
 - **Doubao Dated Model Id and YYMMDD Pricing Normalization**: Switched the Doubao (DouBaoSeed) preset model id to the dated form `doubao-seed-2-1-pro-260628` across every app surface (config default, generated Codex catalog, and OpenClaw namespaced refs), because Volcengine Ark rejects the bare `doubao-seed-2-1-pro` with a 404 ("model does not exist or you do not have access to it") even after activation and only accepts the full dated id. Because real usage now arrives with a date suffix, `strip_model_date_suffix` in `usage_stats.rs` was extended to also strip Volcengine's 6-digit YYMMDD form (`-260628`, `-250615`) in addition to the existing 8-digit YYYYMMDD/ISO handling; the 6-digit branch validates month 01-12 and day 01-31 to avoid eating non-date version suffixes like `-123456`, then falls back to `None` for exact matching. This keeps the bare-name seed row as the canonical pricing identity, fixing the $0-cost display for every Volcengine Doubao model. Unit and end-to-end regression tests were added.
 - **"Write Common Config" Renamed to "Apply Common Config"**: The original label "Write Common Config" (写入通用配置) was ambiguous about data-flow direction, reading as "write the current config INTO the common config" when the actual behavior is the reverse — the saved common-config snippet is merged INTO this provider's config. The checkbox is renamed to "Apply Common Config" across all four locales (zh/en/ja/zh-TW), including every hint/guide/notice reference and the `CommonConfigEditor` / `GeminiConfigSections` defaultValue fallbacks, and the Gemini hint wording is aligned with the claude/codex "when checked" phrasing. The Japanese user manual (`docs/user-manual/ja/2-providers/2.1-add.md`) and `README_JA.md` were also synced to 共通設定を適用 / 共有設定を適用. (#4829)
 - **OpenClaw Doubao Context Window Aligned to 262144**: The OpenClaw DouBaoSeed preset hard-coded `contextWindow` 128000 while the Codex preset/catalog used 262144 for the same model, giving OpenClaw users a too-small window that could compress or truncate long context prematurely. Bumped `openclawProviderPresets.ts` to 262144 and added a cross-preset consistency test asserting the OpenClaw and Codex Doubao context windows stay equal so the two sides cannot silently drift apart again.
-- **Volcengine/Doubao/BytePlus Website Links Restored to Official Homepages**: The `websiteUrl` for the 火山Agentplan, BytePlus, and DouBaoSeed presets had accidentally been set to the same invite/console link as `apiKeyUrl`, so the "visit official site" button routed users to the referral/API-key page instead of the product homepage. Restored clean official homepages across all six app preset files — 火山Agentplan to `https://www.volcengine.com/product/ark`, DouBaoSeed to `https://www.volcengine.com/product/doubao`, and BytePlus to `https://www.byteplus.com/en/product/modelark` (dropping the utm params) — while leaving the `apiKeyUrl` referral links intact.
-- **Kimi and SiliconFlow Referral Links Refreshed**: Updated two sponsor referral sets across presets and READMEs. Following Moonshot's console rebrand to Kimi, the Kimi preset referral links and the domestic (ZH) README banner moved to the new `platform.kimi.com` domain — the domestic console `platform.moonshot.cn/console` → `platform.kimi.com`, the API-key page → `platform.kimi.com/console/api-keys`, and the Coding Plan link `www.kimi.com/code/docs/` → `www.kimi.com/code/` — and the missing `?aff=cc-switch` attribution param was added to the codex and openclaw entries. API endpoints (`api.moonshot.cn`, `api.kimi.com/coding`) were left unchanged, and the presets have no overseas variant (the separate EN/DE/JA README switch to `platform.kimi.ai` is covered under Docs below). Separately, the SiliconFlow invite code was rotated from `drGuwc9k` to `YflgU2Ve` across all README locales and the claude, claude-desktop, codex, hermes, and openclaw presets.
 - **Downscaled Oversized Provider Icons to 256px**: Shrank a batch of bundled provider icons that shipped far larger than their ~32px on-screen render size in `ProviderIcon`, cutting bundle weight with no code, filename, or import changes (aspect ratio preserved, rendered via `<img>` object-contain). Raster PNGs: ZetaAPI 1254×1254/940KB→40KB, relaxcode 1462×1076/1.16MB→42KB, sudocode 2048×2048/432KB→37KB, hermes 512×512/125KB→38KB, claudecn 512×512/109KB→46KB, atlascloud 3525×3300/105KB→9KB. Two "fake vector" SVGs wrapping a single oversized base64 PNG were re-embedded at a 256px max dimension keeping the SVG wrapper: ccsub 1.16MB→60KB and shengsuanyun 212KB→51KB. Also removed `dds.svg`, a 1.4MB genuine 2222-path vector that was never imported in `index.ts` nor referenced under `src/`, so it only bloated the repo without ever shipping.
 
 ### Fixed
@@ -179,7 +157,6 @@ Development since v3.16.4 reworks the Codex native-Responses path — restoring 
 - **Usage-Script Credentials Persisted Only as Explicit Overrides**: Provider usage scripts store optional `api_key`/`base_url` fields that override the provider's live credentials when querying quota, but these were silently mirroring the provider's own credentials — so copying a provider or editing its main API key/base URL left the usage script pinned to the old endpoint and key, and quota queries kept hitting the stale target. `ProviderService::add`/`update` now run `normalize_usage_script_credential_overrides` before persisting: if the script's trimmed `api_key` or slash-normalized `base_url` matches the provider's resolved usage credentials (or is blank) it is cleared to `None` so the query falls back to `resolve_usage_credentials` from the live config, while genuinely distinct overrides are kept and `template_type == "token_plan"` scripts are left untouched. The deeplink import path gained matching `normalize_deeplink_api_key`/`base_url` helpers, and the frontend now invalidates `usageKeys.script(id, appId)` (including the `originalId` when a provider is renamed) on update so the homepage re-queries with the corrected config instead of the test-time cache. (#4654)
 - **Hermes Config Dir Now Resolves Correctly on Windows**: CC Switch hardcoded `~/.hermes` as the Hermes config directory, but Hermes itself resolves it via `get_hermes_home()` — the `HERMES_HOME` env var, then a platform default of `%LOCALAPPDATA%\hermes` on Windows (`~/.hermes` on mac/Linux). On Windows this meant CC Switch wrote provider configs to a path Hermes never reads, so provider switches had no effect. `get_hermes_dir()` now mirrors Hermes' own resolution order — `settings.hermes_config_dir` explicit override, then `HERMES_HOME` taken verbatim (trimmed, non-empty, no `~` expansion, matching Hermes' `Path(val)`), then the platform default reading the actual `LOCALAPPDATA` env var (falling back to `~\AppData\Local\hermes`) on Windows and `~/.hermes` elsewhere. This deliberately re-honors the `HERMES_HOME` that #3470 had dropped, since unlike Codex/Claude the Hermes Windows installer sets `HERMES_HOME` as a first-class mechanism for relocated installs. Config-dir tests were also isolated from ambient `HERMES_HOME`/`LOCALAPPDATA`. (#4680, refs #3178, #3470)
 - **Linux Wayland: Override the AppImage's Forced `GDK_BACKEND=x11`**: The AppImage's GTK launch hook (`linuxdeploy-plugin-gtk.sh`) unconditionally exports `GDK_BACKEND=x11` to dodge a historical native-Wayland crash (tauri-apps/tauri#8541). On newer Wayland + NVIDIA setups this forced XWayland leaves the WebKitGTK web content unable to receive pointer events — the GTK title bar stays clickable but the page is dead — and black-screens on resize; the existing `WEBKIT_DISABLE_*` mitigations don't help because the root cause is the forced window backend, not rendering. Since the hook also overrides any user-set `GDK_BACKEND`, there was no way to switch back without unpacking the AppImage. `main.rs` now reads an opt-in `CC_SWITCH_GDK_BACKEND` escape hatch (which the hook never touches) before GTK init: leaving it unset keeps the current x11 behavior unchanged (zero regression), while `CC_SWITCH_GDK_BACKEND=wayland` forces native Wayland. The override is generic, so users on tiling Wayland compositors hitting the inverse input bug can set `CC_SWITCH_GDK_BACKEND=x11`. (#4351, fixes #4350)
-- **Get API Key Link Now Shows in Claude Desktop, OpenClaw, and Hermes Forms**: The "Get API Key" link and partner-promotion block below the API key input was only wired for claude/codex/gemini/opencode. Claude Desktop rendered a bare Input that never showed it, and OpenClaw/Hermes were blocked by two gaps: `useApiKeyLink` whitelisted only those four appIds (so the link was suppressed even when a preset carried `apiKeyUrl`), and `useProviderCategory` only parsed the `/^(claude|codex|gemini|opencode)-(\d+)$/` preset-id pattern (so OpenClaw/Hermes category stayed undefined and the cn_official/aggregator/third_party link condition never held). `ClaudeDesktopProviderForm` now calls `useApiKeyLink` and uses the shared `ApiKeySection`; the `useApiKeyLink` whitelist and its `PresetEntry` union add claude-desktop/openclaw/hermes; and `useProviderCategory` now resolves openclaw/hermes preset categories. Additionally, `HermesFormFields` and `OpenClawFormFields` no longer let an "official" category disable the key input, since these apps have no OAuth-only official providers (e.g. Hermes' Nous Research is official but still needs a user-supplied key).
 - **Deduplicated Windows Codex npm Shims in Tool Detection**: On Windows, npm installs a tool as three sibling files — `codex.cmd`, `codex.exe`, and an extensionless Unix shim named `codex` — and CC Switch's `tool_executable_candidates` listed all three, so the extensionless shim (which Windows cannot execute directly) was probed as a redundant/failing candidate. `tool_executable_candidates` now appends the extensionless path only when `windows_runnable_sibling_for_extensionless_tool` finds no adjacent `.cmd`/`.exe` sibling, and `resolve_path_default` likewise prefers a runnable `.cmd`/`.exe` sibling before canonicalizing a bare extensionless PATH hit. This keeps version detection and launching anchored to the actually-runnable Windows shim instead of the shadowed Unix one. (#4782)
 - **Scroll Bounds for Long Select Dropdowns**: The `SelectContent` popover used `overflow-hidden` with no height cap, so dropdowns with many options (e.g. long model or provider lists) rendered taller than the viewport and clipped their overflowing items with no way to reach them. It now sets `max-h-[min(24rem,var(--radix-select-content-available-height))]` and `overflow-y-auto overflow-x-hidden`, bounding the content to 24rem or the Radix-computed available height and letting the list scroll vertically while still clipping horizontally. (#4798)
 - **Date-Range Picker Calendar Stays On-Screen in Narrow Popovers**: The custom date-range picker switched to its two-column layout (date fields | calendar) based on the viewport width via Tailwind's `sm:` (640px) breakpoint, but the popover is clamped to `100vw - 2rem` and anchored to its trigger with `align="end"`, so its real available width is narrower than the viewport. On narrow windows the two-column layout could activate while the popover only had room for one column, pushing the calendar column off the right edge where it was clipped — the month header and 4 of 7 weekday columns cut off and unreachable. The layout now keys off the popover's own inline size via a CSS container query (`w-[620px] max-w-[calc(100vw-2rem)]`) instead of the viewport, so it collapses to one column exactly when the popover itself is narrow, keeping the calendar fully visible at any window width. (#4860)
@@ -187,12 +164,9 @@ Development since v3.16.4 reworks the Codex native-Responses path — restoring 
 ### Docs
 
 - **Documented the `CC_SWITCH_GDK_BACKEND` Escape Hatch in README and User Manual**: Added an FAQ entry for the opt-in `CC_SWITCH_GDK_BACKEND` environment variable (see the corresponding Fixed entry) across all four README locales (`README.md`, `README_ZH.md`, `README_JA.md`, `README_DE.md`) and the zh/en/ja user-manual troubleshooting pages (`docs/user-manual/{zh,en,ja}/5-faq/5.2-questions.md`), explaining how Wayland + NVIDIA users can switch back to native Wayland when the webview goes click-dead and black-screens on resize, and how tiling-Wayland users can set it to `x11` for the inverse input bug.
-- **Overseas Kimi READMEs Point to platform.kimi.ai With a Coding Plan Link**: Updated the Kimi K2.7 Code partner section across the English, German, and Japanese READMEs so the banner image and both inline CTAs point to `https://platform.kimi.ai?aff=cc-switch` instead of the old `platform.kimi.com` host, keeping the `aff=cc-switch` referral tag intact. All four localized READMEs (`README.md`, `README_DE.md`, `README_JA.md`, `README_ZH.md`) also gained a new line promoting the Kimi For Coding subscription plan linked to `https://www.kimi.com/code/?aff=cc-switch`; note the ZH README kept its existing `platform.kimi.com` link and only received the Coding Plan addition.
 - **GitHub Global Top-100 Milestone Banner in v3.16.4 Release Notes**: Prepended a celebratory callout blockquote to all three localized v3.16.4 release notes (`docs/release-notes/v3.16.4-en.md`, `-ja.md`, `-zh.md`) announcing that CC Switch has entered the global top 100 GitHub projects by star count, thanking users, contributors, and stargazers. This is a docs-only addition to the release-notes header and does not change any product behavior.
 
 ## [3.16.4] - 2026-06-27
-
-Development since v3.16.3 focuses on tightening the Codex proxy path — native OpenAI Responses migration for the major Chinese providers, a decoupled upstream-format selector, zstd request/error-body decompression, and a run of tool-call and OAuth-over-proxy fixes — alongside richer usage and pricing tooling (models.dev pricing import, Volcengine Ark coding/agent-plan quotas, live-tracking date ranges, GLM-5.2/Doubao Seed 2.1 pricing), new proxy and resilience capabilities (custom request header/body overrides, an in-app recovery screen for too-new databases, native Windows ARM64 builds), and a broad wave of preset and branding updates (the SubRouter and OpenCode Go subscriptions, the CTok→ETok rename, Kimi rebranding and prime-partner badges, and a Kimi K2.7 Code sponsor banner).
 
 **Stats**: 53 commits | 126 files changed | +8,149 insertions | -1,016 deletions
 
@@ -206,9 +180,6 @@ Development since v3.16.3 focuses on tightening the Codex proxy path — native 
 - **Live End Time for Custom Date Ranges**: The custom date-range picker gains an "End time follows current time" checkbox; when enabled the end time becomes read-only and tracks the current moment, so usage data always reflects up-to-the-second consumption from the chosen start. This is especially useful for watching real-time token use within a Coding Plan 5-hour quota window. `liveEndTime` is included in the React Query cache keys so a live range and a fixed range with the same stored endpoints no longer collide on a stale cache entry. (#4438)
 - **Source File Name in Session Detail Header**: The session detail header now shows the session log's file name (with the full path on hover and click-to-copy) alongside the project directory, so users can locate and open the underlying JSONL file directly from the UI. Long, space-less basenames such as ~70-char Codex rollout files are truncated at `max-w-[200px]` to keep them from overflowing into the action-button area on narrow windows. (#4113)
 - **Unmanaged-Skill Indicator on Import Button**: The top-bar Skills Import button now shows a green dot with a tooltip when local unmanaged skills are available to import, so you can tell at a glance that on-disk skills aren't tracked yet. The scan runs once on mount and is shared across navigations (30s `staleTime` + `keepPreviousData`) to avoid repeated disk IO.
-- **OpenCode Go Subscription Presets**: New OpenCode Go (`opencode.ai/zen/go`) presets for Claude, Codex, and OpenCode, authenticated with a plain pasteable API key (no OAuth). The Codex preset uses `openai_chat` conversion with a GLM/Kimi/DeepSeek/MiMo model catalog (and no static `codexChatReasoning`, so per-model capability is inferred), while OpenCode targets `/zen/go/v1` via `@ai-sdk/openai-compatible`. All four OpenCode Go presets — Claude, Claude Desktop, Codex, and OpenCode — carry a referral link and an in-app promo phrase; the promo banner is now gated on `partnerPromotionKey` alone rather than `isPartner`, so a preset can show a referral promo without earning the gold paid-partner star (this also re-surfaces the existing MiniMax promos).
-- **SubRouter Partner Provider**: Added SubRouter (`subrouter.ai`), an AI relay aggregator that exposes many models and providers behind a single key, as a preset across all seven managed apps — the Anthropic-format endpoint for Claude Code / Claude Desktop / OpenClaw / Hermes, the OpenAI-compatible `/v1` endpoint with `gpt-5.5` for Codex and OpenCode, and the Gemini-compatible `/v1beta` endpoint with `gemini-3.5-flash` for Gemini CLI — carrying its own brand icon, the gold partner star, four-locale promotion copy, and the affiliate registration link (`?aff=l3ri`) prefilled as the API-key signup URL. (#4522)
-- **Prime-Partner Preset Badge and Ordering**: First-party Moonshot Kimi presets (Kimi / Kimi For Coding / Kimi K2.7 Code) are now flagged as prime partners: instead of the gold star, they render a solid gold heart with no badge frame, and in the default (Original) sort they float to the top right after official-category presets, ahead of the rest. Grouping is a three-way partition so each group keeps its internal order and an official preset also flagged prime-partner stays only in the official group.
 - **Pricing for GLM-5.2 and Doubao Seed 2.1**: Seed model pricing now includes GLM-5.2 (#4385) and Doubao Seed 2.1 Pro/Turbo, so usage from these models is cost-attributed correctly instead of recording zero cost. Doubao prices use Volcengine's official list price (CNY converted at ~7.14); `cache_creation` is kept at 0 because Doubao bills cache storage by time rather than per-token writes, and the existing 2.0 rows are retained for historical accounting.
 - **Kimi For Coding Auto-Compact Window**: The Kimi For Coding preset now sets `CLAUDE_CODE_AUTO_COMPACT_WINDOW` to a default of 262144 to match the official Kimi docs, exposed via `templateValues` so users can customize the value for future models or performance tuning. (#4401)
 
@@ -217,7 +188,6 @@ Development since v3.16.3 focuses on tightening the Codex proxy path — native 
 - **Native Responses API for CN Codex Providers**: Several Chinese providers (Qwen/DashScope Bailian, Xiaomi MiMo, Volcengine Doubao, Meituan LongCat, MiniMax CN/intl) now expose a native OpenAI Responses endpoint, so their Codex presets switch to `apiFormat: "openai_responses"` and reach the upstream directly instead of going through the Responses->Chat route-takeover conversion. Dropping the now-unused `codexChatReasoning` and `modelCatalog` also keeps the "local route mapping" toggle unchecked by default. SiliconFlow-hosted MiniMax stays `openai_chat` since it is a third-party endpoint rather than MiniMax's own base_url. Stale model ids on the remaining chat-only providers were refreshed as well (GLM 5.1->5.2, StepFun 3.5-flash-2603->3.7-flash, Ling 2.5-1T->2.6-1T).
 - **Decoupled Upstream Format Selector from Model-Mapping Toggle**: The Codex provider form used to tie Chat-format conversion and route takeover (model mapping) to a single toggle, so a provider serving a native Responses API could not use model mapping without forcing Chat Completions conversion. The upstream format (Chat Completions / Responses) is now an independent, always-visible selector, while the local-routing toggle solely gates the advanced sub-sections (model mapping catalog, plus reasoning capability when the format is Chat). Its initial state is derived from saved catalog presence with no new persisted field, and the `codexConfig` i18n strings were reworded across all four locales (zh/en/ja/zh-TW).
 - **Doubao Seed 2.1 Pro Preset**: The DouBaoSeed preset now targets `doubao-seed-2-1-pro` (replacing `doubao-seed-2-0-code-preview-latest`) across all six clients (claude, claude-desktop, codex, opencode, openclaw, hermes), with display names updated to "Doubao Seed 2.1 Pro" and the OpenClaw cost field corrected from 0.002/0.006 to 0.84/4.2 USD per 1M tokens to match the new model.
-- **CTok Rebranded to ETok**: Following the vendor's domain, endpoint, and trademark rename, all user-facing branding moves from CTok to ETok (`ctok.ai` -> `etok.ai`, `api.ctok.ai` -> `api.etok.ai`, internal id, display name, icons, and README partner banners) across every client preset. The Codex history-migration whitelist keeps `ctok` as a legacy id alongside the new `etok` so existing users' local session history stays correctly bucketed after the rename.
 - **Consistent Kimi Preset Naming**: The OpenCode and OpenClaw Kimi presets, previously labeled "Kimi K2.7 Code", are renamed to plain "Kimi" (along with the OpenCode provider display name) to match the other apps; the model label stays "Kimi K2.7 Code" since it describes the actual model.
 - **Dark Mode for JSON Editors**: The CodeMirror `JsonEditor` in the usage-script modal, provider form, and universal provider form now follows the app theme via `useDarkMode()`, switching to the `oneDark` editor theme instead of staying light while the rest of the app is dark. (#4556)
 - **Tighter Add Provider Header With Footer Hint**: The Add Provider dialog reduces the title-to-tabs and tabs-to-card vertical gaps from 24px to 12px and adds an always-visible pinned footer hint guiding users to fill in the fields below after choosing a preset. `FullScreenPanel` gains an optional `contentClassName` prop so the padding override is scoped to this panel without affecting others that share it.
@@ -242,12 +212,9 @@ Development since v3.16.3 focuses on tightening the Codex proxy path — native 
 
 ### Docs
 
-- **Kimi Pinned Sponsor Banner**: The pinned sponsor banner at the top of all four README locales (en/zh/ja/de) now features Kimi K2.7 Code in place of the previous MiniMax M2.7 banner. The copy reflects the K2.7 Code release (a coding-focused agentic model that reduces thinking-token usage roughly 30% versus K2.6), the banner is served from in-repo assets (`assets/partners/banners/kimi-banner-en.png` / `kimi-banner-zh.png`) instead of the Moonshot CDN, and a clickable call-to-action links to the `aff=cc-switch` Moonshot console.
 - **Codex Unified Session-History Guide**: New trilingual (zh/en/ja) guide for the unified Codex session-history toggle, explaining what opt-in migration (on enable) and ledger-based restore (on disable) actually do, why session data is never truly deleted (tag-only rewrite plus automatic backups), and how to verify files on disk versus merely being filed under another provider drawer. It includes a symptom reference table for the common "my sessions are gone" misunderstanding plus on-disk verification commands for macOS/Linux/Windows, and is linked as the lead item in the v3.16.3 "Usage Guides" release notes.
 - **Simplified Homebrew Install Instructions**: The installation guide no longer instructs users to run `brew tap farion1231/ccswitch` before `brew install --cask cc-switch`; the deprecated tap step was removed from the en/ja/zh user manuals so the cask installs directly. (#4319)
 - **Star-History Global Rank Badge**: Added a star-history global rank badge next to the existing Trendshift badge in all four README locales, with light/dark theme variants.
-- **Volcengine Coding Plan Campaign Link**: The "中国大陆地区的开发者请点击这里" link in the ByteDance/Volcengine sponsor entry now points to the Volcengine `ai618` campaign page instead of the previous `codingplan` referral URL, updated across all four README locales.
-- **CCSub Sponsor Banner Vector Asset**: Replaced the low-res `ccsub.jpg` sponsor logo with a vector `ccsub.svg`, letterboxed from 2046x648 to 2046x850 (~2.406:1) so it matches the other sponsor-table banners and renders at the same 62px height. All four README locales point at the new asset.
 
 ## [3.16.3] - 2026-06-14
 
@@ -262,7 +229,6 @@ Development since v3.16.2 focuses on getting usage accounting right end-to-end �
 - **Dashboard-Wide Provider/Model Filters**: The provider and model filters move from inside the request-log table up to the top bar, applying globally to the hero summary, trend chart, request logs, and both stats tabs so you can scope the whole dashboard to a given source and model. Sources match by exact display name (so session placeholder rows like "Claude (Session)" are selectable) and models match by effective pricing model, with the model dropdown cascading from the selected source and both lists showing only options that have data in the current range.
 - **Refreshed Model Pricing Seed**: Added pricing for 9 models including Claude Fable 5, Grok 4.3, Mistral Medium 3.5 / Small 4, and Qwen 3.7 Max/Plus, and corrected 28 existing prices against current official vendor list pricing (GLM, Grok, MiMo, Doubao, Kimi, MiniMax, Mistral, Qwen) so usage cost estimates are accurate. Each change updates the seed for fresh installs and adds a guarded repair for existing databases without clobbering user-edited rows.
 - **Claude Fable 5 Model Tier**: Provider forms now expose `claude-fable-5` as a fourth model-mapping tier on both the Claude Code and Claude Desktop proxy paths, with a fable → opus → default fallback mirroring the official downgrade and the `fable-` prefix whitelisted for the Desktop 1.12603.1+ validator. A clarified four-language fallback hint warns that leaving a tier blank on third-party endpoints forwards the literal model name and 404s (#3980, #4026, #4049).
-- **Unity2.ai Partner Provider**: Added Unity2.ai, an AI API relay partner, as a preset across all seven managed apps (Claude Code, Codex, Gemini, OpenCode, OpenClaw, Claude Desktop, Hermes), each carrying the referral signup link and partner promotion copy in all four locales. Codex uses the bare base URL (the gateway exposes `/responses` at root) while OpenCode / OpenClaw / Hermes use the `/v1` chat-completions endpoint with `gpt-5.5`.
 - **Kimi K2.7 Code Model**: Added the `kimi-k2.7-code` model (in $0.95 / out $4.00 / cache-read $0.19 per 1M tokens, 256K context) and pointed all six official Moonshot Kimi presets (Claude Code, Codex, Claude Desktop, Hermes, OpenCode, OpenClaw) at it, renaming the OpenCode / OpenClaw presets to "Kimi K2.7 Code". The pricing seed applies on startup via the idempotent insert path, so existing users pick up the new pricing without a migration.
 - **Codex "Kimi For Coding" Preset Restored**: Re-added the Codex "Kimi For Coding" preset (`openai_chat`, `kimi-for-coding`, 256K context) with thinking mode enabled by default; it was previously removed because the coding endpoint rejects Codex's default `codex-cli` User-Agent with 403. It now works via proxy takeover combined with the custom User-Agent override (set to a whitelisted UA such as `claude-cli/*`).
 - **Pricing-Model Audit in Request Detail**: The request detail panel now shows the requested model and the pricing model when they differ from the response model, making route-takeover bills auditable directly from the usage UI.
@@ -277,9 +243,6 @@ Development since v3.16.2 focuses on getting usage accounting right end-to-end �
 - **Codex Advanced Options Section**: The Codex provider form now folds local routing, model mapping, reasoning overrides, and custom User-Agent into a single collapsible advanced section mirroring the Claude form (auto-expanding when a UA is set or local routing is on). Custom User-Agent is now also configurable for native Responses providers, where it was previously reachable only with `openai_chat` routing enabled.
 - **Usage Toolbar Refresh and Layout**: The app filter now renders brand icons (via ProviderIcon, with a grid icon for "All") instead of text tabs that wrapped awkwardly in narrow windows, and the usage hero shows the selected app's brand icon with Codex recolored to a neutral gray matching OpenAI's monochrome branding. The click-to-cycle refresh button becomes a Select with a localized "off" label, and the top-bar controls are compacted and aligned into consistent width groups with truncated long date-range labels.
 - **Faster About Panel Loading**: The Settings About panel now loads progressively: the app version badge appears the instant it resolves instead of waiting for tool probes, each tool card updates the moment its own version check finishes (probes run concurrently rather than sequentially), and results are cached for the app session with a 10-minute TTL so reopening the About tab reuses cached values and revalidates stale ones in the background instead of re-probing all six tools every time.
-- **Volcengine Ark Coding Plan Promo**: Updated the Volcengine Ark preset across all six apps with the new Coding Plan invite link (replacing the old Agent Plan / activity links) and refreshed the partner promotion copy in all four locales (two-month 75% off plus invite code 6J6FV5N2), correcting the product name from Agent Plan to Coding Plan.
-- **MiniMax Demoted to Regular Provider**: Removed the gold partner star badge and the API-key promotion banner for MiniMax by dropping the `isPartner` flag from all its presets; it stays as a regular `cn_official` provider keeping its icon and theme. The promotion copy is kept dormant so the partnership can be re-enabled with a single line.
-- **LemonData Removed, SudoCode Demoted**: Removed the LemonData provider preset entirely from all apps along with its promotion copy, icons, and sponsor listings, and demoted SudoCode from a partner to a regular `third_party` provider by dropping its `isPartner` flag and promotion copy (it keeps its icon).
 - **AtlasCloud Codex GLM 5.1 Context Window**: Declared the 200,000-token context window for the `zai-org/glm-5.1` model in the AtlasCloud Codex preset, matching the other GLM 5.1 preset entries.
 
 ### Fixed
@@ -320,7 +283,6 @@ Development since v3.16.1 focuses on broadening data portability and usage obser
 - **Unsupported Image Fallback Rectifier**: Added a proxy rectifier that replaces Anthropic image blocks with an `[Unsupported Image]` marker when the routed model is text-only (declared, or detected via a built-in model-name heuristic) or when the upstream rejects image input, so conversations are not interrupted. A new Settings toggle controls the fallback, with a separate toggle for the heuristic detection.
 - **ZenMux Token Plan Provider**: Added ZenMux as a Token Plan coding-plan provider that accepts a manually entered API key and base URL in the usage-script modal and renders its quota with USD-denominated used / limit values (#2709).
 - **CherryIN Preset**: Added the CherryIN aggregator gateway as a quick-config preset across all seven supported apps — Anthropic-format endpoint for Claude Code / Claude Desktop / OpenClaw / Hermes, `@ai-sdk/anthropic` for OpenCode, the OpenAI-compatible endpoint for Codex, and the Gemini-compatible endpoint for Gemini CLI — with the official brand icon, placed next to AiHubMix (#3643).
-- **CCSub Preset**: Added CCSub, a multi-model aggregator partner, as a quick-config preset across six apps — Claude Code, Claude Desktop, Codex, OpenCode, OpenClaw, and Hermes — with the official brand icon and the partner referral link prefilled as the API-key signup URL (`gpt-5.5` for the OpenAI-compatible Codex and OpenCode endpoints).
 - **Codex CLI Models Endpoint**: The local proxy now answers `GET /v1/models`, which Codex CLI probes at startup, returning the cc-switch-managed Codex model catalog. A stale-catalog guard parses the live `config.toml` and only serves the catalog when `model_catalog_json` still references the cc-switch-owned file, so a leftover catalog from a previous provider is not advertised (#3818).
 - **Codex Chat File and Audio Attachments**: The Codex Responses-to-Chat converter now maps `input_file` parts (carrying `file_id` or inline `file_data`) and `input_audio` parts into their Chat Completions equivalents, and emits top-level `input_*` items that were previously dropped, so file and audio attachments reach Chat-only Codex upstreams.
 
@@ -363,7 +325,6 @@ Development since v3.16.1 focuses on broadening data portability and usage obser
 
 - **User Manual Refresh**: Refreshed the README locales and the en / zh / ja user manuals to reflect all seven supported apps (adding Claude Desktop and Hermes), corrected the OpenCode config path to `~/.config/opencode/` (`opencode.json`), documented Hermes configuration files, updated the language docs to four languages, revised per-app MCP / Prompts / Skills availability, noted that export produces a timestamped SQL backup including usage logs, and documented the pricing model-ID matching rules (#3411).
 - **Codex Official Auth Preservation Guide**: Added a trilingual (en / zh / ja) guide explaining how to keep Codex official remote control and plugins working while routing model traffic to third-party APIs, and linked it from the v3.16.1 release notes.
-- **README Release-Note Links and Sponsor Markup**: Updated the Release Notes links in all README locales to point at v3.16.1 and fixed broken smart-quote characters in the README_ZH sponsor blocks so their HTML attributes render correctly (#3772).
 
 ## [3.16.1] - 2026-06-01
 
@@ -382,7 +343,6 @@ Development since v3.16.0 focuses on hardening Codex provider switching and Loca
 - **Codex Provider Switch Restart Hint**: Successful Codex provider switches now tell users to restart the Codex client so catalog and config changes take effect.
 - **Codex Proxy Takeover Switching Is Serialized**: Provider switches and takeover toggles now share a per-app lock and use backup / live placeholder ownership signals instead of lagging `enabled` or server-running flags, preventing normal live writes from racing a just-activated or temporarily stopped takeover.
 - **Codex Takeover Hot-Switch Display Refresh**: Hot-switching a Codex provider while Local Routing owns Live now refreshes the proxy-safe live provider id, model, and display name while keeping endpoints pointed at the local proxy.
-- **Sponsor Ordering**: Swapped the Shengsuanyun and AICodeMirror sponsor blocks across README locales.
 - **Docs Organization**: Moved the Chinese proxy guide under `docs/guides/` and removed the obsolete working-directory plan document.
 
 ### Fixed
@@ -400,8 +360,6 @@ Development since v3.16.0 focuses on hardening Codex provider switching and Loca
 
 ## [3.16.0] - 2026-05-29
 
-Development since v3.15.0 focuses on making third-party Codex providers work like first-class citizens through Chat Completions routing, stabilizing Codex provider identity and history, adding an in-app managed CLI tool lifecycle, expanding the partner preset catalog, refreshing the default model / pricing matrix around GPT-5.5 and Claude Opus 4.8, and improving usage observability, localization, docs, and proxy robustness.
-
 **Stats**: 101 commits | 221 files changed | +27,063 insertions | -3,052 deletions
 
 ### Highlights
@@ -409,7 +367,6 @@ Development since v3.15.0 focuses on making third-party Codex providers work lik
 - **Codex Chat Completions routing**: Codex providers can now be served by OpenAI-compatible Chat Completions upstreams. CC Switch converts Codex Responses requests into Chat Completions, rebuilds JSON and SSE responses back into Responses shape, preserves reasoning / `<think>` / tool-call state, normalizes error envelopes, and probes Chat-format providers correctly in Stream Check.
 - **Codex third-party provider state is unified and safer**: third-party Codex providers now share the stable `custom` model-provider bucket, with a one-shot migration for historical JSONL sessions and `state_5.sqlite` threads, plus fixes that preserve OAuth login state, user-selected catalog models, and user-authored provider ids during live reads / switches.
 - **Managed CLI tool management**: the About page is now a tool management panel for Claude, Codex, Gemini, OpenCode, OpenClaw, and Hermes, with install / update actions, update-all, conflict diagnostics, source-aware anchored upgrades, WSL handling, and visible "installed but not runnable" states.
-- **Provider ecosystem and model matrix refresh**: added APIKEY.FUN, APINebula, AtlasCloud, SudoCode, Xiaomi MiMo Token Plan, and Claude Desktop Official presets; refreshed partner links and default models / pricing across apps; upgraded the default Claude Opus model line to 4.8 and GPT defaults to 5.5 where applicable.
 - **Usage and docs polish**: Usage Dashboard updates now react immediately when logs are written, custom usage-script summaries and subagent session-log accounting were fixed, Traditional Chinese UI localization landed, and a German README plus expanded Claude Desktop / Codex Chat / tool-management manuals were added.
 - **Proxy and conversion hardening**: fixed Codex Chat reasoning / cache / usage edge cases, DeepSeek Anthropic tool-thinking history, Claude-compatible empty `tool_calls` streams, managed-account takeover auth, MiMo reasoning output, Gemini Native tool-call replay, and several panic-prone proxy paths.
 
@@ -428,7 +385,6 @@ Development since v3.15.0 focuses on making third-party Codex providers work lik
 - **Real-Time Usage Refresh**: The backend now emits `usage-log-recorded` when proxy logs, session-log syncs, or rollups write usage data; Usage Dashboard listens for that event and invalidates its queries immediately instead of waiting for the next polling interval (#3027).
 - **Traditional Chinese Localization**: Added `zh-TW` UI localization and a settings language option (#3093).
 - **German README**: Added `README_DE.md` and linked it from the existing README language switchers (#2994).
-- **New Partner Presets**: Added APIKEY.FUN, APINebula, AtlasCloud, and SudoCode partner presets across the supported app surfaces, with partner copy, icons, and README entries.
 
 ### Changed
 
@@ -439,7 +395,6 @@ Development since v3.15.0 focuses on making third-party Codex providers work lik
 - **Tool Install / Upgrade Strategy**: Managed tool installation now prefers official native installers where available, falls back to package managers when appropriate, runs self-update first for compatible tools, anchors upgrades to the detected install source, and locks duplicate batch actions while work is in flight.
 - **About Page Becomes Tool Management**: The About settings page now presents installed / latest versions, install and update actions, conflict diagnostics, WSL shell preferences, and clearer status for broken or unrunnable tools.
 - **Default Models and Pricing Refreshed**: Upgraded the default Claude Opus model to 4.8, moved GPT-based presets and templates to GPT-5.5 where applicable, refreshed pricing seeds, aligned Claude Desktop model mapping with Claude Code's three-role tiers, and renamed the OpenCode Go preset to drop a stale model suffix.
-- **Partner Links Refreshed**: Updated ShengSuanYun referral links, Atlas Cloud UTM links, and partner copy across README locales and provider metadata.
 - **Homebrew Official Cask Installation**: Installation simplified to `brew install --cask cc-switch` now that CC Switch is in the official Homebrew repository; the personal-tap requirement was removed from all READMEs.
 - **Shared Frontend Utilities**: Replaced JSON stringify / parse deep-copy patterns with a shared `deepClone` helper and extracted a shared `useTauriEvent` hook (#3140).
 
@@ -473,15 +428,12 @@ Development since v3.15.0 focuses on making third-party Codex providers work lik
 - **Claude Provider Deeplink Imports**: Importing Claude providers through deeplinks now preserves custom environment fields (#2928).
 - **OMO Recommended Models**: Synced OMO recommended models with upstream defaults and improved Fill Recommended feedback.
 - **ShengSuanYun Model IDs Prefixed for Routing**: ShengSuanYun (胜算云) presets now carry the vendor prefixes the upstream gateway requires — `anthropic/…`, `google/…`, and `openai/…` (e.g. `anthropic/claude-sonnet-4.6`, `google/gemini-3.1-pro-preview`) — across the Claude Code, Claude Desktop, Codex, Gemini, OpenCode, and OpenClaw presets, including the Claude Code routing env (`ANTHROPIC_MODEL` / `ANTHROPIC_DEFAULT_{HAIKU,SONNET,OPUS}_MODEL`), so they resolve to valid upstream models instead of failing to route.
-- **ClaudeAPI Model Test Re-Enabled**: Reclassified the ClaudeAPI preset (Claude Code and Claude Desktop) from `third_party` to `aggregator` so its model test button is no longer disabled by the third-party Claude gate; the partner star is unaffected since it is driven by `isPartner`, not category.
 - **About Version Check**: Version checks now handle prerelease tool versions without misclassifying update state.
 - **App Switcher Text Clipping**: Removed a fixed width constraint that clipped app-switcher text (#3161).
 - **useEffect Race Condition**: Added an active-flag pattern to App.tsx effects to prevent listener leaks on unmount, and guarded against storing `undefined` language in localStorage (#2827).
 
 ### Removed
 
-- **LionCC Sponsor and Presets**: Removed the LionCC sponsor entry and LionCCAPI presets across READMEs, provider configs, and locales (icon asset retained).
-- **AICoding Partner Entry**: Removed the AICoding partner from README sponsor listings, provider presets, and i18n metadata.
 - **Kimi For Coding Codex Preset**: Removed the Kimi For Coding preset from the Codex preset catalog.
 - **CLI Uninstall Command Hints**: Dropped generated CLI uninstall command hints from the tool-management UI while keeping conflict diagnostics visible.
 
@@ -502,7 +454,6 @@ Development since v3.14.1 focuses on a dedicated Claude Desktop surface with thi
 
 - **Claude Desktop becomes a first-class managed surface** with third-party provider switching through an in-app proxy gateway, role-based model mapping (sonnet / opus / haiku) with a 1M context flag, Copilot/Codex OAuth provider reuse, and 44 imported provider presets translated from the Claude Code catalog. Note: 20 Claude Desktop presets now default to direct mode instead of routing through the proxy — verify connectivity if you previously relied on proxy routing for these presets.
 - **Major reverse-proxy hardening**: P0–P3 lifecycle, retry, failover, and rectifier patches; pooled HTTPS reuse for non-Anthropic backends; Codex/Responses cache hit-rate improvements; correct Anthropic ↔ OpenAI `tool_choice` mapping; Vertex AI URL preservation; Gemini path-based model extraction; takeover detection refinement; IPv6 listen address support.
-- **Provider Ecosystem Expansion**: Added BytePlus, Volcengine Agentplan, ClaudeAPI, ClaudeCN, RunAPI, RelaxyCode, PatewayAI, and Baidu Qianfan Coding Plan partner presets; promoted DouBao Seed to partner status; routing-support badges now surface on provider cards.
 - **Role-Based Model Mapping for Claude Code**: Display-name-aware sonnet / opus / haiku route mapping with a `supports1m` flag replaces the legacy `[1M]` suffix and decouples routing from raw model IDs.
 - **Codex OAuth Live Model Discovery**: ChatGPT Codex providers now fetch the live model list from the ChatGPT backend on demand instead of relying on a static list.
 - **Usage Dashboard Filter-Driven Hero**: A new filter-driven Hero card with cache-normalized totals replaces the legacy summary block, paired with cache-cost-semantics fixes that silence a noisy pricing warning storm.
@@ -523,7 +474,6 @@ Development since v3.14.1 focuses on a dedicated Claude Desktop surface with thi
 - **DeepSeek `reasoning_content` for Tool Calls**: DeepSeek tool-calling responses now return `reasoning_content` together with `tool_calls` so callers can render both (#2543).
 - **Baidu Qianfan Coding Plan for Claude Code**: Added a Baidu Qianfan Coding Plan preset for Claude Code (#2322).
 - **Compshare Coding Plan Preset (Cross-App)**: Added Compshare Coding Plan preset across claude / codex / hermes / openclaw.
-- **Partner Provider Presets**: Added BytePlus, Volcengine Agentplan, ClaudeAPI, ClaudeCN, RunAPI, RelaxyCode, and PatewayAI provider presets; promoted DouBao Seed to partner status with refreshed endpoint and links.
 - **44 Claude Desktop Provider Presets**: Translated 44 provider presets from the Claude Code catalog into the new Claude Desktop surface.
 
 ### Changed
@@ -532,7 +482,6 @@ Development since v3.14.1 focuses on a dedicated Claude Desktop surface with thi
 - **Claude Desktop Operational Notes**: Switching a Claude Desktop provider now writes CC Switch's managed 3P profile and requires restarting Claude Desktop to take effect; proxy-mode providers require CC Switch Local Routing to stay running.
 - **Failover / Local Routing Guardrails**: Failover controls now require the target app's Local Routing takeover to be enabled, and stopping only the proxy service is blocked while any app still depends on takeover state.
 - **Usage Accounting Semantics**: Usage summaries now report cache-normalized real total tokens and cache hit rate; historical token and cost totals may shift after deduplication and pricing recalculation, but should be more accurate.
-- **Provider Preset Rendering Order**: Provider preset lists now render in author-defined array order with partners prioritized at the top, replacing the previous implicit sort.
 - **Model Mapping Hint Copy Simplified**: `modelMappingOffHint` was rewritten as action-oriented copy across zh / en / ja.
 - **CC Switch Brand Surface Unified to ccswitch.io**: All in-app and README references now point at ccswitch.io as the sole official website; the release notes template also surfaces ccswitch.io.
 - **Theme Switch Simplified**: Removed the circular reveal animation; theme changes are now an instant cross-fade.
@@ -600,11 +549,9 @@ Development since v3.14.1 focuses on a dedicated Claude Desktop surface with thi
 
 - **Hermes Agent Usage Tracking Integration**: Removed the in-cycle Hermes Agent usage tracking integration after upstream behavior changes made it impractical to keep in sync. The integration was never enabled in any released version — a zero-cost rendering bug found during its development was fixed before the integration was rolled back.
 - **Theme Switch Circular Reveal Animation**: Removed the circular reveal animation used during theme switching; the animation caused jank on slower compositors and added little visible value.
-- **DDSHub Partner Integration**: Removed DDSHub as a partner preset and dropped the cross-link blurbs across READMEs.
 
 ### Docs
 
-- **README Sponsor Refresh (zh / en / ja)**: Added BytePlus, ClaudeCN, RunAPI, and PatewayAI sponsor entries; cross-linked BytePlus and Volcengine entries; refreshed the Crazyrouter $2 credit claim flow, the Compshare blurb, the Right Code blurb, and other sponsor logos and listings; flattened the LionCC logo onto a white background; switched the Chinese README's sponsor logo to the Volcengine artwork; added Hermes Agent to the README subtitles.
 - **Release Notes Template**: Surfaces `ccswitch.io` in the release notes template.
 - **Brand Surface**: Documented `ccswitch.io` as the sole official website across READMEs and in-app references.
 
@@ -669,7 +616,6 @@ Development since v3.13.0 focuses on onboarding Hermes Agent as a first-class ma
 - **StepFun Step Plan Preset**: Added StepFun Step Plan (EN/ZH) provider presets.
 - **New API Usage Script Template**: Added a User-Agent header to the New API usage script template for better upstream compatibility.
 - **Launch Hermes Dashboard from Toolbar**: When the Hermes Web UI probe fails, the toolbar entry now offers to run `hermes dashboard` in the user's preferred terminal via a temp bash/batch script. `hermes dashboard` opens the browser itself once ready, so no polling is required. Also corrects the stale `hermes web` hint in the offline toast (the real command is `hermes dashboard`) and reorders Linux terminal detection to try `which` before stat'ing `/usr/bin`, `/bin`, `/usr/local/bin`.
-- **LemonData Provider Preset (All Six Apps)**: Registered LemonData as a third-party partner preset across Claude, Codex, Gemini, OpenCode, OpenClaw, and Hermes, with icon assets and zh/en/ja partner-promotion copy. Claude uses `ANTHROPIC_API_KEY` auth; OpenAI-compatible apps target `gpt-5.4`.
 - **DDSHub Codex Preset**: Added a Codex-compatible endpoint for DDSHub at the same host as its Claude service; base URL omits the `/v1` suffix because the gateway auto-routes OpenAI SDK paths.
 
 ### Changed
@@ -720,10 +666,8 @@ Development since v3.13.0 focuses on onboarding Hermes Agent as a first-class ma
 
 ### Docs
 
-- **README Sponsor Updates**: Updated SiliconFlow signup bonus to ¥16, trimmed the SSSAiCode sponsor blurb, updated partner logos, and added LemonData as a new sponsor.
 - **Global Proxy Hint Clarified**: Clarified the global proxy hint about local routing across all three locales.
 - **Takeover → Routing Rename**: Renamed takeover docs to routing and updated anchors across all languages.
-- **PIPELLM Website URL**: Updated the PIPELLM sponsor website URL to `code.pipellm.ai`.
 
 ### Breaking
 
@@ -763,9 +707,6 @@ Development since v3.12.3 focuses on quota visibility, provider workflow upgrade
 - **Kaku Terminal Support**: Added Kaku as a selectable terminal for session launch on macOS, reusing the WezTerm-compatible launch path.
 - **OMO Slim Council Support**: Restored first-class council support as a built-in oh-my-opencode-slim agent with updated metadata and UI copy.
 - **TheRouter Provider Preset**: Added TheRouter provider presets across Claude, Codex, Gemini, OpenCode, and OpenClaw.
-- **DDSHub Provider Preset**: Added DDSHub as a third-party partner provider for Claude with icon and partner promotion text.
-- **LionCCAPI Provider Preset**: Added LionCCAPI as a third-party partner provider across all five apps with anthropic-messages protocol for OpenCode and OpenClaw.
-- **Shengsuanyun Provider Preset**: Added Shengsuanyun (胜算云) as an aggregator partner provider across all five apps with URL-based icon and localized display name.
 - **PIPELLM Provider Preset**: Added PIPELLM provider preset across Claude, Codex, OpenCode, and OpenClaw with full model definitions and icon.
 - **E-FlowCode Provider Preset**: Added E-FlowCode provider preset across all five apps with per-app protocol configuration.
 
@@ -806,7 +747,6 @@ Development since v3.12.3 focuses on quota visibility, provider workflow upgrade
 - **User Manual Refresh**: Updated the EN / ZH / JA manuals for tray submenus, lightweight mode, provider model fetching, session management, workspace files, WebDAV v2 behavior, OpenCode / OpenClaw activation, and other provider workflow improvements.
 - **Community & Contribution Docs**: Added `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, bilingual issue / PR templates, Dependabot config, and CI quality checks.
 - **Release Notes Risk Notice**: Added a Copilot reverse proxy risk notice and anchored highlight links in the v3.12.3 release notes across all three languages.
-- **Sponsor Partners**: Added Shengsuanyun, LionCC, and DDS as sponsor partners in README across all languages.
 
 ---
 
@@ -837,7 +777,6 @@ Major release adding GitHub Copilot reverse proxy support, macOS code signing & 
 - **OpenCode Model Variants**: Placed OpenCode model variants at top level instead of inside options for better discoverability (#1317)
 - **Skills Import Flow**: Replaced implicit filesystem-based app inference with explicit `ImportSkillSelection` to prevent incorrect multi-app activation; added reconciliation to remove disabled/orphaned symlinks and MCP servers from live config
 - **Claude 4.6 Context Window**: Updated Claude Opus 4.6 and Sonnet 4.6 context window from 200K to 1M across OpenClaw and OpenCode presets (GA release)
-- **MiniMax Model Upgrade**: Updated MiniMax presets from M2.5 to M2.7 across Claude, OpenClaw, and OpenCode configurations with updated partner descriptions in all three locales
 - **Xiaomi MiMo Model Upgrade**: Updated MiMo presets from mimo-v2-flash to mimo-v2-pro across all supported applications
 - **AddProviderDialog Simplification**: Removed redundant OAuth tab, reducing dialog from 3 tabs to 2 (app-specific + universal)
 - **Provider Form Advanced Options Collapse**: Model mapping, API format, and other advanced fields in the Claude provider form now auto-collapse when empty; auto-expands when any value is set or when a preset fills them in
@@ -894,8 +833,6 @@ Post-v3.12.1 work focuses on Common Config safety during proxy takeover and more
 
 ### Patch Release
 
-Stability-focused patch release fixing the Common Config modal infinite reopen loop, a WebDAV sync foreign key constraint failure, several i18n interpolation issues, and a Windows toolbar compact mode bug. Also adds **StepFun** provider presets, **OpenClaw input type selection** and **authHeader** support, upgrades Gemini to **3.1-pro**, and welcomes four new sponsor partners.
-
 **Stats**: 19 commits | 56 files changed | +1,429 insertions | -396 deletions
 
 ### Added
@@ -909,17 +846,9 @@ Stability-focused patch release fixing the Common Config modal infinite reopen l
 - **Input Type Selection**: Added input type selection dropdown for model Advanced Options in OpenClaw configuration form (#1368, thanks @liuxxxu)
 - **authHeader Field**: Added optional `authHeader` boolean to OpenClawProviderConfig for vendor-specific auth header support (e.g. Longcat), and refactored form state to reuse the shared type
 
-#### Sponsor Partners
-
-- **Micu API**: Added Micu API as sponsor partner with affiliate links
-- **XCodeAPI**: Added XCodeAPI as sponsor partner
-- **SiliconFlow**: Added SiliconFlow (硅基流动) as sponsor partner with affiliate links
-- **CTok**: Added CTok as sponsor partner
-
 ### Changed
 
 - **UCloud → Compshare**: Renamed UCloud provider to Compshare (优云智算) with full i18n support across all three locales (EN/ZH/JA)
-- **Compshare Links**: Updated Compshare sponsor registration links to coding-plan page
 - **Gemini Model Upgrade**: Upgraded default Gemini model from 2.5-pro to 3.1-pro in provider presets
 
 ### Fixed
@@ -982,12 +911,8 @@ This release restores the **Model Health Check (Stream Check)** UI, adds **OpenA
 
 #### Provider Presets
 
-- **Ucloud**: Added Ucloud partner provider preset for Claude, Codex, and OpenClaw with endpointCandidates, unified apiKeyUrl, refreshed model defaults, and OpenClaw `templateValues` / `suggestedDefaults`
-- **Micu**: Added Micu partner provider preset for Claude, Codex, OpenClaw, and OpenCode with OpenClaw `templateValues` / `suggestedDefaults`
-- **X-Code API**: Added X-Code API partner provider preset for Claude, Codex, and OpenCode with endpointCandidates
 - **Novita**: Added Novita provider presets and icon across all supported apps (#1192)
 - **Bailian For Coding**: Added Bailian For Coding preset configuration (#1263)
-- **SiliconFlow Partner Badge**: Added partner badge designation for SiliconFlow provider presets
 - **Model Role Badges**: Added model role badges (e.g., Opus, Sonnet) to provider presets and reordered presets to prioritize Opus models
 
 #### WebDAV Sync
@@ -1059,7 +984,6 @@ This release restores the **Model Health Check (Stream Check)** UI, adds **OpenA
 
 - **User Manual i18n**: Restructured user manual for internationalization and added complete EN/JA translations alongside the existing ZH documentation
 - **User Manual OpenClaw**: Added OpenClaw coverage and completed settings documentation for the user manual
-- **UCloud CompShare Sponsor**: Added UCloud CompShare as a sponsor partner
 - **Docs Directory Reorganization**: Reorganized docs directory structure, added user manual links to all three README files, removed cross-language links from user manual sections, and synced README features across EN/ZH/JA
 
 ### Maintenance
@@ -1141,9 +1065,6 @@ This release introduces **OpenClaw** as the fifth supported application, a full 
 #### Provider Presets
 
 - **AWS Bedrock**: Support for AKSK and API Key authentication modes (Claude and OpenCode)
-- **SSAI Code**: Partner provider preset across all five apps
-- **CrazyRouter**: Partner provider preset with custom icon
-- **AICoding**: Partner provider preset with i18n promotion text
 - **Bailian**: Renamed from Qwen Coder with new icon; updated domestic model providers to latest versions
 
 #### Proxy & Network
@@ -1211,7 +1132,6 @@ This release introduces **OpenClaw** as the fifth supported application, a full 
 - **OpenClaw /v1 Prefix**: Removed /v1 prefix from OpenClaw anthropic-messages presets to prevent double path (/v1/v1/messages) with Anthropic SDK auto-append
 - **Opus Pricing**: Corrected Opus pricing from $15/$75 to $5/$25 and upgraded model ID to claude-opus-4-6
 - **AIGoCode URLs**: Unified API base URL to https://api.aigocode.com across all apps; removed trailing /v1 suffix
-- **Zhipu GLM**: Removed outdated partner status from Claude, OpenCode, and OpenClaw presets
 - **API Key Visibility**: Restored API Key input field when creating new Claude providers (was incorrectly hidden for non-cloud_provider categories)
 
 #### OMO / OMO Slim
@@ -1266,7 +1186,6 @@ This release introduces **OpenClaw** as the fifth supported application, a full 
 
 ### Documentation
 
-- **Sponsors**: Added/updated SSSAiCode, Crazyrouter, AICoding, Right Code, and MiniMax sponsor entries across all README languages
 - **User Manual**: Added user manual documentation (#979)
 
 ### Maintenance
@@ -1285,7 +1204,6 @@ This release introduces a generic API format selector, pricing configuration enh
 ### Added
 
 - **API Key Link for OpenCode**: API key link support for OpenCode provider form, enabling quick access to provider key management pages
-- **AICodeMirror Partner Preset**: Added AICodeMirror partner preset for all apps (Claude, Codex, Gemini, OpenCode)
 - **API Format Selector**: Generic API format chooser for Claude providers, replacing the OpenRouter-specific toggle. Supports Anthropic Messages (native) and OpenAI Chat Completions format
 - **API Format Presets**: Allow preset providers to specify API format (anthropic or openai_chat) for third-party proxy services
 - **Proxy Hint**: Display info toast when switching to OpenAI Chat format provider, reminding users to enable proxy
@@ -1321,7 +1239,6 @@ This release introduces a generic API format selector, pricing configuration enh
 - **Windows Tests**: Stabilize test environment (#644)
 - **i18n**: Update apiFormatOpenAIChat label to mention proxy requirement
 - **Error Display**: Use extractErrorMessage for complete error display in mutations
-- **Sponsors**: Add AICodeMirror and reorder sponsor list
 
 ---
 
@@ -1334,7 +1251,6 @@ This maintenance release adds skill sync options and includes important bug fixe
 ### Added
 
 - **Skills**: Add skill sync method setting with symlink/copy options
-- **Partners**: Add RightCode as official partner
 
 ### Fixed
 
@@ -1464,7 +1380,6 @@ This stable release includes all changes from `3.9.0-1`, `3.9.0-2`, and `3.9.0-3
 - **Usage Enhancements** - Model extraction, request logging improvements, cache hit/creation metrics, and auto-refresh (#455, #508)
 - **Error Request Logging** - Detailed logging for proxy requests (#401)
 - **Linux Packaging** - Added RPM and Flatpak packaging targets
-- **Provider Presets & Icons** - Added/updated partner presets and icons (e.g., MiMo, DMXAPI, Cubence)
 
 ### Changed
 
@@ -1546,7 +1461,6 @@ Third beta release with important bug fixes for Windows compatibility, UI improv
 - **Shadow Removal** - Cleaner UI by removing shadow styles
 - **Code Inspector** - Added code-inspector-plugin for development
 - **i18n** - Complete internationalization for usage panel and settings
-- **Sponsor Logos** - Made sponsor logos clickable
 
 ### Stats
 
@@ -1563,7 +1477,6 @@ Second beta release focusing on proxy stability, import safety, and provider pre
 
 ### Added
 
-- **DMXAPI Partner** - Added DMXAPI as an official partner provider preset
 - **Provider Icons** - Added provider icons for OpenRouter, LongCat, ModelScope, and AiHubMix
 
 ### Changed
@@ -1690,7 +1603,6 @@ This beta release introduces the **Local API Proxy** feature, along with Skills 
 - **Skills recursive scanning** - Discovers nested `SKILL.md` files across multi-level directories; same-name skills allowed by full-path dedup.
 - **Provider icons** - Presets ship with default icons; custom icon colors; icons retained when duplicating providers.
 - **Auto launch on startup** - One-click enable/disable using Registry/LaunchAgent/XDG autostart.
-- **Provider preset** - Added MiniMax partner preset.
 - **Form validation** - Required fields get real-time validation and unified toast messaging.
 
 ### Fixed
@@ -1754,7 +1666,6 @@ This beta release introduces the **Local API Proxy** feature, along with Skills 
 - **MCP management** - Full MCP configuration capabilities for Gemini
 - **Provider presets**
   - Google Official (OAuth authentication)
-  - PackyCode (partner integration)
   - Custom endpoint support
 - **Deep link support** - Import Gemini providers via `ccswitch://` protocol
 - **System tray integration** - Quick-switch Gemini providers from tray menu
@@ -1975,7 +1886,6 @@ v3.7.0 represents a major evolution from "Provider Switcher" to **"All-in-One AI
 - **Auto-sync on Directory Change** - When switching Claude/Codex config directories (e.g., WSL environment), automatically sync current provider to new directory without manual operation
 - **Load Live Config When Editing Active Provider** - When editing the currently active provider, prioritize displaying the actual effective configuration to protect user manual modifications
 - **New Provider Presets** - DMXAPI, Azure Codex, AnyRouter, AiHubMix, MiniMax
-- **Partner Promotion Mechanism** - Support ecosystem partner promotion (e.g., Zhipu GLM Z.ai)
 
 ### 🔧 Improvements
 

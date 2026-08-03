@@ -31,7 +31,7 @@ updater 全层禁用、应用品牌图标替换、自动化质量门与人工验
   伪造或改写。应用品牌图标以用户提供的 1024×1024 RGBA PNG 原始字节
   为唯一视觉源：Tauri 标准桌面/Windows Store/Android/iOS 集合由 CLI 生成，About 使用
   生成的 32×32 图标；macOS tray 仅以源图 alpha 轮廓生成 24/48/72 像素黑色 template。
-  不重绘、改色或改构图，也不修改 provider/partner 图标、截图或 DMG 背景。
+  不重绘、改色或改构图，也不修改第三方 provider 图标、截图或 DMG 背景。
 - 汇总所有质量命令、Windows ARM64 target evidence、静态安全审计、fixture/mock 证据和
   `14` 人工验收记录模板；不执行真实安装或声称人工验收完成。
 - ChatGPT 客户端安装包处于实际下载阶段时，在既有进度信息旁持续显示直观的下载速度；
@@ -53,7 +53,7 @@ updater 全层禁用、应用品牌图标替换、自动化质量门与人工验
   agentsmirror 常量。
 - [x] 所有既有应用品牌图标路径均由同一 FyAgent 源图重新生成，`64x64.png` 保留，About
   与生成的 32×32 图标一致；macOS tray template 尺寸、黑色 RGB、透明度和 18pt 内容框
-  满足约束，DMG 背景及 provider/partner 等非应用品牌资产未变。
+  满足约束，DMG 背景及第三方 provider 等非应用品牌资产未变。
 - [x] 全量前后端/Rust质量门与静态审计均记录 command、OS、exit code、summary；Windows
   ARM64 有独立 build/target evidence；Windows/macOS 图标视觉验收明确 Pending human。
 - [x] 下载阶段同时显示百分比、已下载/总字节和有限的每秒下载速度；非下载阶段不显示

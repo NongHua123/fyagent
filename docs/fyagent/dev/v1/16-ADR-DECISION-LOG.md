@@ -139,7 +139,6 @@ Commands/Services/Domain/Platform、API/Query/Hook/Component 分层，允许按�
 `com.fyagent.desktop`、`fyagent://`、`~/.fyagent`、`fyagent.db`、`fyagent`、
 `fyagent_lib` 以及 FyAgent 自有的序列化/网络标记。不迁移、不回退读取、不注册别名，
 也不清理旧自启动值。真实仓库 `NongHua123/cc-switch`、历史证据、LICENSE/版权、
-必要上游引用和合作方 referral/优惠码按事实保留。
 
 ## 3. Legacy D01–D60 映射
 
@@ -169,7 +168,6 @@ Commands/Services/Domain/Platform、API/Query/Hook/Component 分层，允许按�
 | D22 | 多文档，不拆大量任务卡 |
 | D23 | 删除 CLI生命周期写操作，保留核心能力 |
 | D24 | 已由 ADR-031 取代：FyAgent 底层身份 clean break，不迁移/兼容旧身份 |
-| D25 | 移除当前生产旧品牌，保留真实仓库、历史/法律/上游和合作方事实例外 |
 | D26 | Codex页顶部卡片 |
 | D27 | 进入页面检查 |
 | D28 | 安装/更新/启动状态映射 |

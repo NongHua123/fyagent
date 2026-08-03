@@ -363,7 +363,6 @@ Windows runner只运行 fake，不改变系统 package inventory。
 - About 图标与生成的 32×32 PNG 字节一致；
 - macOS template 为 24×24、48×48、72×72 黑色 RGBA，非透明边界等比位于 18pt 内容框，
   alpha 包含透明、实心和抗锯齿值；
-- `dmg-background.png`、provider/partner 图标、截图等排除资产无 diff；
 - release workflow 无 Tauri updater signing key、updater artifact、`latest.json` 或旧品牌/旧官网发布面；仅发布 FyAgent 手动安装资产；
 - 不测试许可证文本被删除。
 

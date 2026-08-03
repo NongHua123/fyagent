@@ -12,7 +12,7 @@ not the implementation contract: FyAgent does not migrate, alias, discover,
 import, or clean up the former application's data, deep links, autostart entry,
 or serialized identity markers. The repository name and real repository URLs,
 historical and license attribution, upstream references, and exact external
-partner/referral tokens remain factual exceptions and must not be fabricated or
+URL query values remain factual exceptions and must not be fabricated or
 cosmetically replaced.
 
 ## Findings
@@ -21,7 +21,7 @@ cosmetically replaced.
 
 This is not a cosmetic rename. The repository currently uses the old identity as
 an application-install identity, persistence namespace, wire-format owner marker,
-external referral code, and historical compatibility key. A blind global replace
+external URL query value, and historical compatibility key. A blind global replace
 would make existing data appear lost, split Windows/macOS application identity,
 break old deep links and cloud-sync roots, and prevent old Codex projections or
 conversation payloads from being cleaned up or replayed.
@@ -39,8 +39,8 @@ There are two distinct acceptance meanings which cannot both be achieved literal
    data, links, exports, sync roots, and serialized payloads are not compatible.
 2. **Complete active FyAgent identity with safe migration**: all new writes and
    primary identifiers use FyAgent, but narrowly allowlisted legacy literals remain
-   in migration readers/cleanup paths, historical fixtures, legal history, partner
-   referral codes, and upstream citations.
+   in migration readers/cleanup paths, historical fixtures, legal history,
+   provider-specific URL query values, and upstream citations.
 
 The second is the safe recommendation. A final `rg` audit must distinguish active
 identity from deliberate legacy compatibility; otherwise a "zero match" assertion
@@ -78,14 +78,14 @@ project owns a `fyagent.com` DNS namespace.
 | Flatpak ID/files `com.ccswitch.desktop*` | proposed `com.fyagent.desktop*` | Rename manifest, desktop, AppStream, icon, launchable and install paths atomically. |
 | GitHub `farion1231/cc-switch`, `ccswitch.io`, `cc-switch-website` | current FyAgent repository/site | New canonical targets were not established by repository source; do not invent them. Preserve upstream citations separately. |
 
-### 1. User-visible brand and partner text
+### 1. User-visible brand and third-party provider text
 
 Files found:
 
 - `README_ZH.md`, `README_JA.md`, `README_DE.md`: still start with `CC Switch`,
   include `ccswitch.io`, old repository badges/downloads, old package/install names,
   `ccswitch://`, and `~/.cc-switch` paths. `README.md` has a FyAgent heading but
-  deliberately still contains old referral codes/URLs and old runtime paths
+  deliberately still contains old URL query values and old runtime paths
   (`README.md:20-181`, `README.md:246`, `README.md:296-300`, `README.md:358-378`).
 - `CONTRIBUTING.md`, `SECURITY.md`, `SUPPORT.md`: old public project name and
   upstream issue/discussion/security/release routes (`CONTRIBUTING.md:1-13`,
@@ -99,13 +99,12 @@ Files found:
   `flatpak/com.ccswitch.desktop.desktop:3-6`: visible Flatpak name, description,
   homepage/bugtracker and launcher identity.
 - `src/i18n/locales/{en,ja,zh,zh-TW}.json`: visible legacy paths/log names/cloud
-  roots and partner promo codes at corresponding lines 293, 406, 524, 589, 598,
-  708, 756, and the partner-description block around 981-1042. The translation
+  roots and retired provider metadata at corresponding lines 293, 406, 524, 589,
+  598, 708, 756, and the provider-description block around 981-1042. The translation
   key `ccSwitch` already renders `FyAgent`, but the key itself is still internal
   legacy naming.
 - `src/config/{claude,claudeDesktop,codex,gemini,grokBuild,hermes,opencode,openclaw}ProviderPresets.ts`:
-  externally assigned referral query values and codes such as `aff=cc-switch`,
-  `CCSWITCH`, `CC-SWITCH`, `utm_content=ccswitch`, and `utm_source=cc_switch`.
+  provider landing-page URLs containing external query data.
 - `src/main.tsx:51`, `src/hooks/useDirectorySettings.ts:66`,
   `src/components/UsageScriptModal.tsx:78-97,1567`, and
   `src/hooks/useImportExport.ts:147`: paths, example User-Agent and export
@@ -114,21 +113,21 @@ Files found:
 Migration/risk:
 
 - Brand prose and examples can be changed directly.
-- Referral/coupon codes and tracking parameters are external contracts, not
-  free-form branding. Mechanical replacement can invalidate discounts or
-  attribution. Preserve them until each partner supplies a FyAgent code; brand
-  the surrounding prose as FyAgent and document the legacy code as a coupon.
+- Provider URLs and opaque query parameters are external contracts, not
+  free-form branding. Mechanical replacement can invalidate the URL. Preserve
+  them until the provider supplies a replacement, and keep surrounding product
+  text independent from external query data.
 - A new canonical repository and support/security route is required before old
   operational links can be changed. Upstream citations are handled in category 7.
 
 Static verification:
 
 - Search current public/UI/config surfaces for old spellings, then allowlist
-  only partner code values and migration/help text that intentionally names a
-  legacy path.
+  only source-provenance query values and migration/help text that intentionally
+  names a legacy path.
 - Verify all four locale files have identical identity-bearing key coverage.
-- Verify partner URLs are unchanged unless a partner-approved replacement is
-  supplied; do not infer a new referral code from the product name.
+- Verify provider URLs are unchanged unless a provider-approved replacement is
+  supplied; do not infer a new query value from the product name.
 
 ### 2. Tauri identifier, deep link, app data/config/log/database and wire namespaces
 
@@ -396,8 +395,8 @@ Required exceptions:
 2. Preserve accurate old release names in changelog/release-note history. A
    short lineage note is safer than rewriting history.
 3. Preserve exact upstream issue/PR links and contributor attribution.
-4. Preserve externally assigned partner coupon/referral values until replaced
-   by the partner.
+4. Preserve externally assigned provider URL query values until replaced by the
+   provider.
 5. Preserve narrowly scoped legacy literals in migration readers/cleanup tests
    if backward compatibility is selected.
 6. Update the **current** Trellis PRD/design/implement/spec contracts to the new
@@ -407,8 +406,8 @@ Required exceptions:
 Static verification:
 
 - Maintain an explicit allowlist grouped by legal history, upstream citations,
-  partner codes and migration fixtures. Every other old-identity match fails the
-  audit.
+  provider URL query values, and migration fixtures. Every other old-identity
+  match fails the audit.
 - Confirm `LICENSE` bytes and upstream attribution links remain intact.
 - Confirm current manuals/specs no longer instruct new users to use old active
   paths/schemes/packages except in a clearly labeled migration section.
@@ -456,14 +455,14 @@ non-compiling checks before pushing the draft PR; CI owns compile/test/package
 evidence.
 
 1. `git diff --check` and scoped diff review for accidental historical/legal or
-   partner-code rewrites.
+   provider URL query rewrites.
 2. Parse edited JSON with PowerShell `ConvertFrom-Json`; review TOML/YAML/XML
    syntax with repository-available non-building parsers only if already present.
 3. Run four separate `rg` audits:
    - active source/config/package/CI identifiers (must be FyAgent),
    - migration literals (exact allowlist only),
    - legal/history/upstream citations (exact allowlist only),
-   - partner referral/coupon values (unchanged unless approved replacements exist).
+   - provider URL query values (unchanged unless approved replacements exist).
 4. Cross-reference Cargo package/lib/bin against `main.rs`, all Rust test imports,
    `.github/workflows/release.yml`, Flatpak `command`/`Exec`/`binary`, and ignore
    rules.

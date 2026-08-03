@@ -23,7 +23,6 @@ usage: reusable implementation and review checklists
   安装与序列化标记只使用 FyAgent/fyagent，不迁移、不回退读取、不注册旧别名、
   不清理旧自启动值；
 - 真实仓库 `NongHua123/cc-switch`、历史证据、LICENSE/版权、必要上游引用以及
-  合作方 referral URL 参数/优惠码不得伪造替换；
 - 只下载并安装 OpenAI官方原始未修改包，不重打包/重签/改名Bundle内容。
 - 普通 Windows UI只做当前用户安装，不显示scope、不触发UAC；所有用户仅隐藏实验CLI/headless。
 - 不新增数据库表，不修改 ~/.codex，不接管官方应用自更新。
@@ -97,7 +96,6 @@ UI 实施者阅读 02、05、09、10、11、13，并遵循其中的共享契约�
 4) mac是否按文件名覆盖Classic；
 5) Windows是否下载错误架构/直接启动exe；
 6) Codex CLI写操作是否仍可经直接IPC触发；
-7) updater/过时运营路由与旧生产身份是否残留，真实仓库/历史/法律/上游/合作方例外是否被误改；
 8) App.tsx/commands是否承担业务逻辑；
 9) 日志是否泄漏query/home/token；
 10) 实施记录是否误执行或声称真实 E2E。

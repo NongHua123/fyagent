@@ -364,7 +364,6 @@
 - 当前应用版本仍显示；
 - LICENSE仍存在；
 - identifier 为 `com.fyagent.desktop`，deep-link 只接受 `fyagent://`，默认数据只写入 `~/.fyagent/fyagent.db`；旧身份不被迁移或识别；
-- DMG 背景、provider/partner/Claude/OpenAI 图标和截图未被应用品牌替换波及。
 
 ## 13. 签收规则
 

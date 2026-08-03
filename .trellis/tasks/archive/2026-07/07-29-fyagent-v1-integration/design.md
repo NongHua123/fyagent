@@ -19,5 +19,5 @@ workflow 必须共同去除。database-too-new 仍拒绝不兼容数据，只显
 由仓库现有 `pnpm tauri icon` 生成标准平台集合；About 复用生成的 32×32 PNG。macOS tray
 继续使用 template rendering，但三个倍率只取源图非透明边界内的 alpha 轮廓，等比装入
 24pt 画布中央的 18pt 内容框并输出黑色 RGBA，避免把彩色 app bitmap 当作菜单栏模板。
-DMG 背景、provider/partner 图标和截图不进入写集。为避免跨层竞态，本任务在所有 children
+DMG 背景、第三方 provider 图标和截图不进入写集。为避免跨层竞态，本任务在所有 children
 的 DTO contracts 稳定后才编辑 shared registry/Cargo/entry points。

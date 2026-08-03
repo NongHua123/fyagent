@@ -210,7 +210,6 @@ clean break，不再是未来项。V1 不承诺对旧应用的并行安装、原
   `FyAgent` / `fyagent` / `fyagent_lib` / `com.fyagent.desktop` / `fyagent://`
   / `~/.fyagent` / `fyagent.db`；
 - 不迁移、不读取、不接受旧数据目录、数据库、deep-link、自启动值或序列化标记；
-- 移除未确立的旧网站与过时运营路由，但保留真实仓库、必要上游引用和合作方契约值；
 - 禁用上游自动更新和更新 UI；
 - 日志、发布产物与平台安装身份使用 FyAgent；
 - 保留法律要求的 LICENSE、版权和第三方许可。
@@ -220,7 +219,6 @@ clean break，不再是未来项。V1 不承诺对旧应用的并行安装、原
 - 真实 GitHub 仓库名与 URL `NongHua123/cc-switch`；
 - 历史 changelog、release notes 与旧任务证据；
 - LICENSE、版权、必要上游 issue/PR/源码引用；
-- 外部合作方实际分配的 referral URL 参数、邀请码和优惠码；
 - 证明生产路径已无旧身份的负向测试/审计模式。
 
 ## 10. 成功标准

@@ -299,13 +299,11 @@ chore(fyagent): update visible branding and disable self-update
   Store、Android、iOS 图标并保留 `64x64.png`；
 - 从生成的 32×32 输出替换 About 图标；从源图 alpha 轮廓生成 24/48/72 像素 macOS
   template，按 24pt 画布中的 18pt 内容框等比居中，RGB 全黑并保留抗锯齿 alpha；
-- 保留 LICENSE、DMG 背景、provider/partner 图标和截图；identifier、deep-link、data dir、
   数据库/日志、Rust/npm/bin 与应用自有标记统一切换为 FyAgent/fyagent，并采用 clean break。
 
 ### 审计
 
 运行分类 `rg`，逐项判断残留。应用自有旧身份不得残留；真实仓库 URL、历史记录、许可证、
-必要上游归因和第三方推广码按事实列入明确 allowlist。
 
 ## 12. M9 — 退出保护、诊断和精修
 
@@ -388,5 +386,4 @@ M3/M4可在 M1 后与 M2并行，但最终需和 M2/M5集成。
 - 安装中心新页面；
 - 自动登录；
 - Provider自动配置；
-- 改写历史发布事实、许可证、真实仓库名或第三方推广码；
 - 修复/卸载/rollback UI。

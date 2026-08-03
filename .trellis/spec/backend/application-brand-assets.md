@@ -4,7 +4,7 @@
 
 Read this contract before changing the FyAgent application icon, regenerating
 Tauri icons, changing the About icon, or editing the macOS tray template. It
-does not apply to provider, partner, Claude, OpenAI, screenshot, or DMG
+does not apply to third-party provider, Claude, OpenAI, screenshot, or DMG
 background assets.
 
 The application icon crosses renderer, Tauri bundle, Flatpak, Windows shell,
@@ -50,7 +50,7 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
   an 18pt content box centered on a 24pt canvas, and emit black RGBA at 24,
   48, and 72 pixels. Preserve antialiased alpha; Tauri/macOS supplies the
   light/dark rendered color.
-- Do not change `src-tauri/icons/dmg-background.png`, provider or partner
+- Do not change `src-tauri/icons/dmg-background.png`, third-party provider
   artwork, screenshots, the established FyAgent `identifier`, deep-link
   schemes, data directories, internal package names, or `LICENSE` as part of a
   future icon-only update. The 2026 clean-break rename is an application
@@ -66,7 +66,7 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
 | A generated PNG, ICO, or ICNS container cannot be decoded                         | Reject the output                                                                   |
 | About icon differs from generated `32x32.png`                                     | Reject the renderer asset                                                           |
 | Tray template has the wrong size, non-black visible RGB, or no partial alpha      | Reject the template                                                                 |
-| Provider, partner, screenshot, or DMG background appears in the diff              | Remove it from the icon change                                                      |
+| Third-party provider, screenshot, or DMG background appears in the diff            | Remove it from the icon change                                                      |
 | Static/build checks pass but native shell or Dock appearance is unobserved        | Keep native visual acceptance pending                                               |
 | A regenerated ICNS container differs byte-for-byte but decoded sizes/pixels match | Accept only with decoded-image evidence; container bytes are not a stable assertion |
 

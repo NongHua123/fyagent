@@ -196,7 +196,6 @@ Codex CLI lifecycle management is disabled in FyAgent V1; version detection rema
 - `src-tauri/icons/tray/macos/` 的 `statusTemplate.png`、`statusTemplate@2x.png` 和
   `statusbar_template_3x.png` 分别为 24×24、48×48、72×72；从源图 alpha 的非透明边界
   等比缩放到 18pt 内容框并居中，RGB 全黑、alpha 保留抗锯齿，不使用彩色 bitmap；
-- 不修改 `src-tauri/icons/dmg-background.png`、provider/partner/Claude/OpenAI 图标、截图或
   LICENSE。identifier、deep-link、数据目录、crate/npm 名由本次 clean-break 身份切换统一修改，
   不把这些改动伪装成图标生成结果。
 
@@ -306,7 +305,6 @@ Linux隐藏逻辑可由 Card/Hook根据后端 support返回 null；避免 App自
 
 - `src-tauri/tauri.windows.conf.json` title → FyAgent；
 - 搜索 UI 旧品牌文案；
-- 按冻结映射同步内部 key、路径、协议、crate、测试和发布消费者，并逐项审查残留；不得改写真实仓库 URL、历史记录、许可证、必要上游归因或第三方推广码。
 
 ## 7. 可能涉及退出行为的文件
 
@@ -346,7 +344,6 @@ Provider form/data model
 
 身份清理的窄例外：允许在上述既有文件中把应用自有的旧品牌、命名空间、协议标记和结构化
 错误码按冻结映射改为 FyAgent，并补针对性测试；不得借此修改 provider form 的状态、数据
-模型、请求或其他业务流。第三方推广参数和必要上游归因不属于应用自有身份，必须保留事实值。
 
 ## 10. 搜索审计清单
 
