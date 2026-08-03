@@ -1828,61 +1828,6 @@ fn switch_packycode_gemini_updates_security_selected_type() {
 }
 
 #[test]
-fn packycode_partner_meta_triggers_security_flag_even_without_keywords() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
-    reset_test_fs();
-    let home = ensure_test_home();
-
-    let mut config = MultiAppConfig::default();
-    {
-        let manager = config
-            .get_manager_mut(&AppType::Gemini)
-            .expect("gemini manager");
-        manager.current = "packy-meta".to_string();
-        let mut provider = Provider::with_id(
-            "packy-meta".to_string(),
-            "Generic Gemini".to_string(),
-            json!({
-                "env": {
-                    "GEMINI_API_KEY": "pk-meta",
-                    "GOOGLE_GEMINI_BASE_URL": "https://generativelanguage.googleapis.com"
-                }
-            }),
-            Some("https://example.com".to_string()),
-        );
-        provider.meta = Some(ProviderMeta {
-            partner_promotion_key: Some("packycode".to_string()),
-            ..ProviderMeta::default()
-        });
-        manager.providers.insert("packy-meta".to_string(), provider);
-    }
-
-    let state = create_test_state_with_config(&config).expect("create test state");
-
-    ProviderService::switch(&state, AppType::Gemini, "packy-meta")
-        .expect("switching to partner meta provider should succeed");
-
-    // Gemini security settings are written to ~/.gemini/settings.json, not ~/.fyagent/settings.json
-    let settings_path = home.join(".gemini").join("settings.json");
-    assert!(
-        settings_path.exists(),
-        "Gemini settings.json should exist at {}",
-        settings_path.display()
-    );
-    let raw = std::fs::read_to_string(&settings_path).expect("read gemini settings.json");
-    let value: serde_json::Value =
-        serde_json::from_str(&raw).expect("parse gemini settings.json after switch");
-
-    assert_eq!(
-        value
-            .pointer("/security/auth/selectedType")
-            .and_then(|v| v.as_str()),
-        Some("gemini-api-key"),
-        "Partner meta should set security.auth.selectedType even without packy keywords"
-    );
-}
-
-#[test]
 fn switch_google_official_gemini_preserves_env_vars() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();
@@ -1894,7 +1839,7 @@ fn switch_google_official_gemini_preserves_env_vars() {
             .get_manager_mut(&AppType::Gemini)
             .expect("gemini manager");
         manager.current = "google-official".to_string();
-        let mut provider = Provider::with_id(
+        let provider = Provider::with_id(
             "google-official".to_string(),
             "Google".to_string(),
             json!({
@@ -1904,10 +1849,6 @@ fn switch_google_official_gemini_preserves_env_vars() {
             }),
             Some("https://ai.google.dev".to_string()),
         );
-        provider.meta = Some(ProviderMeta {
-            partner_promotion_key: Some("google-official".to_string()),
-            ..ProviderMeta::default()
-        });
         manager
             .providers
             .insert("google-official".to_string(), provider);

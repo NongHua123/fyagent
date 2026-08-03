@@ -1556,7 +1556,7 @@ impl Database {
                 "0.50",
                 "6.25",
             ),
-            // Claude Sonnet 5（list 价，与 Sonnet 4.6 一致；促销 $2/$10 至 2026-08-31 不入表）
+            // Claude Sonnet 5（标准价，与 Sonnet 4.6 一致）
             (
                 "claude-sonnet-5",
                 "Claude Sonnet 5",
@@ -2468,7 +2468,7 @@ impl Database {
                 "0",
             ),
             // 2026-06-10 全量核价（厂商官方 list 价；CNY 按 ~7.14 折算）
-            // GLM 4.6/4.7：旧值是中转/OpenRouter 折扣价，统一到 Z.ai 官方（与 glm-5/5.1 一致）
+            // GLM 4.6/4.7：旧值来自中转/OpenRouter，统一到 Z.ai 官方（与 glm-5/5.1 一致）
             (
                 "glm-4.7", "GLM-4.7", "0.6", "2.2", "0.11", "0", "0.39", "1.75", "0.04", "0",
             ),

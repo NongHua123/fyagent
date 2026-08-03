@@ -310,8 +310,6 @@ function ProviderFormFull({
   const [activePreset, setActivePreset] = useState<{
     id: string;
     category?: ProviderCategory;
-    isPartner?: boolean;
-    partnerPromotionKey?: string;
     suggestedDefaults?: OpenClawSuggestedDefaults;
   } | null>(null);
   const [isEndpointModalOpen, setIsEndpointModalOpen] = useState(false);
@@ -1610,9 +1608,6 @@ function ProviderFormFull({
       if (activePreset.category) {
         payload.presetCategory = activePreset.category;
       }
-      if (activePreset.isPartner) {
-        payload.isPartner = activePreset.isPartner;
-      }
       // OpenClaw: align preset model refs with the actual submitted provider key.
       if (activePreset.suggestedDefaults) {
         payload.suggestedDefaults =
@@ -1647,20 +1642,6 @@ function ProviderFormFull({
       let mergedMeta = needsClearEndpoints
         ? mergeProviderMeta(initialData?.meta, {})
         : mergeProviderMeta(initialData?.meta, customEndpointsToSave);
-
-      if (activePreset?.isPartner) {
-        mergedMeta = {
-          ...(mergedMeta ?? {}),
-          isPartner: true,
-        };
-      }
-
-      if (activePreset?.partnerPromotionKey) {
-        mergedMeta = {
-          ...(mergedMeta ?? {}),
-          partnerPromotionKey: activePreset.partnerPromotionKey,
-        };
-      }
 
       if (mergedMeta !== undefined) {
         payload.meta = mergedMeta;
@@ -1808,8 +1789,6 @@ function ProviderFormFull({
   const {
     shouldShowApiKeyLink: shouldShowClaudeApiKeyLink,
     websiteUrl: claudeWebsiteUrl,
-    isPartner: isClaudePartner,
-    partnerPromotionKey: claudePartnerPromotionKey,
   } = useApiKeyLink({
     appId: "claude",
     category,
@@ -1821,8 +1800,6 @@ function ProviderFormFull({
   const {
     shouldShowApiKeyLink: shouldShowCodexApiKeyLink,
     websiteUrl: codexWebsiteUrl,
-    isPartner: isCodexPartner,
-    partnerPromotionKey: codexPartnerPromotionKey,
   } = useApiKeyLink({
     appId: "codex",
     category,
@@ -1834,8 +1811,6 @@ function ProviderFormFull({
   const {
     shouldShowApiKeyLink: shouldShowGeminiApiKeyLink,
     websiteUrl: geminiWebsiteUrl,
-    isPartner: isGeminiPartner,
-    partnerPromotionKey: geminiPartnerPromotionKey,
   } = useApiKeyLink({
     appId: "gemini",
     category,
@@ -1847,8 +1822,6 @@ function ProviderFormFull({
   const {
     shouldShowApiKeyLink: shouldShowOpencodeApiKeyLink,
     websiteUrl: opencodeWebsiteUrl,
-    isPartner: isOpencodePartner,
-    partnerPromotionKey: opencodePartnerPromotionKey,
   } = useApiKeyLink({
     appId: "opencode",
     category,
@@ -1861,8 +1834,6 @@ function ProviderFormFull({
   const {
     shouldShowApiKeyLink: shouldShowOpenclawApiKeyLink,
     websiteUrl: openclawWebsiteUrl,
-    isPartner: isOpenclawPartner,
-    partnerPromotionKey: openclawPartnerPromotionKey,
   } = useApiKeyLink({
     appId: "openclaw",
     category,
@@ -1875,8 +1846,6 @@ function ProviderFormFull({
   const {
     shouldShowApiKeyLink: shouldShowHermesApiKeyLink,
     websiteUrl: hermesWebsiteUrl,
-    isPartner: isHermesPartner,
-    partnerPromotionKey: hermesPartnerPromotionKey,
   } = useApiKeyLink({
     appId: "hermes",
     category,
@@ -1936,8 +1905,6 @@ function ProviderFormFull({
     setActivePreset({
       id: value,
       category: entry.preset.category,
-      isPartner: entry.preset.isPartner,
-      partnerPromotionKey: entry.preset.partnerPromotionKey,
     });
 
     if (appId === "codex") {
@@ -2018,8 +1985,6 @@ function ProviderFormFull({
       setActivePreset({
         id: value,
         category: preset.category,
-        isPartner: preset.isPartner,
-        partnerPromotionKey: preset.partnerPromotionKey,
         suggestedDefaults: preset.suggestedDefaults,
       });
 
@@ -2334,8 +2299,6 @@ function ProviderFormFull({
               category={category}
               shouldShowApiKeyLink={shouldShowClaudeApiKeyLink}
               websiteUrl={claudeWebsiteUrl}
-              isPartner={isClaudePartner}
-              partnerPromotionKey={claudePartnerPromotionKey}
               isCopilotPreset={
                 presetProviderType === "github_copilot" ||
                 initialData?.meta?.providerType === "github_copilot" ||
@@ -2428,8 +2391,6 @@ function ProviderFormFull({
               category={category}
               shouldShowApiKeyLink={shouldShowCodexApiKeyLink}
               websiteUrl={codexWebsiteUrl}
-              isPartner={isCodexPartner}
-              partnerPromotionKey={codexPartnerPromotionKey}
               shouldShowSpeedTest={shouldShowSpeedTest}
               codexBaseUrl={codexBaseUrl}
               onBaseUrlChange={handleCodexBaseUrlChange}
@@ -2495,8 +2456,6 @@ function ProviderFormFull({
               category={category}
               shouldShowApiKeyLink={shouldShowGeminiApiKeyLink}
               websiteUrl={geminiWebsiteUrl}
-              isPartner={isGeminiPartner}
-              partnerPromotionKey={geminiPartnerPromotionKey}
               shouldShowSpeedTest={shouldShowSpeedTest}
               baseUrl={geminiBaseUrl}
               onBaseUrlChange={handleGeminiBaseUrlChange}
@@ -2521,8 +2480,6 @@ function ProviderFormFull({
               category={category}
               shouldShowApiKeyLink={shouldShowOpencodeApiKeyLink}
               websiteUrl={opencodeWebsiteUrl}
-              isPartner={isOpencodePartner}
-              partnerPromotionKey={opencodePartnerPromotionKey}
               baseUrl={opencodeForm.opencodeBaseUrl}
               onBaseUrlChange={opencodeForm.handleOpencodeBaseUrlChange}
               headers={opencodeForm.opencodeHeaders}
@@ -2566,8 +2523,6 @@ function ProviderFormFull({
               category={category}
               shouldShowApiKeyLink={shouldShowOpenclawApiKeyLink}
               websiteUrl={openclawWebsiteUrl}
-              isPartner={isOpenclawPartner}
-              partnerPromotionKey={openclawPartnerPromotionKey}
               api={openclawForm.openclawApi}
               onApiChange={openclawForm.handleOpenclawApiChange}
               models={openclawForm.openclawModels}
@@ -2587,8 +2542,6 @@ function ProviderFormFull({
               category={category}
               shouldShowApiKeyLink={shouldShowHermesApiKeyLink}
               websiteUrl={hermesWebsiteUrl}
-              isPartner={isHermesPartner}
-              partnerPromotionKey={hermesPartnerPromotionKey}
               apiMode={hermesForm.hermesApiMode}
               onApiModeChange={hermesForm.handleHermesApiModeChange}
               models={hermesForm.hermesModels}
@@ -2838,7 +2791,6 @@ function ProviderFormFull({
 export type ProviderFormValues = ProviderFormData & {
   presetId?: string;
   presetCategory?: ProviderCategory;
-  isPartner?: boolean;
   meta?: ProviderMeta;
   providerKey?: string; // OpenCode/OpenClaw: user-defined provider key
   suggestedDefaults?: OpenClawSuggestedDefaults; // OpenClaw: suggested default model configuration
