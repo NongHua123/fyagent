@@ -138,7 +138,12 @@ export const providerPresets: ProviderPreset[] = [
       },
     },
     // 请求地址候选（用于地址管理/测速）
-    endpointCandidates: ["https://www.packyapi.ai"],
+    endpointCandidates: [
+      "https://www.packyapi.ai",
+      "https://cf.api.fan",
+      "https://slb-v1.api.fan",
+      "https://www.packyapi.com",
+    ],
     category: "third_party",
     icon: "packycode",
   },
@@ -172,18 +177,15 @@ export const providerPresets: ProviderPreset[] = [
   },
   {
     name: "AICodeMirror",
-    websiteUrl: "https://www.aicodemirror.com",
-    apiKeyUrl: "https://www.aicodemirror.com/register",
+    websiteUrl: "https://www.aicodemirror.ai",
+    apiKeyUrl: "https://www.aicodemirror.ai/register",
     settingsConfig: {
       env: {
-        ANTHROPIC_BASE_URL: "https://api.aicodemirror.com/api/claudecode",
+        ANTHROPIC_BASE_URL: "https://api.aicodemirror.ai/api/claudecode",
         ANTHROPIC_AUTH_TOKEN: "",
       },
     },
-    endpointCandidates: [
-      "https://api.aicodemirror.com/api/claudecode",
-      "https://api.claudecode.net.cn/api/claudecode",
-    ],
+    endpointCandidates: ["https://api.aicodemirror.ai/api/claudecode"],
     category: "third_party",
     icon: "aicodemirror",
     iconColor: "#000000",
@@ -261,31 +263,31 @@ export const providerPresets: ProviderPreset[] = [
   },
   {
     name: "AIGoCode",
-    websiteUrl: "https://aigocode.com",
-    apiKeyUrl: "https://aigocode.com/",
+    websiteUrl: "https://aigocode.app",
+    apiKeyUrl: "https://aigocode.app",
     settingsConfig: {
       env: {
-        ANTHROPIC_BASE_URL: "https://api.aigocode.com",
+        ANTHROPIC_BASE_URL: "https://api.aigocode.app",
         ANTHROPIC_AUTH_TOKEN: "",
       },
     },
     // 请求地址候选（用于地址管理/测速）
-    endpointCandidates: ["https://api.aigocode.com"],
+    endpointCandidates: ["https://api.aigocode.app"],
     category: "third_party",
     icon: "aigocode",
     iconColor: "#5B7FFF",
   },
   {
     name: "AICoding",
-    websiteUrl: "https://aicoding.sh",
-    apiKeyUrl: "https://aicoding.sh/",
+    websiteUrl: "https://aicoding.inc",
+    apiKeyUrl: "https://aicoding.inc",
     settingsConfig: {
       env: {
-        ANTHROPIC_BASE_URL: "https://api.aicoding.sh",
+        ANTHROPIC_BASE_URL: "https://api.aicoding.inc",
         ANTHROPIC_AUTH_TOKEN: "",
       },
     },
-    endpointCandidates: ["https://api.aicoding.sh"],
+    endpointCandidates: ["https://api.aicoding.inc"],
     category: "third_party",
     icon: "aicoding",
     iconColor: "#000000",
@@ -476,6 +478,19 @@ export const providerPresets: ProviderPreset[] = [
     },
     category: "aggregator",
     icon: "nekocode",
+  },
+  {
+    name: "A6API",
+    websiteUrl: "https://www.a6api.com",
+    apiKeyUrl: "https://a6api.com/register",
+    settingsConfig: {
+      env: {
+        ANTHROPIC_BASE_URL: "https://api.a6api.com",
+        ANTHROPIC_AUTH_TOKEN: "",
+      },
+    },
+    category: "aggregator",
+    icon: "a6api",
   },
   {
     name: "AtlasCloud",

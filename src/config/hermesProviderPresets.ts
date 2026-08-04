@@ -225,11 +225,11 @@ export const hermesProviderPresets: HermesProviderPreset[] = [
   },
   {
     name: "AICodeMirror",
-    websiteUrl: "https://www.aicodemirror.com",
-    apiKeyUrl: "https://www.aicodemirror.com/register",
+    websiteUrl: "https://www.aicodemirror.ai",
+    apiKeyUrl: "https://www.aicodemirror.ai/register",
     settingsConfig: {
       name: "aicodemirror",
-      base_url: "https://api.aicodemirror.com/api/claudecode",
+      base_url: "https://api.aicodemirror.ai/api/claudecode",
       api_key: "",
       api_mode: "anthropic_messages",
       models: [
@@ -333,11 +333,11 @@ export const hermesProviderPresets: HermesProviderPreset[] = [
   },
   {
     name: "AIGoCode",
-    websiteUrl: "https://aigocode.com",
-    apiKeyUrl: "https://aigocode.com/",
+    websiteUrl: "https://aigocode.app",
+    apiKeyUrl: "https://aigocode.app",
     settingsConfig: {
       name: "aigocode",
-      base_url: "https://api.aigocode.com",
+      base_url: "https://api.aigocode.app",
       api_key: "",
       api_mode: "anthropic_messages",
       models: [
@@ -355,11 +355,11 @@ export const hermesProviderPresets: HermesProviderPreset[] = [
   },
   {
     name: "AICoding",
-    websiteUrl: "https://aicoding.sh",
-    apiKeyUrl: "https://aicoding.sh/",
+    websiteUrl: "https://aicoding.inc",
+    apiKeyUrl: "https://aicoding.inc",
     settingsConfig: {
       name: "aicoding",
-      base_url: "https://api.aicoding.sh",
+      base_url: "https://api.aicoding.inc",
       api_key: "",
       api_mode: "anthropic_messages",
       models: [
@@ -635,6 +635,23 @@ export const hermesProviderPresets: HermesProviderPreset[] = [
     icon: "nekocode",
     suggestedDefaults: {
       model: { default: "gpt-5.6-sol", provider: "nekocode" },
+    },
+  },
+  {
+    name: "A6API",
+    websiteUrl: "https://www.a6api.com",
+    apiKeyUrl: "https://a6api.com/register",
+    settingsConfig: {
+      name: "a6api",
+      base_url: "https://api.a6api.com/v1",
+      api_key: "",
+      api_mode: "chat_completions",
+      models: [{ id: "gpt-5.6-sol", name: "GPT-5.6 Sol" }],
+    },
+    category: "aggregator",
+    icon: "a6api",
+    suggestedDefaults: {
+      model: { default: "gpt-5.6-sol", provider: "a6api" },
     },
   },
   {

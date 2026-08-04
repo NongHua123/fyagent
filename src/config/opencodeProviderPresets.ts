@@ -432,13 +432,13 @@ export const opencodeProviderPresets: OpenCodeProviderPreset[] = [
   },
   {
     name: "AICodeMirror",
-    websiteUrl: "https://www.aicodemirror.com",
-    apiKeyUrl: "https://www.aicodemirror.com/register",
+    websiteUrl: "https://www.aicodemirror.ai",
+    apiKeyUrl: "https://www.aicodemirror.ai/register",
     settingsConfig: {
       npm: "@ai-sdk/anthropic",
       name: "AICodeMirror",
       options: {
-        baseURL: "https://api.aicodemirror.com/api/claudecode",
+        baseURL: "https://api.aicodemirror.ai/api/claudecode",
         apiKey: "",
         setCacheKey: true,
       },
@@ -568,13 +568,13 @@ export const opencodeProviderPresets: OpenCodeProviderPreset[] = [
   },
   {
     name: "AIGoCode",
-    websiteUrl: "https://aigocode.com",
-    apiKeyUrl: "https://aigocode.com/",
+    websiteUrl: "https://aigocode.app",
+    apiKeyUrl: "https://aigocode.app",
     settingsConfig: {
       npm: "@ai-sdk/anthropic",
       name: "AIGoCode",
       options: {
-        baseURL: "https://api.aigocode.com",
+        baseURL: "https://api.aigocode.app",
         apiKey: "",
         setCacheKey: true,
       },
@@ -596,13 +596,13 @@ export const opencodeProviderPresets: OpenCodeProviderPreset[] = [
   },
   {
     name: "AICoding",
-    websiteUrl: "https://aicoding.sh",
-    apiKeyUrl: "https://aicoding.sh/",
+    websiteUrl: "https://aicoding.inc",
+    apiKeyUrl: "https://aicoding.inc",
     settingsConfig: {
       npm: "@ai-sdk/anthropic",
       name: "AICoding",
       options: {
-        baseURL: "https://api.aicoding.sh",
+        baseURL: "https://api.aicoding.inc",
         apiKey: "",
         setCacheKey: true,
       },
@@ -863,6 +863,32 @@ export const opencodeProviderPresets: OpenCodeProviderPreset[] = [
     },
     category: "aggregator",
     icon: "nekocode",
+    templateValues: {
+      apiKey: {
+        label: "API Key",
+        placeholder: "",
+        editorValue: "",
+      },
+    },
+  },
+  {
+    name: "A6API",
+    websiteUrl: "https://www.a6api.com",
+    apiKeyUrl: "https://a6api.com/register",
+    settingsConfig: {
+      npm: "@ai-sdk/openai-compatible",
+      name: "A6API",
+      options: {
+        baseURL: "https://api.a6api.com/v1",
+        apiKey: "",
+        setCacheKey: true,
+      },
+      models: {
+        "gpt-5.6-sol": { name: "GPT-5.6 Sol" },
+      },
+    },
+    category: "aggregator",
+    icon: "a6api",
     templateValues: {
       apiKey: {
         label: "API Key",

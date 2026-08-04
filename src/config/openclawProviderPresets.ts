@@ -288,10 +288,10 @@ export const openclawProviderPresets: OpenClawProviderPreset[] = [
   },
   {
     name: "AICodeMirror",
-    websiteUrl: "https://www.aicodemirror.com",
-    apiKeyUrl: "https://www.aicodemirror.com/register",
+    websiteUrl: "https://www.aicodemirror.ai",
+    apiKeyUrl: "https://www.aicodemirror.ai/register",
     settingsConfig: {
-      baseUrl: "https://api.aicodemirror.com/api/claudecode",
+      baseUrl: "https://api.aicodemirror.ai/api/claudecode",
       apiKey: "",
       api: "anthropic-messages",
       models: [
@@ -491,10 +491,10 @@ export const openclawProviderPresets: OpenClawProviderPreset[] = [
   },
   {
     name: "AIGoCode",
-    websiteUrl: "https://aigocode.com",
-    apiKeyUrl: "https://aigocode.com/",
+    websiteUrl: "https://aigocode.app",
+    apiKeyUrl: "https://aigocode.app",
     settingsConfig: {
-      baseUrl: "https://api.aigocode.com",
+      baseUrl: "https://api.aigocode.app",
       apiKey: "",
       api: "anthropic-messages",
       models: [
@@ -535,10 +535,10 @@ export const openclawProviderPresets: OpenClawProviderPreset[] = [
   },
   {
     name: "AICoding",
-    websiteUrl: "https://aicoding.sh",
-    apiKeyUrl: "https://aicoding.sh/",
+    websiteUrl: "https://aicoding.inc",
+    apiKeyUrl: "https://aicoding.inc",
     settingsConfig: {
-      baseUrl: "https://api.aicoding.sh",
+      baseUrl: "https://api.aicoding.inc",
       apiKey: "",
       api: "anthropic-messages",
       models: [
@@ -973,6 +973,40 @@ export const openclawProviderPresets: OpenClawProviderPreset[] = [
       },
       modelCatalog: {
         "nekocode/gpt-5.6-sol": { alias: "GPT-5.6 Sol" },
+      },
+    },
+  },
+  {
+    name: "A6API",
+    websiteUrl: "https://www.a6api.com",
+    apiKeyUrl: "https://a6api.com/register",
+    settingsConfig: {
+      baseUrl: "https://api.a6api.com/v1",
+      apiKey: "",
+      api: "openai-completions",
+      models: [
+        {
+          id: "gpt-5.6-sol",
+          name: "GPT-5.6 Sol",
+          contextWindow: 400000,
+        },
+      ],
+    },
+    category: "aggregator",
+    icon: "a6api",
+    templateValues: {
+      apiKey: {
+        label: "API Key",
+        placeholder: "",
+        editorValue: "",
+      },
+    },
+    suggestedDefaults: {
+      model: {
+        primary: "a6api/gpt-5.6-sol",
+      },
+      modelCatalog: {
+        "a6api/gpt-5.6-sol": { alias: "GPT-5.6 Sol" },
       },
     },
   },

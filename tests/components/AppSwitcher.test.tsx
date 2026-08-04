@@ -27,7 +27,7 @@ describe("AppSwitcher", () => {
 
     const labels = screen
       .getAllByRole("button")
-      .map((button) => button.textContent?.trim());
+      .map((button) => button.getAttribute("aria-label"));
     const codexIndex = labels.findIndex((label) => label?.includes("Codex"));
     const workBuddyIndex = labels.indexOf("apps.workbuddy");
     const geminiIndex = labels.findIndex((label) => label?.includes("Gemini"));

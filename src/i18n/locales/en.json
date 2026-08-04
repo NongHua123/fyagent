@@ -23,7 +23,6 @@
     "unknown": "Unknown",
     "enterValidValue": "Please enter a valid value",
     "clear": "Clear",
-    "toggleTheme": "Toggle theme",
     "format": "Format",
     "formatSuccess": "Formatted successfully",
     "formatError": "Format failed: {{error}}",
@@ -172,7 +171,8 @@
         "oauthHint": "Google official uses OAuth personal authentication, no need to fill in API Key. The browser will automatically open for login on first use.",
         "apiKeyPlaceholder": "Enter Gemini API Key"
       }
-    }
+    },
+    "duplicateLiveIdsLoadFailed": "Failed to read provider identifiers from config, please fix the config and try again"
   },
   "claudeCode": {
     "needsRouting": "Needs Routing",
@@ -221,7 +221,8 @@
       "tooltip": {
         "active": "Claude Desktop local routing is running - {{address}}:{{port}}",
         "inactive": "Turn on Claude Desktop local routing for providers that need model mapping or format conversion. Configured address: {{address}}:{{port}}"
-      }
+      },
+      "stopBlockedByTakeover": "Another app is using proxy takeover. Please disable that app's takeover in settings before stopping local routing."
     }
   },
   "notifications": {
@@ -270,7 +271,8 @@
     "backfillWarning": "Switched successfully, but failed to save changes back to the previous provider",
     "windowControlFailed": "Window control failed: {{error}}",
     "officialBlockedByProxy": "Cannot switch to official provider while local routing is active. Using routing with official APIs may cause account bans.",
-    "proxyOfficialWarning": "Current provider {{name}} is official. Consider switching to a third-party provider before using local routing."
+    "proxyOfficialWarning": "Current provider {{name}} is official. Consider switching to a third-party provider before using local routing.",
+    "proxyReasonClaudeDesktop": "Using Claude Desktop local routing mode"
   },
   "confirm": {
     "deleteProvider": "Delete Provider",
@@ -1251,7 +1253,8 @@
     "fetchModelsAuthFailed": "API Key is invalid or lacks permission",
     "fetchModelsNotSupported": "This provider does not support fetching model list",
     "fetchModelsEndpointNotFound": "No reachable models endpoint found. Please check the Base URL or confirm whether the provider exposes this API.",
-    "fetchModelsTimeout": "Request timed out, please check network connection"
+    "fetchModelsTimeout": "Request timed out, please check network connection",
+    "requiredFields": "Please fill in provider name, API endpoint, API Key and model"
   },
   "copilot": {
     "authSection": "GitHub Copilot Authentication",
@@ -1449,7 +1452,8 @@
     "reasoningGroupTitle": "Reasoning Capability",
     "reasoningSectionHint": "Preset providers are configured automatically; custom providers are inferred from name/URL. Override manually only when auto-detection is wrong.",
     "advancedSectionHint": "Includes Codex native capabilities, upstream format, model mapping, reasoning overrides and custom User-Agent. Providers using Chat Completions require routing takeover.",
-    "officialAdvancedSectionHint": "Includes the built-in image extension and WebSocket transport switches."
+    "officialAdvancedSectionHint": "Includes the built-in image extension and WebSocket transport switches.",
+    "noCommonConfigToApply": "The common config snippet is empty or contains nothing to write"
   },
   "geminiConfig": {
     "envFile": "Environment Variables (.env)",
@@ -1548,6 +1552,7 @@
     "totalRequests": "Total Requests",
     "totalCost": "Total Cost",
     "cost": "Cost",
+    "unpriced": "Unpriced",
     "perMillion": "(per million)",
     "trends": "Usage Trends",
     "rangeToday": "Last 24 hours (hourly)",
@@ -1590,24 +1595,6 @@
       "grokbuild": "Grok Build"
     },
     "rawInputLabel": "Raw",
-    "dataSources": "Data Sources",
-    "dataSource": {
-      "proxy": "Routing",
-      "session_log": "Session Log",
-      "codex_db": "Codex DB",
-      "codex_session": "Codex Session",
-      "gemini_session": "Gemini Session",
-      "opencode_session": "OpenCode Session",
-      "grok_session": "Grok Build Session"
-    },
-    "sessionSync": {
-      "trigger": "Sync session logs",
-      "import": "Import Sessions",
-      "resync": "Sync",
-      "imported": "Imported {{count}} records from session logs",
-      "upToDate": "Session logs are up to date",
-      "failed": "Session sync failed"
-    },
     "rebuildCodex": {
       "title": "Codex Usage Maintenance",
       "description": "Rebuild Codex session usage from local rollout logs",
@@ -1717,6 +1704,40 @@
     "modelsDevNoResults": "No matching models",
     "modelsDevTruncated": "Showing first {{shown}} of {{total}} results — refine your search",
     "modelsDevDefaultHint": "Showing the {{shown}} most recently released models (of {{total}}) — type to search all",
+    "modelsDevAutoSync": {
+      "title": "Automatic models.dev pricing sync",
+      "description": "When enabled, periodically fetch selected prices when FyAgent launches and keep them in your local pricing file.",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "enableConfirmTitle": "Enable automatic pricing sync?",
+      "enableConfirmMessage": "After enabling, FyAgent will periodically update prices for the selected models from models.dev when it launches (at most once every 6 hours). Built-in and manually configured prices with the same model ID will be overwritten.",
+      "enableConfirmAction": "Enable automatic sync",
+      "configure": "Choose models",
+      "configureTitle": "Choose models for automatic pricing sync",
+      "configureDescription": "Search and filter models to update automatically. Your choices are stored locally.",
+      "commonModels": "Automatically include common models",
+      "commonModelsDescription": "Selects {{count}} recent Claude, GPT, Gemini, Grok, DeepSeek, Qwen, MiMo, LongCat, Kimi, MiniMax, and GLM models.",
+      "selectFiltered": "Select filtered ({{count}})",
+      "clearFiltered": "Clear filtered",
+      "selectedCount": "{{count}} models selected",
+      "selectionHint": "Selections with the same normalized model ID are imported once.",
+      "commonBadge": "Common",
+      "selectionSaved": "Automatic pricing selection saved",
+      "syncSuccess": "Pricing sync complete: {{imported}} models checked, {{changed}} updated",
+      "syncFailed": "Pricing sync failed: {{error}}",
+      "configLoadFailed": "Failed to load local pricing configuration: {{error}}",
+      "neverSynced": "Never",
+      "lastSync": "Last sync",
+      "commonStatus": "Common models",
+      "lastError": "Last automatic sync failed: {{error}}",
+      "localFile": "Local pricing file",
+      "openFolder": "Open folder",
+      "openFolderFailed": "Failed to open the local pricing folder: {{error}}",
+      "reloadLocalFile": "Reload file",
+      "localFileReloaded": "Local pricing file reloaded",
+      "localFileReloadFailed": "Failed to reload local pricing file: {{error}}",
+      "syncNow": "Sync now"
+    },
     "cacheReadCostPerMillion": "Cache Read Cost (per million tokens, USD)",
     "cacheCreationCostPerMillion": "Cache Write Cost (per million tokens, USD)"
   },
@@ -2360,6 +2381,9 @@
       "skillDirNotFound": "Skill directory not found: {{path}}",
       "directoryConflict": "Skill directory '{{directory}}' is already occupied by {{existing_repo}}, cannot install from {{new_repo}}",
       "emptyArchive": "Downloaded archive is empty",
+      "invalidRepoRef": "Invalid repository reference: {{owner}}/{{name}}",
+      "archiveTooLarge": "Archive exceeds the {{limit_mb}} MB extraction limit; aborted",
+      "archiveTooManyEntries": "Archive has too many entries ({{count}}); the limit is {{limit}}",
       "downloadFailed": "Download failed: HTTP {{status}}",
       "allBranchesFailed": "All branches failed, tried: {{branches}}",
       "httpError": "HTTP error {{status}}",
@@ -2523,7 +2547,11 @@
       "title": "Batch Import MCP Servers",
       "targetApps": "Target Apps",
       "serverCount": "MCP Servers ({{count}})",
-      "enabledWarning": "After import, configurations will be written to all specified apps immediately"
+      "enabledWarning": "After import, configurations will be written to all specified apps immediately",
+      "command": "Command",
+      "args": "Args",
+      "env": "Env",
+      "url": "URL"
     },
     "prompt": {
       "title": "Import System Prompt",
@@ -2545,10 +2573,17 @@
     "usageScript": "Usage Query",
     "usageScriptEnabled": "Enabled",
     "usageScriptDisabled": "Disabled",
+    "usageScriptCode": "Script code",
+    "usageScriptWarning": "This is JavaScript that runs when usage is queried, once enabled. Import it only if you trust the source.",
     "usageApiKey": "Usage API Key",
     "usageBaseUrl": "Usage Query URL",
     "usageAutoInterval": "Auto Query",
-    "usageAutoIntervalValue": "Every {{minutes}} minutes"
+    "usageAutoIntervalValue": "Every {{minutes}} minutes",
+    "risk": {
+      "envHijack": "This config sets environment variables that change how processes load code (e.g. injecting libraries or replacing CA certificates). Import only from a source you trust.",
+      "privateEndpoint": "This address points at localhost or a private network. Do not import unless it is your own local service.",
+      "shellCommand": "This config runs a full command line through a shell — what actually executes is in the arguments. Review each line."
+    }
   },
   "iconPicker": {
     "search": "Search Icons",
@@ -2567,8 +2602,7 @@
     "selectIcon": "Select Icon",
     "preview": "Preview",
     "clickToChange": "Click to change icon",
-    "clickToSelect": "Click to select icon",
-    "color": "Icon Color"
+    "clickToSelect": "Click to select icon"
   },
   "migration": {
     "success": "Configuration migrated successfully",
@@ -2597,7 +2631,8 @@
     },
     "tooltip": {
       "enabled": "{{app}} failover enabled\nRequests follow queue priority (P1→P2→...)",
-      "disabled": "Enable {{app}} failover\nSwitches to queue P1 immediately, then falls back on failures"
+      "disabled": "Enable {{app}} failover\nSwitches to queue P1 immediately, then falls back on failures",
+      "takeoverRequired": "Take over {{app}} first, then enable failover"
     }
   },
   "proxy": {
@@ -2775,7 +2810,9 @@
     },
     "server": {
       "started": "Routing service started - {{address}}:{{port}}",
-      "startFailed": "Failed to start routing service: {{detail}}"
+      "startFailed": "Failed to start routing service: {{detail}}",
+      "stopped": "Routing service stopped",
+      "stopFailed": "Failed to stop routing service: {{detail}}"
     },
     "stoppedWithRestore": "Routing service stopped, all routing configs restored",
     "stopWithRestoreFailed": "Stop failed: {{detail}}"
@@ -2809,33 +2846,6 @@
     "streamingFirstByte": "Streaming First Byte Timeout",
     "streamingIdle": "Streaming Idle Timeout",
     "nonStreaming": "Non-Streaming Timeout"
-  },
-  "circuitBreaker": {
-    "failureThreshold": "Failure Threshold",
-    "successThreshold": "Success Threshold",
-    "timeoutSeconds": "Timeout (seconds)",
-    "errorRateThreshold": "Error Rate Threshold (%)",
-    "minRequests": "Minimum Requests",
-    "validationFailed": "The following fields are out of valid range: {{fields}}",
-    "configSaved": "Circuit breaker configuration saved",
-    "saveFailed": "Save failed",
-    "loading": "Loading...",
-    "title": "Circuit Breaker Configuration",
-    "description": "Adjust circuit breaker parameters to control fault detection and recovery behavior",
-    "failureThresholdHint": "How many consecutive failures trigger the circuit breaker",
-    "timeoutSecondsHint": "How long to wait before attempting recovery (half-open state)",
-    "successThresholdHint": "How many successes in half-open state to close the circuit breaker",
-    "errorRateThresholdHint": "Open circuit breaker when error rate exceeds this value",
-    "minRequestsHint": "Minimum requests before calculating error rate",
-    "saveConfig": "Save Configuration",
-    "instructionsTitle": "Configuration Instructions",
-    "instructions": {
-      "failureThreshold": "Circuit breaker opens when consecutive failures reach this count",
-      "timeout": "After circuit breaker opens, wait this time before attempting half-open",
-      "successThreshold": "In half-open state, close circuit breaker when successes reach this count",
-      "errorRate": "Circuit breaker opens when error rate exceeds this value",
-      "minRequests": "Error rate is only calculated after request count reaches this value"
-    }
   },
   "universalProvider": {
     "duplicate": "Duplicate",
