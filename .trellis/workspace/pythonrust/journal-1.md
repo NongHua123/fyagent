@@ -207,3 +207,37 @@ Regenerated all application-brand icons from the approved FyAgent source, added 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: Codex 原生能力开关放宽
+
+**Date**: 2026-08-04
+**Task**: Codex 原生能力开关放宽
+**Branch**: `feature/fyagent-v1`
+
+### Summary
+
+开放所有 Codex 供应商的生图与 WebSocket 高级开关，增加保存后模型及代理风险警告，保留代理投影能力字段，并加固跨权限文件系统测试。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dd4162e0` | (see git log) |
+| `64939d83` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
