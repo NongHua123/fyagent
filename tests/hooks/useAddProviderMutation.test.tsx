@@ -18,6 +18,12 @@ const uuidMocks = vi.hoisted(() => ({
   generateUUID: vi.fn(),
 }));
 
+const toastMocks = vi.hoisted(() => ({
+  success: vi.fn(),
+  warning: vi.fn(),
+  error: vi.fn(),
+}));
+
 vi.mock("@/lib/api", () => ({
   providersApi: {
     add: (...args: unknown[]) => apiMocks.add(...args),
@@ -38,10 +44,7 @@ vi.mock("@/utils/uuid", () => ({
 }));
 
 vi.mock("sonner", () => ({
-  toast: {
-    success: vi.fn(),
-    error: vi.fn(),
-  },
+  toast: toastMocks,
 }));
 
 function createWrapper() {
@@ -71,6 +74,9 @@ beforeEach(() => {
   apiMocks.getAll.mockReset().mockResolvedValue({});
   apiMocks.updateTrayMenu.mockReset().mockResolvedValue(true);
   uuidMocks.generateUUID.mockReset().mockReturnValue("generated-uuid");
+  toastMocks.success.mockReset();
+  toastMocks.warning.mockReset();
+  toastMocks.error.mockReset();
 });
 
 describe("useAddProviderMutation", () => {
@@ -206,5 +212,42 @@ describe("useAddProviderMutation", () => {
     );
     expect(apiMocks.add).not.toHaveBeenCalled();
     expect(outcome.liveConfigChanged).toBe(true);
+  });
+
+  it("shows one combined warning instead of the normal success toast", async () => {
+    apiMocks.addWithResult.mockResolvedValueOnce({
+      value: true,
+      liveConfigChanged: false,
+      app: "codex",
+      warningCodes: [
+        "CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED",
+        "CODEX_WEBSOCKET_NON_GPT_MODEL",
+        "CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED",
+      ],
+    });
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useAddProviderMutation("codex"), {
+      wrapper,
+    });
+
+    const outcome = await act(async () =>
+      result.current.mutateAsync({
+        name: "Risky Codex",
+        settingsConfig: { auth: {}, config: "" },
+        category: "custom",
+      }),
+    );
+
+    expect(outcome.warningCodes).toEqual([
+      "CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED",
+      "CODEX_WEBSOCKET_NON_GPT_MODEL",
+      "CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED",
+    ]);
+    expect(toastMocks.warning).toHaveBeenCalledTimes(1);
+    expect(toastMocks.warning).toHaveBeenCalledWith(
+      "供应商已添加；WebSocket 传输仅支持 GPT 系列模型；当前代理接管链路可能不支持 WebSocket",
+      { closeButton: true },
+    );
+    expect(toastMocks.success).not.toHaveBeenCalled();
   });
 });

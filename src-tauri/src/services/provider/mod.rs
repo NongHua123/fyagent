@@ -2412,6 +2412,7 @@ impl ProviderService {
                 .zip(after)
                 .is_some_and(|(before, after)| before != after),
             app: app_type.as_str().to_owned(),
+            warning_codes: Vec::new(),
         })
     }
 

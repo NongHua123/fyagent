@@ -953,32 +953,36 @@
   },
   "codexFeatures": {
     "title": "Codex 原生能力",
-    "description": "这些选项只修改当前供应商的 TOML 草稿；保存后才会写入 Codex 配置。",
+    "description": "这些选项可用于所有 Codex 供应商，只修改当前 TOML 草稿；保存后才会写入配置。",
     "analyzing": "正在检查 Codex 原生能力…",
     "analysisFailed": "无法分析 Codex 原生能力草稿，请检查 TOML 后重试。",
     "patchFailed": "无法更新 Codex 原生能力草稿，请检查 TOML 后重试。",
     "savePreparationFailed": "无法准备 Codex 原生能力配置，请检查 TOML 后重试。",
     "imageExtension": {
       "label": "启用内置生图扩展",
-      "description": "向当前第三方 API 供应商写入受管请求头，以启用 Codex 的内置生图扩展。",
+      "description": "向当前供应商写入受管请求头，以启用 Codex 的内置生图扩展。",
       "legacyTitle": "保存时迁移",
       "legacyDescription": "这是历史供应商的默认开启迁移。取消不会修改配置；保存后才会写入受管请求头。",
       "conflictTitle": "生图扩展请求头冲突",
-      "conflictDescription": "当前 TOML 含有同名但非受管的请求头。FyAgent 不会覆盖、删除或新建大小写变体，请先手工处理。",
+      "conflictDescription": "当前 TOML 含有同名或大小写不同的请求头；操作开关会覆盖这些同名值。",
       "invalidTitle": "无法读取生图扩展设置",
-      "invalidDescription": "请求头结构不是 Codex 所需的字符串映射。请在 TOML 中修复后再修改此开关。"
+      "invalidDescription": "请求头不是字符串映射；操作开关会用受管请求头替换或删除该字段。"
     },
     "websockets": {
       "label": "启用 WebSocket 传输",
-      "description": "仅 OpenAI Responses 格式可用。关闭时会删除 supports_websockets，而不是写入 false。",
-      "incompatible": "当前上游格式不是 OpenAI Responses，因此 WebSocket 传输不可用。",
-      "saveBlocked": "当前上游格式不支持 WebSocket。请在 TOML 中删除 supports_websockets 后再保存。",
-      "autoDisabled": "已因上游格式改为非 Responses 自动关闭 WebSocket，并从当前 TOML 草稿移除该字段。"
+      "description": "写入 supports_websockets = true；上游模型或代理链路可能不支持，保存后会提示已识别的风险。"
+    },
+    "saveWarnings": {
+      "added": "供应商已添加",
+      "saved": "供应商已保存",
+      "nonGptModel": "WebSocket 传输仅支持 GPT 系列模型",
+      "proxyMayBeUnsupported": "当前代理接管链路可能不支持 WebSocket",
+      "separator": "；"
     },
     "diagnostic": {
       "invalidToml": "Codex TOML 草稿无效；FyAgent 不会自动重写。",
-      "invalidHeaders": "Codex 请求头结构无效。请先手工修复，再修改原生能力。",
-      "invalidWebsockets": "WebSocket 设置无效。请手工修复 TOML 后再保存。",
+      "invalidHeaders": "Codex 请求头结构无效；操作生图开关会修复该字段。",
+      "invalidWebsockets": "WebSocket 设置无效；操作 WebSocket 开关会修复该字段。",
       "generic": "Codex 原生能力配置无效；FyAgent 不会自动重写该 TOML 草稿。"
     }
   },
@@ -1444,7 +1448,8 @@
     "reasoningEffortHint": "上游支持 low/high/max 等思考深度控制时启用。启用后会自动启用思考模式，并把 Codex 的 reasoning.effort 转成上游 Chat 参数。",
     "reasoningGroupTitle": "思考能力",
     "reasoningSectionHint": "预设供应商已自动配置；自定义供应商会按名称/地址自动推断。仅当自动识别不准时才需手动覆盖。",
-    "advancedSectionHint": "包含上游格式、模型映射、思考能力与自定义 User-Agent。使用 Chat Completions 协议的供应商需开启路由接管才能使用。"
+    "advancedSectionHint": "包含 Codex 原生能力、上游格式、模型映射、思考能力与自定义 User-Agent。使用 Chat Completions 协议的供应商需开启路由接管才能使用。",
+    "officialAdvancedSectionHint": "包含内置生图扩展与 WebSocket 传输开关。"
   },
   "geminiConfig": {
     "envFile": "环境变量 (.env)",

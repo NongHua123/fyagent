@@ -953,32 +953,36 @@
   },
   "codexFeatures": {
     "title": "Codex ネイティブ機能",
-    "description": "これらの設定は現在のプロバイダーの TOML 下書きだけを変更し、保存時に Codex 設定へ書き込みます。",
+    "description": "これらの設定はすべての Codex プロバイダーで利用でき、現在の TOML 下書きだけを変更して保存時に書き込みます。",
     "analyzing": "Codex ネイティブ機能を確認しています…",
     "analysisFailed": "Codex ネイティブ機能の下書きを解析できませんでした。TOML を確認して再試行してください。",
     "patchFailed": "Codex ネイティブ機能の下書きを更新できませんでした。TOML を確認して再試行してください。",
     "savePreparationFailed": "Codex ネイティブ機能を保存用に準備できませんでした。TOML を確認して再試行してください。",
     "imageExtension": {
       "label": "組み込み画像拡張を有効にする",
-      "description": "Codex の組み込み画像拡張を有効にするため、このサードパーティ API プロバイダーへ管理済みリクエストヘッダーを書き込みます。",
+      "description": "Codex の組み込み画像拡張を有効にするため、現在のプロバイダーへ管理済みリクエストヘッダーを書き込みます。",
       "legacyTitle": "保存時に移行",
       "legacyDescription": "これは既存プロバイダー向けの既定オン移行です。保存するまで設定は変更されません。",
       "conflictTitle": "画像拡張ヘッダーの競合",
-      "conflictDescription": "TOML に FyAgent が管理しない同名ヘッダーがあります。FyAgent は上書き、削除、大文字小文字違いの追加を行いません。手動で解決してください。",
+      "conflictDescription": "TOML に同名または大文字小文字違いのヘッダーがあります。スイッチを操作すると一致する値を上書きします。",
       "invalidTitle": "画像拡張設定を読み取れません",
-      "invalidDescription": "リクエストヘッダー構造が Codex に必要な文字列マップではありません。切り替える前に TOML を修正してください。"
+      "invalidDescription": "リクエストヘッダーが文字列マップではありません。スイッチを操作するとこのフィールドを置換または削除します。"
     },
     "websockets": {
       "label": "WebSocket 転送を有効にする",
-      "description": "OpenAI Responses 形式でのみ利用できます。オフにすると false を書かず supports_websockets を削除します。",
-      "incompatible": "現在の上流形式は OpenAI Responses ではないため、WebSocket 転送は利用できません。",
-      "saveBlocked": "現在の上流形式は WebSocket をサポートしていません。保存前に TOML から supports_websockets を削除してください。",
-      "autoDisabled": "上流形式が Responses 以外に変更されたため WebSocket をオフにし、この TOML 下書きからフィールドを削除しました。"
+      "description": "supports_websockets = true を書き込みます。上流モデルやプロキシ経路が未対応の場合があり、保存後に判定済みのリスクを表示します。"
+    },
+    "saveWarnings": {
+      "added": "プロバイダーを追加しました",
+      "saved": "プロバイダーを保存しました",
+      "nonGptModel": "WebSocket 転送は GPT 系モデルのみをサポートします",
+      "proxyMayBeUnsupported": "現在のプロキシ引き継ぎ経路は WebSocket に対応していない可能性があります",
+      "separator": "；"
     },
     "diagnostic": {
       "invalidToml": "Codex TOML 下書きが無効です。FyAgent は自動的に書き換えません。",
-      "invalidHeaders": "Codex リクエストヘッダー構造が無効です。ネイティブ機能を変更する前に手動で修正してください。",
-      "invalidWebsockets": "WebSocket 設定が無効です。保存前に TOML を手動で修正してください。",
+      "invalidHeaders": "Codex リクエストヘッダー構造が無効です。画像スイッチを操作すると修復します。",
+      "invalidWebsockets": "WebSocket 設定が無効です。WebSocket スイッチを操作すると修復します。",
       "generic": "Codex ネイティブ機能の設定が無効です。FyAgent はこの TOML 下書きを自動で書き換えません。"
     }
   },
@@ -1444,7 +1448,8 @@
     "reasoningEffortHint": "上流が low/high/max などの思考の深さの制御に対応している場合に有効化します。有効にすると思考モードも自動的にオンになり、Codex の reasoning.effort を上流の Chat パラメータに変換します。",
     "reasoningGroupTitle": "思考能力",
     "reasoningSectionHint": "プリセットの供給元は自動的に設定され、カスタム供給元は名前/URL から自動推論されます。自動識別が正しくない場合のみ手動で上書きしてください。",
-    "advancedSectionHint": "上流フォーマット、モデルマッピング、思考能力、カスタム User-Agent の設定を含みます。Chat Completions プロトコルを使用するプロバイダーはルーティング引き継ぎの有効化が必要です。"
+    "advancedSectionHint": "Codex ネイティブ機能、上流フォーマット、モデルマッピング、思考能力、カスタム User-Agent を含みます。Chat Completions ではルーティング引き継ぎが必要です。",
+    "officialAdvancedSectionHint": "組み込み画像拡張と WebSocket 転送のスイッチを含みます。"
   },
   "geminiConfig": {
     "envFile": "環境変数 (.env)",

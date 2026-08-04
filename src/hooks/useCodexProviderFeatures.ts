@@ -17,6 +17,7 @@ interface DraftOverride {
    * but the normal provider save has not persisted its private marker yet.
    */
   imageExtensionConfigured?: true;
+  codexNativeCapabilitiesGeneratedProvider?: boolean;
 }
 
 interface UseCodexProviderFeaturesOptions {
@@ -32,6 +33,7 @@ interface UseCodexProviderFeaturesOptions {
 export interface CodexFeatureSavePreparation {
   tomlText: string;
   imageExtensionConfigured?: true;
+  codexNativeCapabilitiesGeneratedProvider?: boolean;
 }
 
 const providerWithOverride = (
@@ -49,6 +51,12 @@ const providerWithOverride = (
       : {}),
     ...(override.imageExtensionConfigured === true
       ? { imageExtensionConfigured: true }
+      : {}),
+    ...(override.codexNativeCapabilitiesGeneratedProvider !== undefined
+      ? {
+          codexNativeCapabilitiesGeneratedProvider:
+            override.codexNativeCapabilitiesGeneratedProvider,
+        }
       : {}),
   };
 
@@ -76,7 +84,6 @@ export function useCodexProviderFeatures({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isPatching, setIsPatching] = useState(false);
   const [error, setError] = useState<FeatureError>(null);
-  const [websocketAutoDisabled, setWebsocketAutoDisabled] = useState(false);
   const getDraftRef = useRef(getDraft);
   const isNewRef = useRef(isNew);
   const configTextRef = useRef(configText);
@@ -84,6 +91,7 @@ export function useCodexProviderFeatures({
   const mountedRef = useRef(true);
   const analysisSequenceRef = useRef(0);
   const pendingMarkerRef = useRef(false);
+  const pendingGeneratedProviderRef = useRef<boolean | undefined>(undefined);
   const patchQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   getDraftRef.current = getDraft;
@@ -112,6 +120,9 @@ export function useCodexProviderFeatures({
       imageExtensionConfigured: pendingMarkerRef.current
         ? true
         : override?.imageExtensionConfigured,
+      codexNativeCapabilitiesGeneratedProvider:
+        pendingGeneratedProviderRef.current ??
+        override?.codexNativeCapabilitiesGeneratedProvider,
     });
   }, []);
 
@@ -199,7 +210,7 @@ export function useCodexProviderFeatures({
     async (
       draft: Provider,
       intent: CodexProviderFeatureIntent,
-      options: { showBusy?: boolean; autoDisabled?: boolean } = {},
+      options: { showBusy?: boolean } = {},
     ): Promise<CodexProviderFeaturePatchResult> => {
       if (options.showBusy !== false && mountedRef.current) {
         setIsPatching(true);
@@ -220,8 +231,9 @@ export function useCodexProviderFeatures({
           if (result.imageExtensionConfigured === true) {
             pendingMarkerRef.current = true;
           }
-          if (options.autoDisabled) {
-            setWebsocketAutoDisabled(true);
+          if (result.codexNativeCapabilitiesGeneratedProvider !== undefined) {
+            pendingGeneratedProviderRef.current =
+              result.codexNativeCapabilitiesGeneratedProvider;
           }
         }
         return result;
@@ -248,15 +260,14 @@ export function useCodexProviderFeatures({
     [applyPatch, buildDraft, enabled, enqueuePatch],
   );
 
-  /**
-   * Responses is the only compatible WebSocket transport. Switching away must
-   * actively remove an existing TOML field rather than merely disabling UI.
+  /** Keep queued feature analysis aligned with an API-format form change.
+   * Format selection no longer rewrites or disables WebSocket capability.
    */
   const handleApiFormatChange = useCallback(
     (nextApiFormat: CodexApiFormat, nextTomlText: string): Promise<void> =>
       enqueuePatch(async () => {
         configTextRef.current = nextTomlText;
-        if (!enabled || nextApiFormat === "openai_responses") return;
+        if (!enabled) return;
 
         const draft = buildDraft({
           apiFormat: nextApiFormat,
@@ -266,24 +277,15 @@ export function useCodexProviderFeatures({
           commit: false,
           isNew: isNewRef.current,
         });
-        if (featureState.applicable && featureState.websockets.enabled) {
-          await applyPatch(
-            draft,
-            { websockets: false },
-            { autoDisabled: true },
-          );
-        } else if (mountedRef.current) {
+        if (mountedRef.current) {
           setState(featureState);
         }
       }),
-    [analyze, applyPatch, buildDraft, enabled, enqueuePatch],
+    [analyze, buildDraft, enabled, enqueuePatch],
   );
 
-  /**
-   * Complete queued UI patches before saving, then enforce the same invariant
-   * the backend will enforce. The format-change handler above owns automatic
-   * removal; a user who manually writes an incompatible WebSocket field after
-   * that must see a blocked save rather than have their TOML silently changed.
+  /** Complete queued UI patches before saving and carry private, form-local
+   * marker decisions into the normal provider mutation.
    */
   const prepareForSave = useCallback(
     (): Promise<CodexFeatureSavePreparation> =>
@@ -297,17 +299,9 @@ export function useCodexProviderFeatures({
           commit: false,
           isNew: isNewRef.current,
         });
-        if (
-          featureState.applicable &&
-          !featureState.websockets.compatible &&
-          featureState.websockets.enabled
-        ) {
-          throw new Error("CODEX_FEATURE_INCOMPATIBLE_WEBSOCKET");
-        }
-
-        // A form-local migration marker is meaningful only for a provider
-        // that the backend can currently analyze. Do not smuggle it into a
-        // newly official/managed/incomplete row through the normal save path.
+        // A form-local migration marker is meaningful only while the backend
+        // can parse the whole TOML document. Keep it out of a malformed draft
+        // until the user has corrected the document.
         // Keep it local so correcting the same draft before saving does not
         // discard the user's explicit image-toggle decision.
         if (!featureState.applicable) {
@@ -326,6 +320,12 @@ export function useCodexProviderFeatures({
           ...(pendingMarkerRef.current && !unresolvedImageState
             ? { imageExtensionConfigured: true as const }
             : {}),
+          ...(pendingGeneratedProviderRef.current !== undefined
+            ? {
+                codexNativeCapabilitiesGeneratedProvider:
+                  pendingGeneratedProviderRef.current,
+              }
+            : {}),
         };
       }),
     [analyze, applyPatch, buildDraft, enabled, enqueuePatch],
@@ -336,7 +336,6 @@ export function useCodexProviderFeatures({
     isAnalyzing,
     isPatching,
     error,
-    websocketAutoDisabled,
     patchFeatures,
     handleApiFormatChange,
     prepareForSave,

@@ -953,32 +953,36 @@
   },
   "codexFeatures": {
     "title": "Codex native capabilities",
-    "description": "These options change only this provider's TOML draft and are written to the Codex configuration when you save.",
+    "description": "These options are available for every Codex provider. They change only the current TOML draft and are written when you save.",
     "analyzing": "Checking Codex native capabilities…",
     "analysisFailed": "Could not analyze the Codex native capability draft. Check the TOML and try again.",
     "patchFailed": "Could not update the Codex native capability draft. Check the TOML and try again.",
     "savePreparationFailed": "Could not prepare Codex native capabilities. Check the TOML and try again.",
     "imageExtension": {
       "label": "Enable built-in image extension",
-      "description": "Writes a managed request header for this third-party API provider to enable Codex's built-in image extension.",
+      "description": "Writes a managed request header for this provider to enable Codex's built-in image extension.",
       "legacyTitle": "Migration on save",
       "legacyDescription": "This historical provider defaults to enabled until you save. Turning it off does not change the configuration until the provider is saved.",
       "conflictTitle": "Image-extension header conflict",
-      "conflictDescription": "The TOML contains a same-name header that FyAgent does not own. Resolve it manually; FyAgent will not overwrite, remove, or add a case variant.",
+      "conflictDescription": "The TOML contains same-name or differently cased headers. Operating the switch overwrites those matching values.",
       "invalidTitle": "Image-extension setting cannot be read",
-      "invalidDescription": "The request-header structure is not the string map Codex requires. Fix the TOML before changing this switch."
+      "invalidDescription": "The request headers are not a string map. Operating the switch replaces or removes this field."
     },
     "websockets": {
       "label": "Enable WebSocket transport",
-      "description": "Available only for OpenAI Responses. Turning it off removes supports_websockets instead of writing false.",
-      "incompatible": "The current upstream format is not OpenAI Responses, so WebSocket transport is unavailable.",
-      "saveBlocked": "The current upstream format does not support WebSocket. Remove supports_websockets from the TOML before saving.",
-      "autoDisabled": "WebSocket transport was disabled because the upstream format changed away from Responses, and the field was removed from this TOML draft."
+      "description": "Writes supports_websockets = true. The upstream model or proxy route may not support it; identified risks are shown after saving."
+    },
+    "saveWarnings": {
+      "added": "Provider added",
+      "saved": "Provider saved",
+      "nonGptModel": "WebSocket transport supports GPT-family models only",
+      "proxyMayBeUnsupported": "The current proxy takeover route may not support WebSocket",
+      "separator": "; "
     },
     "diagnostic": {
       "invalidToml": "The Codex TOML draft is invalid. FyAgent will not rewrite it automatically.",
-      "invalidHeaders": "The Codex request-header structure is invalid. Fix it manually before changing native capabilities.",
-      "invalidWebsockets": "The WebSocket setting is invalid. Fix the TOML manually before saving.",
+      "invalidHeaders": "The Codex request-header structure is invalid. Operating the image switch repairs this field.",
+      "invalidWebsockets": "The WebSocket setting is invalid. Operating the WebSocket switch repairs this field.",
       "generic": "The Codex native capability configuration is invalid. FyAgent will not rewrite this TOML draft automatically."
     }
   },
@@ -1444,7 +1448,8 @@
     "reasoningEffortHint": "Enable when the upstream supports thinking-depth control such as low/high/max. Enabling this also turns on thinking mode and converts Codex's reasoning.effort into the upstream Chat parameter.",
     "reasoningGroupTitle": "Reasoning Capability",
     "reasoningSectionHint": "Preset providers are configured automatically; custom providers are inferred from name/URL. Override manually only when auto-detection is wrong.",
-    "advancedSectionHint": "Includes upstream format, model mapping, reasoning overrides and custom User-Agent. Providers using the Chat Completions protocol require routing takeover to be enabled."
+    "advancedSectionHint": "Includes Codex native capabilities, upstream format, model mapping, reasoning overrides and custom User-Agent. Providers using Chat Completions require routing takeover.",
+    "officialAdvancedSectionHint": "Includes the built-in image extension and WebSocket transport switches."
   },
   "geminiConfig": {
     "envFile": "Environment Variables (.env)",

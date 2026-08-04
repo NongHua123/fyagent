@@ -3,7 +3,10 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { providersApi, sessionsApi, settingsApi, type AppId } from "@/lib/api";
 import type { DeleteSessionOptions } from "@/lib/api/sessions";
-import type { SwitchResult } from "@/lib/api/providers";
+import type {
+  CodexProviderMutationWarning,
+  SwitchResult,
+} from "@/lib/api/providers";
 import type { Provider, SessionMeta, Settings } from "@/types";
 import { extractErrorMessage } from "@/utils/errorUtils";
 import { generateUUID } from "@/utils/uuid";
@@ -23,7 +26,43 @@ import {
 export interface ProviderMutationOutcome<T> {
   value: T;
   liveConfigChanged: boolean;
+  warningCodes?: CodexProviderMutationWarning[];
 }
+
+const codexMutationWarningMessage = (
+  t: ReturnType<typeof useTranslation>["t"],
+  operation: "added" | "saved",
+  warnings: CodexProviderMutationWarning[] | undefined,
+): string | null => {
+  if (!warnings?.length) return null;
+
+  const warningSet = new Set(warnings);
+  const risks = [
+    ...(warningSet.has("CODEX_WEBSOCKET_NON_GPT_MODEL")
+      ? [
+          t("codexFeatures.saveWarnings.nonGptModel", {
+            defaultValue: "WebSocket 传输仅支持 GPT 系列模型",
+          }),
+        ]
+      : []),
+    ...(warningSet.has("CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED")
+      ? [
+          t("codexFeatures.saveWarnings.proxyMayBeUnsupported", {
+            defaultValue: "当前代理接管链路可能不支持 WebSocket",
+          }),
+        ]
+      : []),
+  ];
+  if (!risks.length) return null;
+
+  const status = t(`codexFeatures.saveWarnings.${operation}`, {
+    defaultValue: operation === "added" ? "供应商已添加" : "供应商已保存",
+  });
+  const separator = t("codexFeatures.saveWarnings.separator", {
+    defaultValue: "；",
+  });
+  return `${status}${separator}${risks.join(separator)}`;
+};
 
 export const useAddProviderMutation = (appId: AppId) => {
   const queryClient = useQueryClient();
@@ -115,13 +154,16 @@ export const useAddProviderMutation = (appId: AppId) => {
         return {
           value: newProvider,
           liveConfigChanged: result.liveConfigChanged,
+          ...(result.warningCodes?.length
+            ? { warningCodes: result.warningCodes }
+            : {}),
         };
       }
 
       await providersApi.add(newProvider, appId, addToLive);
       return { value: newProvider, liveConfigChanged: false };
     },
-    onSuccess: async () => {
+    onSuccess: async (outcome) => {
       await queryClient.invalidateQueries({ queryKey: ["providers", appId] });
 
       if (appId === "opencode") {
@@ -158,14 +200,23 @@ export const useAddProviderMutation = (appId: AppId) => {
         );
       }
 
-      toast.success(
-        t("notifications.providerAdded", {
-          defaultValue: "供应商已添加",
-        }),
-        {
-          closeButton: true,
-        },
+      const warningMessage = codexMutationWarningMessage(
+        t,
+        "added",
+        outcome.warningCodes,
       );
+      if (warningMessage) {
+        toast.warning(warningMessage, { closeButton: true });
+      } else {
+        toast.success(
+          t("notifications.providerAdded", {
+            defaultValue: "供应商已添加",
+          }),
+          {
+            closeButton: true,
+          },
+        );
+      }
     },
     onError: (error: Error) => {
       const detail = extractErrorMessage(error) || t("common.unknown");
@@ -197,7 +248,13 @@ export const useUpdateProviderMutation = (appId: AppId) => {
           appId,
           originalId,
         );
-        return { value: provider, liveConfigChanged: result.liveConfigChanged };
+        return {
+          value: provider,
+          liveConfigChanged: result.liveConfigChanged,
+          ...(result.warningCodes?.length
+            ? { warningCodes: result.warningCodes }
+            : {}),
+        };
       }
 
       await providersApi.update(provider, appId, originalId);
@@ -222,14 +279,23 @@ export const useUpdateProviderMutation = (appId: AppId) => {
       if (appId === "hermes") {
         await invalidateHermesProviderCaches(queryClient);
       }
-      toast.success(
-        t("notifications.updateSuccess", {
-          defaultValue: "供应商更新成功",
-        }),
-        {
-          closeButton: true,
-        },
+      const warningMessage = codexMutationWarningMessage(
+        t,
+        "saved",
+        outcome.warningCodes,
       );
+      if (warningMessage) {
+        toast.warning(warningMessage, { closeButton: true });
+      } else {
+        toast.success(
+          t("notifications.updateSuccess", {
+            defaultValue: "供应商更新成功",
+          }),
+          {
+            closeButton: true,
+          },
+        );
+      }
     },
     onError: (error: Error) => {
       const detail = extractErrorMessage(error) || t("common.unknown");

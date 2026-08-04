@@ -27,7 +27,13 @@ export interface ProviderMutationResult<T> {
   liveConfigChanged: boolean;
   /** The backend only returns a real provider-domain application identifier. */
   app: AppId;
+  /** Optional Codex save risks; absent for older hosts and non-risky writes. */
+  warningCodes?: CodexProviderMutationWarning[];
 }
+
+export type CodexProviderMutationWarning =
+  | "CODEX_WEBSOCKET_NON_GPT_MODEL"
+  | "CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED";
 
 export type CodexImageExtensionState =
   | { kind: "on" }
@@ -62,6 +68,7 @@ export interface CodexProviderFeaturePatchResult {
   tomlText: string;
   state: CodexProviderFeatureState;
   imageExtensionConfigured?: true;
+  codexNativeCapabilitiesGeneratedProvider?: boolean;
 }
 
 export interface OpenTerminalOptions {

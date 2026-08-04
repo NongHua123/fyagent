@@ -58,6 +58,11 @@ pub struct ProviderMutationResult<T> {
     pub value: T,
     pub live_config_changed: bool,
     pub app: String,
+    /// Stable, non-sensitive warning codes derived from the provider that was
+    /// successfully written. Older renderer versions ignore this optional
+    /// field, while current versions localize and combine the warnings.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warning_codes: Vec<String>,
 }
 
 impl Provider {
@@ -540,6 +545,18 @@ pub struct ProviderMeta {
         skip_serializing_if = "image_extension_marker_is_unfinished"
     )]
     pub image_extension_configured: Option<bool>,
+    /// Whether FyAgent created the minimal `custom` provider table used to
+    /// attach native capabilities to the built-in Codex ChatGPT login.
+    ///
+    /// The marker is private provider metadata, never written to Codex live
+    /// configuration. Cleanup additionally verifies the exact generated table
+    /// shape before removing anything, so this marker alone is not authority
+    /// to delete user-owned TOML.
+    #[serde(
+        rename = "codexNativeCapabilitiesGeneratedProvider",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub codex_native_capabilities_generated_provider: Option<bool>,
 }
 
 fn image_extension_marker_is_unfinished(marker: &Option<bool>) -> bool {
@@ -1007,7 +1024,8 @@ pub struct OpenCodeModelLimit {
 mod tests {
     use super::{
         ClaudeModelConfig, CodexModelConfig, GeminiModelConfig, LocalProxyRequestOverrides,
-        OpenCodeProviderConfig, Provider, ProviderManager, ProviderMeta, UniversalProvider,
+        OpenCodeProviderConfig, Provider, ProviderManager, ProviderMeta, ProviderMutationResult,
+        UniversalProvider,
     };
     use serde_json::json;
     use std::collections::HashMap;
@@ -1064,6 +1082,53 @@ mod tests {
                 .and_then(|value| value.as_bool()),
             Some(true)
         );
+    }
+
+    #[test]
+    fn provider_meta_roundtrips_codex_native_capability_provider_marker() {
+        let serialized = serde_json::to_value(ProviderMeta {
+            codex_native_capabilities_generated_provider: Some(true),
+            ..ProviderMeta::default()
+        })
+        .expect("serialize generated-provider marker");
+        assert_eq!(
+            serialized
+                .get("codexNativeCapabilitiesGeneratedProvider")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+
+        let parsed: ProviderMeta =
+            serde_json::from_value(serialized).expect("deserialize generated-provider marker");
+        assert_eq!(
+            parsed.codex_native_capabilities_generated_provider,
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn provider_mutation_result_serializes_optional_warning_codes_compatibly() {
+        let without_warning = serde_json::to_value(ProviderMutationResult {
+            value: true,
+            live_config_changed: false,
+            app: "codex".to_owned(),
+            warning_codes: Vec::new(),
+        })
+        .expect("serialize mutation result");
+        assert!(without_warning.get("warningCodes").is_none());
+
+        let with_warning = serde_json::to_value(ProviderMutationResult {
+            value: true,
+            live_config_changed: false,
+            app: "codex".to_owned(),
+            warning_codes: vec!["CODEX_WEBSOCKET_NON_GPT_MODEL".to_owned()],
+        })
+        .expect("serialize warning result");
+        assert_eq!(
+            with_warning["warningCodes"][0].as_str(),
+            Some("CODEX_WEBSOCKET_NON_GPT_MODEL")
+        );
+        assert_eq!(with_warning["liveConfigChanged"].as_bool(), Some(false));
     }
 
     #[test]

@@ -68,6 +68,7 @@ import {
   setCodexModelName as setCodexModelNameInConfig,
 } from "@/utils/providerConfigUtils";
 import { isNonNegativeDecimalString } from "@/types/usage";
+import { CODEX_OFFICIAL_PROVIDER_ID } from "@/utils/providerCapabilities";
 import { getCodexCustomTemplate } from "@/config/codexTemplates";
 import CodexConfigEditor from "./CodexConfigEditor";
 import { CommonConfigEditor } from "./CommonConfigEditor";
@@ -223,8 +224,8 @@ const parseCodexFeatureAuth = (value: string): Record<string, unknown> => {
       ? (parsed as Record<string, unknown>)
       : {};
   } catch {
-    // A temporary invalid auth editor value should make the capability analysis
-    // inapplicable; it must not prevent the user from correcting the form.
+    // Do not project a temporary malformed auth editor value into capability
+    // analysis; the user can still correct the form without losing the draft.
     return {};
   }
 };
@@ -351,6 +352,9 @@ function ProviderFormFull({
     isEditMode,
     initialCategory: initialData?.category,
   });
+  const isOfficialProvider =
+    category === "official" ||
+    (appId === "codex" && providerId === CODEX_OFFICIAL_PROVIDER_ID);
   const isOmoCategory = appId === "opencode" && category === "omo";
   const isOmoSlimCategory = appId === "opencode" && category === "omo-slim";
   const isAnyOmoCategory = isOmoCategory || isOmoSlimCategory;
@@ -753,7 +757,7 @@ function ProviderFormFull({
         // apiFormat controls proxy conversion. The TOML wire_api remains
         // responses for every Codex provider and must not be used to infer the
         // capability compatibility.
-        ...(category !== "official" ? { apiFormat: localCodexApiFormat } : {}),
+        ...(!isOfficialProvider ? { apiFormat: localCodexApiFormat } : {}),
       },
     }),
     [
@@ -762,6 +766,7 @@ function ProviderFormFull({
       codexConfig,
       form,
       initialData?.meta,
+      isOfficialProvider,
       localCodexApiFormat,
       presetProviderType,
       providerId,
@@ -781,7 +786,6 @@ function ProviderFormFull({
     isAnalyzing: isCodexFeatureAnalyzing,
     isPatching: isCodexFeaturePatching,
     error: codexFeatureError,
-    websocketAutoDisabled,
     patchFeatures: patchCodexFeatures,
     handleApiFormatChange: handleCodexFeatureApiFormatChange,
     prepareForSave: prepareCodexFeaturesForSave,
@@ -798,6 +802,9 @@ function ProviderFormFull({
       localCodexApiFormat,
       presetProviderType ?? "",
       initialData?.meta?.imageExtensionConfigured ? "configured" : "pending",
+      initialData?.meta?.codexNativeCapabilitiesGeneratedProvider
+        ? "generated-provider"
+        : "existing-provider",
     ].join("\u0000"),
     configText: codexConfig,
     getDraft: getCodexFeatureDraft,
@@ -807,8 +814,8 @@ function ProviderFormFull({
   const handleCodexApiFormatChange = useCallback(
     (format: CodexApiFormat) => {
       // wire_api is always "responses" for Codex; format controls proxy-layer
-      // conversion. Pass the exact next draft into the feature queue so moving
-      // away from Responses removes supports_websockets before the next save.
+      // conversion. Pass the exact next draft into the feature queue so its
+      // diagnostics stay current without rewriting native capabilities.
       const updated = setCodexWireApi(codexConfig, "responses");
       setLocalCodexApiFormat(format);
       setCodexConfig(updated);
@@ -1114,7 +1121,7 @@ function ProviderFormFull({
   const [isCommonConfigModalOpen, setIsCommonConfigModalOpen] = useState(false);
 
   const shouldApplyLocalProxyRequestOverrides =
-    (appId === "claude" || appId === "codex") && category !== "official";
+    (appId === "claude" || appId === "codex") && !isOfficialProvider;
 
   const handleSubmit = async (values: ProviderFormData) => {
     const overridesResult = shouldApplyLocalProxyRequestOverrides
@@ -1370,7 +1377,7 @@ function ProviderFormFull({
 
     // 非官方供应商端点 / API Key 空：A 类
     // cloud_provider（如 Bedrock）通过模板变量处理认证，跳过通用校验
-    if (category !== "official" && category !== "cloud_provider") {
+    if (!isOfficialProvider && category !== "cloud_provider") {
       if (appId === "claude") {
         if (!isCodexOauthProvider && !isXaiOauthProvider && !baseUrl.trim()) {
           issues.push(
@@ -1465,18 +1472,21 @@ function ProviderFormFull({
 
     let settingsConfig: string;
     let codexFeatureSavePreparation:
-      | { tomlText: string; imageExtensionConfigured?: true }
+      | {
+          tomlText: string;
+          imageExtensionConfigured?: true;
+          codexNativeCapabilitiesGeneratedProvider?: boolean;
+        }
       | undefined;
 
     if (appId === "codex") {
       try {
-        // Close the debounce/click-save race on the same draft that the user
-        // sees. In particular, a non-Responses format must never persist a
-        // stale supports_websockets = true field.
+        // Close the debounce/click-save race on the same native-capability
+        // draft that the user sees.
         codexFeatureSavePreparation = await prepareCodexFeaturesForSave();
         const authJson = JSON.parse(codexAuth);
         let normalizedCodexConfig =
-          category !== "official" &&
+          !isOfficialProvider &&
           (codexFeatureSavePreparation.tomlText ?? "").trim()
             ? setCodexWireApi(
                 codexFeatureSavePreparation.tomlText ?? "",
@@ -1486,10 +1496,9 @@ function ProviderFormFull({
         // 模型映射与「路由接管」解耦：对所有非官方供应商，填了就持久化
         //（Chat 生成兼容路由、原生 Responses 生成 model-catalogs.json），
         // 留空归一化为 [] 即不写。后端只看 modelCatalog.models 是否非空。
-        const normalizedCatalogModels =
-          category !== "official"
-            ? normalizeCodexCatalogModelsForSave(codexCatalogModels)
-            : [];
+        const normalizedCatalogModels = !isOfficialProvider
+          ? normalizeCodexCatalogModelsForSave(codexCatalogModels)
+          : [];
         // The default-model field writes the top-level `model` into the TOML
         // as the user types; only when it was left empty fall back to the
         // first catalog row so "fill mapping only" keeps its old behavior.
@@ -1515,23 +1524,13 @@ function ProviderFormFull({
         }
         settingsConfig = JSON.stringify(configObj);
       } catch (error) {
-        // A failed native-capability preparation is actionable (for example an
-        // incompatible manual WebSocket field), while JSON/TOML editor errors
-        // retain the pre-existing fallback save behavior.
+        // A failed native-capability preparation is actionable, while
+        // JSON/TOML editor errors retain the pre-existing fallback behavior.
         if (codexFeatureSavePreparation === undefined) {
-          const isIncompatibleWebsocket =
-            error instanceof Error &&
-            error.message === "CODEX_FEATURE_INCOMPATIBLE_WEBSOCKET";
           toast.error(
-            isIncompatibleWebsocket
-              ? t("codexFeatures.websockets.saveBlocked", {
-                  defaultValue:
-                    "当前上游格式不支持 WebSocket。请在 TOML 中删除 supports_websockets 后再保存。",
-                })
-              : t("codexFeatures.savePreparationFailed", {
-                  defaultValue:
-                    "无法准备 Codex 原生能力配置；请检查 TOML 后重试。",
-                }),
+            t("codexFeatures.savePreparationFailed", {
+              defaultValue: "无法准备 Codex 原生能力配置；请检查 TOML 后重试。",
+            }),
           );
           return;
         }
@@ -1695,19 +1694,19 @@ function ProviderFormFull({
       codexFastMode: isCodexOauthProvider ? codexFastMode : undefined,
       codexChatReasoning:
         appId === "codex" &&
-        category !== "official" &&
+        !isOfficialProvider &&
         localCodexApiFormat === "openai_chat"
           ? normalizeCodexChatReasoningForSave(codexChatReasoning)
           : undefined,
       promptCacheRouting:
         appId === "codex" &&
-        category !== "official" &&
+        !isOfficialProvider &&
         localCodexApiFormat === "openai_chat" &&
         promptCacheRouting !== "auto"
           ? promptCacheRouting
           : undefined,
       customUserAgent:
-        (appId === "claude" || appId === "codex") && category !== "official"
+        (appId === "claude" || appId === "codex") && !isOfficialProvider
           ? customUserAgent.trim() || undefined
           : undefined,
       localProxyRequestOverrides: shouldApplyLocalProxyRequestOverrides
@@ -1721,22 +1720,22 @@ function ProviderFormFull({
           ? pricingConfig.pricingModelSource
           : undefined,
       apiFormat:
-        appId === "claude" && category !== "official"
+        appId === "claude" && !isOfficialProvider
           ? isXaiOauthProvider
             ? "openai_responses"
             : localApiFormat
-          : appId === "codex" && category !== "official"
+          : appId === "codex" && !isOfficialProvider
             ? isXaiOauthProvider
               ? "openai_responses"
               : localCodexApiFormat
             : undefined,
       apiKeyField:
         appId === "claude" &&
-        category !== "official" &&
+        !isOfficialProvider &&
         localApiKeyField !== "ANTHROPIC_AUTH_TOKEN"
           ? localApiKeyField
           : appId === "codex" &&
-              category !== "official" &&
+              !isOfficialProvider &&
               localCodexApiFormat === "anthropic" &&
               localCodexAnthropicAuthField !== "ANTHROPIC_AUTH_TOKEN"
             ? localCodexAnthropicAuthField
@@ -1744,7 +1743,7 @@ function ProviderFormFull({
       // Off by default; persist true only for codex+anthropic when the user explicitly enables it
       impersonateClaudeCode:
         appId === "codex" &&
-        category !== "official" &&
+        !isOfficialProvider &&
         localCodexApiFormat === "anthropic" &&
         localCodexImpersonateClaudeCode
           ? true
@@ -1752,7 +1751,7 @@ function ProviderFormFull({
       // Persist only for codex+anthropic when a positive value was entered
       maxOutputTokens:
         appId === "codex" &&
-        category !== "official" &&
+        !isOfficialProvider &&
         localCodexApiFormat === "anthropic" &&
         localCodexMaxOutputTokens.trim() !== "" &&
         Number(localCodexMaxOutputTokens) > 0
@@ -1760,7 +1759,7 @@ function ProviderFormFull({
           : undefined,
       isFullUrl:
         supportsFullUrl &&
-        category !== "official" &&
+        !isOfficialProvider &&
         !isXaiOauthProvider &&
         localIsFullUrl
           ? true
@@ -1772,7 +1771,20 @@ function ProviderFormFull({
       codexFeatureSavePreparation?.imageExtensionConfigured === true
         ? { imageExtensionConfigured: true }
         : {}),
+      ...(appId === "codex" &&
+      codexFeatureSavePreparation?.codexNativeCapabilitiesGeneratedProvider ===
+        true
+        ? { codexNativeCapabilitiesGeneratedProvider: true }
+        : {}),
     };
+
+    if (
+      appId === "codex" &&
+      codexFeatureSavePreparation?.codexNativeCapabilitiesGeneratedProvider ===
+        false
+    ) {
+      delete nextMeta.codexNativeCapabilitiesGeneratedProvider;
+    }
 
     if (!isCodexOauthProvider && "codexFastMode" in nextMeta) {
       delete nextMeta.codexFastMode;
@@ -1784,7 +1796,7 @@ function ProviderFormFull({
   };
 
   const shouldShowSpeedTest =
-    category !== "official" && category !== "cloud_provider";
+    !isOfficialProvider && category !== "cloud_provider";
 
   const {
     shouldShowApiKeyLink: shouldShowClaudeApiKeyLink,
@@ -2348,7 +2360,7 @@ function ProviderFormFull({
               autoSelect={endpointAutoSelect}
               onAutoSelectChange={setEndpointAutoSelect}
               showEndpointTools
-              shouldShowModelSelector={category !== "official"}
+              shouldShowModelSelector={!isOfficialProvider}
               claudeModel={claudeModel}
               defaultHaikuModel={defaultHaikuModel}
               defaultHaikuModelName={defaultHaikuModelName}
@@ -2411,7 +2423,6 @@ function ProviderFormFull({
               isCodexFeatureAnalyzing={isCodexFeatureAnalyzing}
               isCodexFeaturePatching={isCodexFeaturePatching}
               codexFeatureError={codexFeatureError}
-              websocketAutoDisabled={websocketAutoDisabled}
               onCodexImageExtensionChange={(enabled) => {
                 void patchCodexFeatures({ imageExtension: enabled }).catch(
                   () => undefined,
@@ -2560,7 +2571,7 @@ function ProviderFormFull({
                 authValue={codexAuth}
                 configValue={codexConfig}
                 providerName={form.watch("name")}
-                showRemoteCompaction={category !== "official"}
+                showRemoteCompaction={!isOfficialProvider}
                 isProxyTakeover={isProxyTakeover}
                 onAuthChange={setCodexAuth}
                 onConfigChange={handleCodexConfigChange}

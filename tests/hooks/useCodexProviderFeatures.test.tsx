@@ -49,31 +49,18 @@ afterEach(() => {
 });
 
 describe("useCodexProviderFeatures", () => {
-  it("removes WebSocket from the TOML draft when leaving Responses", async () => {
+  it("keeps WebSocket in the TOML draft when leaving Responses", async () => {
     const onTomlPatched = vi.fn();
     const nextToml =
       '[model_providers.third_party]\nbase_url = "https://api.example.test/v1"\nsupports_websockets = true\n';
-    const patchedToml =
-      '[model_providers.third_party]\nbase_url = "https://api.example.test/v1"\n';
     apiMocks.analyzeCodexProviderFeatures.mockResolvedValue(
       featureState({
         websockets: {
           enabled: true,
-          compatible: false,
-          reason: "CODEX_FEATURE_INCOMPATIBLE_WEBSOCKET",
+          compatible: true,
         },
       }),
     );
-    apiMocks.patchCodexProviderFeatures.mockResolvedValue({
-      tomlText: patchedToml,
-      state: featureState({
-        websockets: {
-          enabled: false,
-          compatible: false,
-          reason: "CODEX_FEATURE_INCOMPATIBLE_WEBSOCKET",
-        },
-      }),
-    });
 
     const { result } = renderHook(() =>
       useCodexProviderFeatures({
@@ -97,26 +84,22 @@ describe("useCodexProviderFeatures", () => {
       }),
       false,
     );
-    expect(apiMocks.patchCodexProviderFeatures).toHaveBeenCalledWith(
-      expect.objectContaining({
-        meta: expect.objectContaining({ apiFormat: "openai_chat" }),
-      }),
-      { websockets: false },
-      false,
-    );
-    expect(onTomlPatched).toHaveBeenCalledWith(patchedToml);
-    expect(result.current.websocketAutoDisabled).toBe(true);
+    expect(apiMocks.patchCodexProviderFeatures).not.toHaveBeenCalled();
+    expect(onTomlPatched).not.toHaveBeenCalled();
+    expect(result.current.state?.websockets).toEqual({
+      enabled: true,
+      compatible: true,
+    });
   });
 
-  it("blocks a manually restored incompatible WebSocket field instead of silently patching it", async () => {
+  it("allows a manually configured WebSocket field for non-Responses formats", async () => {
     const tomlText =
       '[model_providers.third_party]\nbase_url = "https://api.example.test/v1"\nsupports_websockets = true\n';
     apiMocks.analyzeCodexProviderFeatures.mockResolvedValue(
       featureState({
         websockets: {
           enabled: true,
-          compatible: false,
-          reason: "CODEX_FEATURE_INCOMPATIBLE_WEBSOCKET",
+          compatible: true,
         },
       }),
     );
@@ -132,9 +115,9 @@ describe("useCodexProviderFeatures", () => {
       }),
     );
 
-    await expect(result.current.prepareForSave()).rejects.toThrow(
-      "CODEX_FEATURE_INCOMPATIBLE_WEBSOCKET",
-    );
+    await expect(result.current.prepareForSave()).resolves.toEqual({
+      tomlText,
+    });
     expect(apiMocks.patchCodexProviderFeatures).not.toHaveBeenCalled();
   });
 
@@ -148,6 +131,7 @@ describe("useCodexProviderFeatures", () => {
       tomlText: patchedToml,
       state: featureState({ imageExtension: { kind: "off" } }),
       imageExtensionConfigured: true,
+      codexNativeCapabilitiesGeneratedProvider: true,
     });
     apiMocks.analyzeCodexProviderFeatures.mockResolvedValue(
       featureState({ imageExtension: { kind: "off" } }),
@@ -195,22 +179,28 @@ describe("useCodexProviderFeatures", () => {
     await expect(result.current.prepareForSave()).resolves.toEqual({
       tomlText: patchedToml,
       imageExtensionConfigured: true,
+      codexNativeCapabilitiesGeneratedProvider: true,
     });
   });
 
-  it("does not carry an unsaved image marker into an inapplicable provider", async () => {
+  it("does not carry unsaved private markers into an invalid TOML provider", async () => {
     const tomlText =
       '[model_providers.third_party]\nbase_url = "https://api.example.test/v1"\n';
     apiMocks.patchCodexProviderFeatures.mockResolvedValue({
       tomlText,
       state: featureState({ imageExtension: { kind: "off" } }),
       imageExtensionConfigured: true,
+      codexNativeCapabilitiesGeneratedProvider: true,
     });
     apiMocks.analyzeCodexProviderFeatures.mockResolvedValue(
       featureState({
         applicable: false,
-        imageExtension: { kind: "off" },
+        imageExtension: {
+          kind: "invalid",
+          code: "CODEX_FEATURE_INVALID_TOML",
+        },
         providerTableFound: false,
+        diagnostics: [{ code: "CODEX_FEATURE_INVALID_TOML", field: "config" }],
       }),
     );
 
@@ -218,7 +208,7 @@ describe("useCodexProviderFeatures", () => {
       useCodexProviderFeatures({
         enabled: true,
         isNew: false,
-        analysisKey: "became-official-or-incomplete",
+        analysisKey: "became-invalid",
         configText: tomlText,
         getDraft: () => draftFor(tomlText),
         onTomlPatched: () => undefined,

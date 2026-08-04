@@ -229,6 +229,9 @@ export interface ProviderMeta {
   // distinguishes a historical missing header (default-on migration) from an
   // explicit user choice to keep the feature off.
   imageExtensionConfigured?: boolean;
+  // Private ownership marker for the minimal official Codex provider table
+  // generated solely to carry native capability fields.
+  codexNativeCapabilitiesGeneratedProvider?: boolean;
 }
 
 // Skill 同步方式

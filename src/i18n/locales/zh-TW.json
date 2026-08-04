@@ -924,32 +924,36 @@
   },
   "codexFeatures": {
     "title": "Codex 原生功能",
-    "description": "這些選項只會修改目前供應商的 TOML 草稿；儲存後才會寫入 Codex 設定。",
+    "description": "這些選項適用於所有 Codex 供應商，只會修改目前 TOML 草稿；儲存後才會寫入設定。",
     "analyzing": "正在檢查 Codex 原生功能…",
     "analysisFailed": "無法分析 Codex 原生功能草稿，請檢查 TOML 後重試。",
     "patchFailed": "無法更新 Codex 原生功能草稿，請檢查 TOML 後重試。",
     "savePreparationFailed": "無法準備 Codex 原生功能設定，請檢查 TOML 後重試。",
     "imageExtension": {
       "label": "啟用內建生圖擴充功能",
-      "description": "向目前第三方 API 供應商寫入受管理的請求標頭，以啟用 Codex 的內建生圖擴充功能。",
+      "description": "向目前供應商寫入受管理的請求標頭，以啟用 Codex 的內建生圖擴充功能。",
       "legacyTitle": "儲存時遷移",
       "legacyDescription": "這是歷史供應商的預設啟用遷移。取消不會修改設定；儲存後才會寫入受管理的請求標頭。",
       "conflictTitle": "生圖擴充功能請求標頭衝突",
-      "conflictDescription": "目前 TOML 含有同名但非受管理的請求標頭。FyAgent 不會覆寫、刪除或建立大小寫變體，請先手動處理。",
+      "conflictDescription": "目前 TOML 含有同名或大小寫不同的請求標頭；操作開關會覆寫這些同名值。",
       "invalidTitle": "無法讀取生圖擴充功能設定",
-      "invalidDescription": "請求標頭結構不是 Codex 所需的字串映射。請在 TOML 中修正後再修改此開關。"
+      "invalidDescription": "請求標頭不是字串映射；操作開關會以受管理的請求標頭取代或刪除此欄位。"
     },
     "websockets": {
       "label": "啟用 WebSocket 傳輸",
-      "description": "僅 OpenAI Responses 格式可用。關閉時會刪除 supports_websockets，而不是寫入 false。",
-      "incompatible": "目前上游格式不是 OpenAI Responses，因此 WebSocket 傳輸不可用。",
-      "saveBlocked": "目前上游格式不支援 WebSocket。請在 TOML 中刪除 supports_websockets 後再儲存。",
-      "autoDisabled": "已因上游格式改為非 Responses 自動關閉 WebSocket，並從目前 TOML 草稿移除該欄位。"
+      "description": "寫入 supports_websockets = true；上游模型或代理路徑可能不支援，儲存後會提示已識別的風險。"
+    },
+    "saveWarnings": {
+      "added": "供應商已新增",
+      "saved": "供應商已儲存",
+      "nonGptModel": "WebSocket 傳輸僅支援 GPT 系列模型",
+      "proxyMayBeUnsupported": "目前代理接管路徑可能不支援 WebSocket",
+      "separator": "；"
     },
     "diagnostic": {
       "invalidToml": "Codex TOML 草稿無效；FyAgent 不會自動重寫。",
-      "invalidHeaders": "Codex 請求標頭結構無效。請先手動修復，再修改原生功能。",
-      "invalidWebsockets": "WebSocket 設定無效。請手動修復 TOML 後再儲存。",
+      "invalidHeaders": "Codex 請求標頭結構無效；操作生圖開關會修復此欄位。",
+      "invalidWebsockets": "WebSocket 設定無效；操作 WebSocket 開關會修復此欄位。",
       "generic": "Codex 原生功能設定無效；FyAgent 不會自動重寫此 TOML 草稿。"
     }
   },
@@ -1415,7 +1419,8 @@
     "reasoningEffortHint": "上游支援 low/high/max 等思考深度控制時啟用。啟用後會自動啟用思考模式，並把 Codex 的 reasoning.effort 轉成上游 Chat 參數。",
     "reasoningGroupTitle": "思考能力",
     "reasoningSectionHint": "預設供應商已自動設定；自訂供應商會按名稱/位址自動推斷。僅當自動識別不準時才需手動覆寫。",
-    "advancedSectionHint": "包含上游格式、模型映射、思考能力與自訂 User-Agent。使用 Chat Completions 協定的供應商需開啟路由接管才能使用。"
+    "advancedSectionHint": "包含 Codex 原生功能、上游格式、模型映射、思考能力與自訂 User-Agent。使用 Chat Completions 協定的供應商需開啟路由接管才能使用。",
+    "officialAdvancedSectionHint": "包含內建生圖擴充功能與 WebSocket 傳輸開關。"
   },
   "geminiConfig": {
     "envFile": "環境變數 (.env)",

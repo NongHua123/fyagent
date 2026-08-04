@@ -19,6 +19,24 @@ const TEMPLATE_TYPE_BALANCE: &str = "balance";
 const TEMPLATE_TYPE_OFFICIAL_SUBSCRIPTION: &str = "official_subscription";
 const COPILOT_UNIT_PREMIUM: &str = "requests";
 
+fn provider_mutation_warning_codes(
+    state: &AppState,
+    app_type: &AppType,
+    provider: &Provider,
+) -> Vec<String> {
+    if !matches!(app_type, AppType::Codex) {
+        return Vec::new();
+    }
+    let takeover_enabled =
+        futures::executor::block_on(state.db.get_proxy_config_for_app(AppType::Codex.as_str()))
+            .map(|config| config.enabled)
+            .unwrap_or(false)
+            || state
+                .proxy_service
+                .detect_takeover_in_live_config_for_app(&AppType::Codex);
+    crate::codex_config::codex_provider_save_warning_codes(provider, takeover_enabled)
+}
+
 /// 获取所有供应商
 #[tauri::command]
 pub fn get_providers(
@@ -58,8 +76,11 @@ pub fn add_provider_with_result(
     #[allow(non_snake_case)] addToLive: Option<bool>,
 ) -> Result<ProviderMutationResult<bool>, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    let provider_id = provider.id.clone();
+    let warning_fallback = provider.clone();
+    let warning_app_type = app_type.clone();
     let mutation_app_type = app_type.clone();
-    ProviderService::with_live_config_result(app_type, || {
+    let mut result = ProviderService::with_live_config_result(app_type, || {
         ProviderService::add(
             state.inner(),
             mutation_app_type,
@@ -67,7 +88,16 @@ pub fn add_provider_with_result(
             addToLive.unwrap_or(true),
         )
     })
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    let saved_provider = state
+        .db
+        .get_provider_by_id(&provider_id, warning_app_type.as_str())
+        .ok()
+        .flatten()
+        .unwrap_or(warning_fallback);
+    result.warning_codes =
+        provider_mutation_warning_codes(state.inner(), &warning_app_type, &saved_provider);
+    Ok(result)
 }
 
 #[tauri::command]
@@ -90,8 +120,11 @@ pub fn update_provider_with_result(
     #[allow(non_snake_case)] originalId: Option<String>,
 ) -> Result<ProviderMutationResult<bool>, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    let provider_id = provider.id.clone();
+    let warning_fallback = provider.clone();
+    let warning_app_type = app_type.clone();
     let mutation_app_type = app_type.clone();
-    ProviderService::with_live_config_result(app_type, || {
+    let mut result = ProviderService::with_live_config_result(app_type, || {
         ProviderService::update(
             state.inner(),
             mutation_app_type,
@@ -99,7 +132,16 @@ pub fn update_provider_with_result(
             provider,
         )
     })
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    let saved_provider = state
+        .db
+        .get_provider_by_id(&provider_id, warning_app_type.as_str())
+        .ok()
+        .flatten()
+        .unwrap_or(warning_fallback);
+    result.warning_codes =
+        provider_mutation_warning_codes(state.inner(), &warning_app_type, &saved_provider);
+    Ok(result)
 }
 
 #[tauri::command]

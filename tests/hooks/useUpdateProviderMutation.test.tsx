@@ -11,6 +11,12 @@ const apiMocks = vi.hoisted(() => ({
   updateWithResult: vi.fn(),
 }));
 
+const toastMocks = vi.hoisted(() => ({
+  success: vi.fn(),
+  warning: vi.fn(),
+  error: vi.fn(),
+}));
+
 vi.mock("@/lib/api", () => ({
   providersApi: {
     update: (...args: unknown[]) => apiMocks.update(...args),
@@ -39,10 +45,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("sonner", () => ({
-  toast: {
-    success: vi.fn(),
-    error: vi.fn(),
-  },
+  toast: toastMocks,
 }));
 
 function createWrapper() {
@@ -75,6 +78,9 @@ beforeEach(() => {
   apiMocks.updateWithResult
     .mockReset()
     .mockResolvedValue({ value: true, liveConfigChanged: false, app: "codex" });
+  toastMocks.success.mockReset();
+  toastMocks.warning.mockReset();
+  toastMocks.error.mockReset();
 });
 
 describe("useUpdateProviderMutation", () => {
@@ -123,6 +129,8 @@ describe("useUpdateProviderMutation", () => {
     );
 
     expect(outcome).toEqual({ value: provider, liveConfigChanged: true });
+    expect(toastMocks.success).toHaveBeenCalledTimes(1);
+    expect(toastMocks.warning).not.toHaveBeenCalled();
   });
 
   it("also invalidates the previous usage query when provider id changes", async () => {
@@ -153,5 +161,51 @@ describe("useUpdateProviderMutation", () => {
     expect(invalidateSpy).not.toHaveBeenCalledWith({
       queryKey: usageKeys.all,
     });
+  });
+
+  it("shows the backend WebSocket risk after every successful risky update", async () => {
+    apiMocks.updateWithResult.mockResolvedValue({
+      value: true,
+      liveConfigChanged: false,
+      app: "codex",
+      warningCodes: ["CODEX_WEBSOCKET_NON_GPT_MODEL"],
+    });
+    const { wrapper } = createWrapper();
+    const provider = createProvider();
+    const { result } = renderHook(() => useUpdateProviderMutation("codex"), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ provider });
+      await result.current.mutateAsync({ provider });
+    });
+
+    expect(toastMocks.warning).toHaveBeenCalledTimes(2);
+    expect(toastMocks.warning).toHaveBeenNthCalledWith(
+      1,
+      "供应商已保存；WebSocket 传输仅支持 GPT 系列模型",
+      { closeButton: true },
+    );
+    expect(toastMocks.success).not.toHaveBeenCalled();
+  });
+
+  it("shows only the save error when the backend mutation fails", async () => {
+    apiMocks.updateWithResult.mockRejectedValueOnce(new Error("save failed"));
+    const { wrapper } = createWrapper();
+    const provider = createProvider();
+    const { result } = renderHook(() => useUpdateProviderMutation("codex"), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await expect(result.current.mutateAsync({ provider })).rejects.toThrow(
+        "save failed",
+      );
+    });
+
+    expect(toastMocks.error).toHaveBeenCalledTimes(1);
+    expect(toastMocks.success).not.toHaveBeenCalled();
+    expect(toastMocks.warning).not.toHaveBeenCalled();
   });
 });

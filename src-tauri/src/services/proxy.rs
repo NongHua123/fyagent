@@ -4082,13 +4082,27 @@ wire_api = "responses"
                 "access_token": "oauth-access"
             }
         });
-        crate::codex_config::write_codex_live_atomic(&oauth_auth, Some("model = \"gpt-5.4\"\n"))
+        let official_config = format!(
+            r#"model = "gpt-5.4"
+model_provider = "custom"
+
+[model_providers.custom]
+name = "OpenAI"
+requires_openai_auth = true
+wire_api = "responses"
+supports_websockets = true
+http_headers = {{ "{}" = "{}" }}
+"#,
+            crate::codex_config::CODEX_IMAGE_EXTENSION_HEADER,
+            crate::codex_config::CODEX_IMAGE_EXTENSION_VALUE
+        );
+        crate::codex_config::write_codex_live_atomic(&oauth_auth, Some(&official_config))
             .expect("seed official live config");
 
         let mut official = Provider::with_id(
             "codex-official".to_string(),
             "OpenAI Official".to_string(),
-            json!({ "auth": {}, "config": "model = \"gpt-5.4\"\n" }),
+            json!({ "auth": {}, "config": official_config }),
             None,
         );
         official.category = Some("official".to_string());
@@ -4134,6 +4148,8 @@ wire_api = "responses"
             &official_live
         ));
         assert!(official_live.contains("requires_openai_auth = true"));
+        assert!(official_live.contains("supports_websockets = true"));
+        assert!(official_live.contains(crate::codex_config::CODEX_IMAGE_EXTENSION_HEADER));
         assert!(!official_live.contains(PROXY_TOKEN_PLACEHOLDER));
 
         service
@@ -4167,6 +4183,8 @@ wire_api = "responses"
         assert!(crate::codex_config::codex_config_has_official_proxy_route(
             &official_live
         ));
+        assert!(official_live.contains("supports_websockets = true"));
+        assert!(official_live.contains(crate::codex_config::CODEX_IMAGE_EXTENSION_HEADER));
         assert!(!official_live.contains(PROXY_TOKEN_PLACEHOLDER));
 
         service
@@ -4174,6 +4192,10 @@ wire_api = "responses"
             .await
             .expect("disable takeover");
         assert_eq!(read_auth(), oauth_auth);
+        let restored_live = std::fs::read_to_string(crate::codex_config::get_codex_config_path())
+            .expect("read restored official config");
+        assert!(restored_live.contains("supports_websockets = true"));
+        assert!(restored_live.contains(crate::codex_config::CODEX_IMAGE_EXTENSION_HEADER));
     }
 
     #[test]
@@ -5018,6 +5040,8 @@ model = "gpt-5.1-codex"
 name = "Chat Only"
 base_url = "https://chat-only.example/v1"
 wire_api = "chat"
+supports_websockets = true
+http_headers = { "x-openai-actor-authorization" = "local-image-extension" }
 "#;
 
         let proxy_url = "http://127.0.0.1:5000/v1";
@@ -5039,6 +5063,19 @@ wire_api = "chat"
         assert_eq!(
             provider.get("wire_api").and_then(|v| v.as_str()),
             Some("responses")
+        );
+        assert_eq!(
+            provider
+                .get("supports_websockets")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            provider
+                .get("http_headers")
+                .and_then(|v| v.get("x-openai-actor-authorization"))
+                .and_then(|v| v.as_str()),
+            Some("local-image-extension")
         );
     }
 

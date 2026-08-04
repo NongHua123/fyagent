@@ -37,12 +37,17 @@ update_provider_with_result(provider, app, originalId?)
 delete_provider_with_result(id, app)
 switch_provider_with_result(id, app)
 import_default_config_with_result(app)
-  -> { value, liveConfigChanged, app }
+  -> { value, liveConfigChanged, app, warningCodes? }
 
 analyze_codex_provider_features(app: "codex", provider, isNew?)
   -> CodexProviderFeatureState
 patch_codex_provider_features(app: "codex", provider, intent, isNew?)
-  -> { tomlText, state, imageExtensionConfigured? }
+  -> {
+       tomlText,
+       state,
+       imageExtensionConfigured?,
+       codexNativeCapabilitiesGeneratedProvider?
+     }
 
 get_codex_desktop_runtime_status()
 request_codex_desktop_restart()
@@ -74,28 +79,60 @@ accept `AppType`, Provider IDs, or renderer-controlled filesystem paths.
 
 ### Codex native capabilities and live result
 
-- Determine capability eligibility from the actual editable third-party
-  provider TOML table, base URL, and ordinary API credentials; do not infer it
-  from a provider-type string. Official, managed-account/OAuth, read-only, and
-  incomplete providers are ineligible.
+- Every Codex Provider exposes both native-capability controls in the existing,
+  initially collapsed advanced region. Provider ID, `base_url`, credentials,
+  official/managed classification, OAuth type, proxy takeover, `wire_api`, and
+  `meta.apiFormat` do not make a valid TOML draft ineligible. A fixed official
+  Provider is identified only by `category == "official"` or ID
+  `codex-official`; names, URLs, and `requires_openai_auth` are not classifiers.
 - Read and patch the form TOML using `toml_edit`. Preserve comments, blank
   lines, table/field order, unrelated fields, and unrelated headers.
+- An invalid complete TOML document keeps both controls visible but disabled
+  and blocks capability writes. An invalid `http_headers` or
+  `supports_websockets` field is a non-blocking diagnostic: ordinary saves
+  preserve it, and only an explicit operation on that control repairs it.
 - The image capability controls only a case-insensitive
   `x-openai-actor-authorization` header whose value is exactly
-  `local-image-extension`. A conflicting same-name header is protected: do not
-  overwrite, delete, or create a differently cased duplicate. Saving unrelated
-  provider fields may preserve such a conflict, but an explicit image-toggle
-  patch must fail closed until the user resolves it in TOML.
-- The WebSocket capability writes `supports_websockets = true` only for
-  `meta.apiFormat == "openai_responses"`. Disabling removes the field, rather
-  than writing `false`. Moving to another upstream format removes an already
-  enabled field before save; a manually restored incompatible `true` blocks
-  save.
+  `local-image-extension`. Enabling removes all case variants and writes one
+  canonical key; disabling removes all variants and removes an empty header
+  table. Other strings in a valid header map survive. When the field is not a
+  string map, explicit enable replaces the entire field with the managed map
+  and explicit disable deletes it; no unrelated save performs this repair.
+- The WebSocket capability is format-agnostic configuration. Enabling always
+  writes boolean `supports_websockets = true`; disabling removes the field
+  rather than writing `false`. API-format changes neither remove nor disable
+  it, and Responses, Chat, Anthropic, managed OAuth, official, and proxy
+  scenarios all remain saveable. An invalid field type is overwritten or
+  removed only by an explicit WebSocket-control operation.
 - `ProviderMeta.imageExtensionConfigured` is migration-only private metadata.
-  Missing metadata plus no managed/conflicting header is a legacy pending-on
-  draft; no bulk upgrade may write live TOML. A successful first new-provider
-  save or explicit historical decision marks the row configured. UI state still
-  derives from TOML, not this marker alone.
+  For non-official Providers, missing metadata plus no managed/conflicting
+  header is a legacy pending-on draft; no bulk upgrade may write live TOML. A
+  successful first new-provider save or explicit historical decision marks the
+  row configured. UI state still derives from TOML, not this marker alone.
+- Fixed official Providers default both capabilities off and do not receive a
+  Provider table merely by opening or saving the form. The first actual enable
+  creates `model_provider = "custom"` and a minimal table with `name =
+  "OpenAI"`, `requires_openai_auth = true`, and `wire_api = "responses"`.
+  Private `ProviderMeta.codexNativeCapabilitiesGeneratedProvider` records
+  ownership only when the capability patch actually creates the table; a
+  pre-existing inactive `custom` table may be reused but is never claimed.
+  When both capabilities are off, remove an owned table only if its exact
+  managed shape remains and it has no user fields; otherwise remove only the
+  capability fields. An explicit Provider table takes precedence over unified
+  Codex session-history injection.
+- Successful Codex add/update mutations may return warning codes
+  `CODEX_WEBSOCKET_NON_GPT_MODEL` and
+  `CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED`. Compute them from the final saved
+  Provider only when WebSocket is `true`. Check nonempty top-level `model`,
+  `review_model`, and `modelCatalog.models[].model`; take the segment after the
+  final `/` and accept an ASCII case-insensitive `gpt-` prefix. Any recognizable
+  non-GPT model warns; no recognizable models do not. Active Codex proxy
+  takeover adds the proxy warning. Warning codes are omitted for switching,
+  failed saves, and empty-risk results.
+- Normal and official proxy projections preserve explicit WebSocket and the
+  managed image header while continuing to rewrite routing `base_url` and
+  `wire_api`. The local proxy still exposes HTTP/SSE only; preservation and a
+  warning are not a claim of WebSocket Upgrade support.
 - `liveConfigChanged` means only that a successful operation changed the final
   bytes of this user’s `~/.codex/config.toml`. It contains neither bytes,
   content hashes, paths, nor credentials. Non-Codex mutations return `false`.
@@ -172,8 +209,11 @@ queries. Its API key clears on unmount and is never refilled from disk.
 | --- | --- |
 | Metadata versions differ or are invalid SemVer | Local version consistency test fails; do not hand-edit the lockfile. |
 | Non-Codex app calls a native-feature command | Command rejects before TOML analysis or patch. |
-| Image header has a conflicting value or invalid header shape | Show protected/invalid state; explicit image patch fails without leaking the value. |
-| Non-Responses provider saves with `supports_websockets = true` | Reject save; never persist incompatible WebSocket transport. |
+| Complete Codex TOML cannot be parsed | Keep both controls visible and disabled; reject capability writes and never reconstruct the document. |
+| Image header has conflicting case variants or an invalid shape | Show a non-sensitive diagnostic; preserve on unrelated save; explicit image control normalizes, replaces, or deletes only under the documented repair rule. |
+| `supports_websockets` has a non-boolean value | Show a diagnostic; preserve on unrelated save; explicit enable overwrites with `true`, explicit disable deletes. |
+| Chat/Anthropic/official/managed/proxy Provider saves with `supports_websockets = true` | Save succeeds. Return model/proxy risk codes when applicable; do not rewrite the choice. |
+| Fixed official Provider has empty TOML and both controls remain off | Preserve empty TOML and create no Provider table or capability metadata. |
 | DB/provider action succeeds but live Codex bytes are unchanged | Return `liveConfigChanged: false`; do not ask to restart. |
 | Several/non-identical trusted installations or running instances exist | Return ambiguous/unavailable; do not close or launch any process. |
 | Graceful exit exceeds 8 seconds | Require the opaque second-confirmation token; no automatic force kill. |
@@ -186,14 +226,24 @@ queries. Its API key clears on unmount and is never refilled from disk.
 
 ## 5. Good / Base / Bad Cases
 
-- Good: An eligible third-party Codex provider with an unknown TOML header
-  enables image support. Its exact managed header is added, comments and other
-  headers stay byte-positioned as `toml_edit` preserves them, and a live byte
-  change may prompt for a trusted restart once.
+- Good: A Provider named `OpenAI` with a third-party URL, or any official,
+  managed OAuth, proxy-taken-over, or ordinary Codex Provider, opens the same
+  two controls. Enabling image support canonicalizes only the managed header;
+  comments and other valid headers remain, and a live byte change may prompt
+  for a trusted restart once.
 - Base: A historical provider lacks the marker and managed header. The editor
   displays pending-on, but cancelling the dialog creates no TOML/database
   migration. A later save records either the explicit enabled or disabled
   decision.
+- Good: A Chat-format Provider saves WebSocket with a non-GPT model while
+  takeover is enabled. The mutation succeeds and returns both warning codes;
+  the renderer emits one combined localized warning instead of a success toast.
+- Base: A fixed official Provider remains empty while both controls are off,
+  creates a minimal ChatGPT-authenticated `custom` table on first enable, and
+  removes only an unchanged owned skeleton after the last capability is off.
+- Bad: API-format change silently deletes WebSocket, proxy projection forces
+  it to false, a save rejects non-Responses format, or a model/proxy warning is
+  treated as proof that the upstream transport works.
 - Bad: Renderer sends `{ pid: 1234 }`, a different `app`, or a launch path to
   a restart command; a process-name scan kills `codex.exe`; the backend accepts
   any such control.
@@ -212,13 +262,18 @@ queries. Its API key clears on unmount and is never refilled from disk.
 - TypeScript: parse all three version metadata files and assert exact `0.1.0`;
   test legacy WorkBuddy visibility/order, top-level isolation, all four locale
   key sets, password/default key lifecycle, HTTP warning, persistent truncation,
-  duplicate-dialog frozen request/retry, and Codex capability/restart dialogs.
+  duplicate-dialog frozen request/retry, all Codex Provider categories showing
+  initially collapsed capability controls, document-vs-field diagnostics,
+  format-change preservation, add/update warning-toast merge/repetition/failure
+  behavior, and Codex capability/restart dialogs.
 - Rust Codex: TOML comments/order/unknown headers, case-insensitive managed
-  header behavior, conflict/invalid shape protection, historical marker
-  migration, Responses-only WebSocket validation, live-byte change truth table,
-  command app guard, and fake-platform trusted restart state machine including
-  graceful timeout, force confirmation, original-installation drift, and
-  15-second verification failure.
+  header repair and invalid-shape preservation, historical marker migration,
+  official delayed generation/safe cleanup, WebSocket writes for Responses,
+  Chat, and Anthropic without a format gate, invalid-field explicit repair, GPT/non-GPT/mixed/empty
+  warning matrices, normal/official proxy projection and restore, live-byte
+  change truth table, command app guard, and fake-platform trusted restart state
+  machine including graceful timeout, force confirmation, original-installation
+  drift, and 15-second verification failure.
 - Rust WorkBuddy: URL normalization/rejection, redirection and Authorization
   policy, timeout/2 MiB bounds, malformed entries after cap, exact order and
   case-sensitive de-duplication, no-key behavior, HMAC revision opacity and
