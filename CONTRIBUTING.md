@@ -20,51 +20,66 @@ There are many ways to contribute:
 
 ### Prerequisites
 
-- Node.js 20+ and pnpm 10.12.3
-- Rust 1.85+ and Cargo
+- [mise](https://mise.jdx.dev/getting-started.html) 2026.8.0 or newer,
+  installed globally
 - [Tauri 2.0 prerequisites](https://v2.tauri.app/start/prerequisites/)
+
+The repository's `mise.toml` is the single source of truth for Node.js, pnpm,
+Python, and Rust/Cargo versions. Tauri CLI is installed as a project dependency.
+After reviewing the config, trust it once and install the pinned tools:
+
+```bash
+mise trust
+mise install
+```
+
+The examples below use `mise exec --` so they also work without shell
+activation. You may omit that prefix in an intentionally mise-activated shell.
 
 ### Quick Start
 
 ```bash
 # Install dependencies
-pnpm install
+mise exec -- pnpm install --frozen-lockfile
 
 # Start development server with hot reload
-pnpm dev
+mise exec -- pnpm dev
 ```
 
 ### Useful Commands
 
 | Command | Description |
 |---------|-------------|
-| `pnpm dev` | Start dev server (hot reload) |
-| `pnpm build` | Production build |
-| `pnpm typecheck` | TypeScript type checking |
-| `pnpm test:unit` | Run unit tests |
-| `pnpm format` | Format code (Prettier) |
-| `pnpm format:check` | Check code formatting |
+| `mise exec -- pnpm dev` | Start dev server (hot reload) |
+| `mise exec -- pnpm build` | Production build |
+| `mise exec -- pnpm typecheck` | TypeScript type checking |
+| `mise exec -- pnpm test:unit` | Run unit tests |
+| `mise exec -- pnpm format` | Format code (Prettier) |
+| `mise exec -- pnpm format:check` | Check code formatting |
 
 For Rust backend:
 
 ```bash
-cd src-tauri
-cargo fmt        # Format Rust code
-cargo clippy     # Run linter
-cargo test       # Run tests
+mise exec -- cargo fmt --manifest-path src-tauri/Cargo.toml
+mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 ## Code Style
 
-- **Frontend**: Prettier for formatting and strict TypeScript (`pnpm typecheck`)
-- **Backend**: `cargo fmt` for formatting, `cargo clippy` for linting
+- **Frontend**: Prettier for formatting and strict TypeScript (`mise exec -- pnpm typecheck`)
+- **Backend**: `mise exec -- cargo fmt` for formatting, `mise exec -- cargo clippy` for linting
 - **Tauri 2.0**: Command names must use camelCase
 
 Run all checks before submitting:
 
 ```bash
-pnpm typecheck && pnpm format:check && pnpm test:unit
-cd src-tauri && cargo fmt --check && cargo clippy && cargo test
+mise exec -- pnpm typecheck
+mise exec -- pnpm format:check
+mise exec -- pnpm test:unit
+mise exec -- cargo fmt --check --manifest-path src-tauri/Cargo.toml
+mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 ## Pull Request Guidelines
@@ -76,9 +91,9 @@ cd src-tauri && cargo fmt --check && cargo clippy && cargo test
 
 ### PR Checklist
 
-- [ ] `pnpm typecheck` passes
-- [ ] `pnpm format:check` passes
-- [ ] `cargo clippy` passes (if Rust code changed)
+- [ ] `mise exec -- pnpm typecheck` passes
+- [ ] `mise exec -- pnpm format:check` passes
+- [ ] `mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings` passes (if Rust code changed)
 - [ ] Updated i18n files if user-facing text changed
 
 ### Commit Convention
@@ -148,51 +163,64 @@ FyAgent maintains four locale resources. When modifying user-facing text:
 
 ### 前提条件
 
-- Node.js 20+ 和 pnpm 10.12.3
-- Rust 1.85+ 和 Cargo
+- 全局安装 [mise](https://mise.jdx.dev/getting-started.html) 2026.8.0 或更高版本
 - [Tauri 2.0 开发环境](https://v2.tauri.app/start/prerequisites/)
+
+仓库中的 `mise.toml` 是 Node.js、pnpm、Python 和 Rust/Cargo 版本的单一事实源；
+Tauri CLI 作为项目依赖安装。检查配置后，信任一次并安装固定的开发工具：
+
+```bash
+mise trust
+mise install
+```
+
+下列示例使用 `mise exec --`，未配置 shell 激活时也能使用仓库固定的工具。
+若当前 shell 已明确激活 mise，可以省略该前缀。
 
 ### 快速开始
 
 ```bash
 # 安装依赖
-pnpm install
+mise exec -- pnpm install --frozen-lockfile
 
 # 启动开发服务器（热重载）
-pnpm dev
+mise exec -- pnpm dev
 ```
 
 ### 常用命令
 
 | 命令 | 说明 |
 |------|------|
-| `pnpm dev` | 启动开发服务器（热重载） |
-| `pnpm build` | 构建生产版本 |
-| `pnpm typecheck` | TypeScript 类型检查 |
-| `pnpm test:unit` | 运行单元测试 |
-| `pnpm format` | 格式化代码（Prettier） |
-| `pnpm format:check` | 检查代码格式 |
+| `mise exec -- pnpm dev` | 启动开发服务器（热重载） |
+| `mise exec -- pnpm build` | 构建生产版本 |
+| `mise exec -- pnpm typecheck` | TypeScript 类型检查 |
+| `mise exec -- pnpm test:unit` | 运行单元测试 |
+| `mise exec -- pnpm format` | 格式化代码（Prettier） |
+| `mise exec -- pnpm format:check` | 检查代码格式 |
 
 Rust 后端命令：
 
 ```bash
-cd src-tauri
-cargo fmt        # 格式化 Rust 代码
-cargo clippy     # 运行 Clippy 检查
-cargo test       # 运行测试
+mise exec -- cargo fmt --manifest-path src-tauri/Cargo.toml
+mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 ## 代码规范
 
-- **前端**：使用 Prettier 格式化和严格 TypeScript（`pnpm typecheck`）
-- **后端**：使用 `cargo fmt` 格式化、`cargo clippy` 检查
+- **前端**：使用 Prettier 格式化和严格 TypeScript（`mise exec -- pnpm typecheck`）
+- **后端**：使用 `mise exec -- cargo fmt` 格式化、`mise exec -- cargo clippy` 检查
 - **Tauri 2.0**：命令名必须使用 camelCase
 
 提交前运行所有检查：
 
 ```bash
-pnpm typecheck && pnpm format:check && pnpm test:unit
-cd src-tauri && cargo fmt --check && cargo clippy && cargo test
+mise exec -- pnpm typecheck
+mise exec -- pnpm format:check
+mise exec -- pnpm test:unit
+mise exec -- cargo fmt --check --manifest-path src-tauri/Cargo.toml
+mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 ## Pull Request 指南
@@ -204,9 +232,9 @@ cd src-tauri && cargo fmt --check && cargo clippy && cargo test
 
 ### PR 检查清单
 
-- [ ] `pnpm typecheck` 通过
-- [ ] `pnpm format:check` 通过
-- [ ] `cargo clippy` 通过（如修改了 Rust 代码）
+- [ ] `mise exec -- pnpm typecheck` 通过
+- [ ] `mise exec -- pnpm format:check` 通过
+- [ ] `mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings` 通过（如修改了 Rust 代码）
 - [ ] 如修改了用户可见文本，已更新国际化文件
 
 ### 提交信息规范

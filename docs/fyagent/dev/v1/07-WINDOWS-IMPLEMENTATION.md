@@ -420,7 +420,7 @@ UpgradeCode 和 AppUserModelID 由 Draft PR CI 生成的 WiX 证据确认。不�
 关闭 ICE 验证或忽略链接错误来规避这一约束。
 
 本地 Windows x64 已从全新的、忽略的 `src-tauri/target/v1-msi` 目录运行
-`pnpm tauri build --bundles msi`，并完成 Tauri `candle`/`light` 链接。产物为
+`mise exec -- pnpm tauri build --bundles msi`，并完成 Tauri `candle`/`light` 链接。产物为
 `FyAgent_3.18.0_x64_en-US.msi`，SHA-256 为
 `49214C116A9DFE0D1E7FF1CE2A8EA1665FEF3F0961F1A613B6F842D046063948`；生成的
 `main.wxs` 不含 `cc_switch_lib.dll` resource；这是 clean-break 重命名之前的历史构建证据，

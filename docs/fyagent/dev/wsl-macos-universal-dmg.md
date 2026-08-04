@@ -46,7 +46,8 @@ mise install
 - 缺少 apt 依赖时执行 `sudo apt-get update` 和 `apt-get install`；apt 包是共享系统依赖，不会自动卸载。
 - 全局 mise 执行 `mise install`，在用户的正常 mise/Rust 数据目录中安装仓库声明的开发工具和两个 macOS Rust targets；这些工具可能由其他项目共享。
 - SDK、OSXCross、libdmg、rcodesign、下载文件和风险确认只写入 FyAgent 专用 XDG 目录。
-- `pnpm install` 以 `CI=true` 和 frozen lockfile 运行；若现有 `node_modules` 属于不同 pnpm store，会自动按锁文件重建而不会询问。
+- 依赖安装在 mise 环境内以 `CI=true mise exec -- pnpm install --frozen-lockfile`
+  的等效方式运行；若现有 `node_modules` 属于不同 pnpm store，会自动按锁文件重建而不会询问。
 
 本次机器上的 FyAgent cross cache/data、全局 mise/Rust 数据、Rust target、`node_modules` 合计约 9 GiB。新环境建议至少预留 15 GiB；网络速度、SDK 下载和 OSXCross/Rust 冷编译会显著影响耗时。本次已有 cross-tool 缓存、但首次切换到全局 Cargo home 的构建用时 762.69 秒；随后的缓存复用构建用时 566.15 秒。完全无缓存环境应预留 30–60 分钟以上。
 
@@ -102,12 +103,12 @@ mise install
 
 1. `stage 1/3`：验证全局 mise、WSL2、Ubuntu、x86_64、ext4，安装缺少的 apt 包并记录版本，处理风险确认。
 2. `stage 2/3`：执行全局 `mise install`，校验运行时/targets 与 `mise which` 路径；校验或构建 SDK、OSXCross、libdmg、rcodesign。
-3. `stage 3/3`：项目预检、`CI=true pnpm install --frozen-lockfile`、Tauri Universal 构建、App/DMG 组装签名和最终验证。
+3. `stage 3/3`：项目预检、mise 环境内的 frozen pnpm 安装、Tauri Universal 构建、App/DMG 组装签名和最终验证。
 
 核心构建命令只有：
 
 ```bash
-pnpm tauri build --target universal-apple-darwin --no-bundle --ci
+mise exec -- pnpm tauri build --target universal-apple-darwin --no-bundle --ci
 ```
 
 Tauri 内部依次构建两种架构并调用工作流提供的 `lipo` 包装器合并。合并后必须满足：

@@ -242,61 +242,77 @@ Laden Sie den neuesten Linux-Build, einschließlich der unter Arch Linux nutzbar
 
 ### Umgebungsanforderungen
 
-- Node.js 18+
-- pnpm 8+
-- Rust 1.85+
-- Tauri CLI 2.8+
+- global installiertes [mise](https://mise.jdx.dev/getting-started.html) ab
+  Version 2026.8.0
+- [Systemvoraussetzungen für Tauri 2.0](https://v2.tauri.app/start/prerequisites/)
+
+`mise.toml` ist die einzige maßgebliche Quelle für die lokalen Versionen von
+Node.js, pnpm, Python und Rust/Cargo. Die Tauri CLI wird mit den
+Projektabhängigkeiten installiert; installieren oder wählen Sie keine
+abweichenden Werkzeuge anhand allgemeiner Mindestversionsangaben.
+
+Prüfen Sie die Repository-Konfiguration und initialisieren Sie anschließend die
+Entwicklungsumgebung:
+
+```bash
+mise trust
+mise install
+mise exec -- pnpm install --frozen-lockfile
+```
+
+Die folgenden Befehle verwenden ausdrücklich `mise exec --` und lösen daher
+auch ohne Shell-Aktivierung die festgelegten Werkzeuge auf. In einer bewusst
+aktivierten mise-Shell kann das Präfix entfallen. Unter WSL dürfen verwaltete
+Werkzeuge nicht aus `/mnt/<drive>` oder über Windows-Shims aufgelöst werden.
 
 ### Entwicklungsbefehle
 
 ```bash
 # Abhängigkeiten installieren
-pnpm install
+mise exec -- pnpm install --frozen-lockfile
 
 # Entwicklungsmodus (Hot Reload)
-pnpm dev
+mise exec -- pnpm dev
 
 # Typprüfung
-pnpm typecheck
+mise exec -- pnpm typecheck
 
 # Code formatieren
-pnpm format
+mise exec -- pnpm format
 
 # Codeformatierung prüfen
-pnpm format:check
+mise exec -- pnpm format:check
 
 # Frontend-Unit-Tests ausführen
-pnpm test:unit
+mise exec -- pnpm test:unit
 
 # Tests im Watch-Modus ausführen (für die Entwicklung empfohlen)
-pnpm test:unit:watch
+mise exec -- pnpm test:unit:watch
 
 # Anwendung bauen
-pnpm build
+mise exec -- pnpm build
 
 # Debug-Version bauen
-pnpm tauri build --debug
+mise exec -- pnpm tauri build --debug
 ```
 
 ### Entwicklung des Rust-Backends
 
 ```bash
-cd src-tauri
-
 # Rust-Code formatieren
-cargo fmt
+mise exec -- cargo fmt --manifest-path src-tauri/Cargo.toml
 
 # Clippy-Prüfungen ausführen
-cargo clippy
+mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml
 
 # Backend-Tests ausführen
-cargo test
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
 
 # Bestimmte Tests ausführen
-cargo test test_name
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml test_name
 
 # Tests mit dem Feature test-hooks ausführen
-cargo test --features test-hooks
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --features test-hooks
 ```
 
 ### Testleitfaden
@@ -311,13 +327,13 @@ cargo test --features test-hooks
 
 ```bash
 # Alle Tests ausführen
-pnpm test:unit
+mise exec -- pnpm test:unit
 
 # Watch-Modus (automatische erneute Ausführung)
-pnpm test:unit:watch
+mise exec -- pnpm test:unit:watch
 
 # Mit Coverage-Bericht
-pnpm test:unit --coverage
+mise exec -- pnpm test:unit --coverage
 ```
 
 ### Tech-Stack
@@ -377,9 +393,9 @@ Issues und Vorschläge sind willkommen!
 
 Bitte stellen Sie vor dem Einreichen von PRs Folgendes sicher:
 
-- Typprüfung besteht: `pnpm typecheck`
-- Formatprüfung besteht: `pnpm format:check`
-- Unit-Tests bestehen: `pnpm test:unit`
+- Typprüfung besteht: `mise exec -- pnpm typecheck`
+- Formatprüfung besteht: `mise exec -- pnpm format:check`
+- Unit-Tests bestehen: `mise exec -- pnpm test:unit`
 
 Eröffnen Sie für neue Funktionen bitte vor dem Einreichen eines PR ein Issue zur Diskussion. PRs für Funktionen, die nicht gut zum Projekt passen, können geschlossen werden.
 

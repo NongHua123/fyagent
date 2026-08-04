@@ -4,9 +4,20 @@ This directory contains the Flatpak manifest (`com.fyagent.desktop`) for FyAgent
 
 ## Dependencies
 
+- The repository development environment initialized with global
+  [mise](https://mise.jdx.dev/getting-started.html) 2026.8.0 or newer
 - `flatpak`
 - `flatpak-builder`
 - Flathub remote (for installing `org.gnome.Platform//46` runtime)
+
+From the repository root, review and initialize the pinned development tools
+before building:
+
+```bash
+mise trust
+mise install
+mise exec -- pnpm install --frozen-lockfile
+```
 
 For Ubuntu/Debian:
 
@@ -21,7 +32,7 @@ flatpak install -y --user flathub org.gnome.Platform//46 org.gnome.Sdk//46
 1) Build the deb on Linux first:
 
 ```bash
-pnpm tauri build -- --bundles deb
+mise exec -- pnpm tauri build -- --bundles deb
 ```
 
 2) Copy the generated deb to this directory:

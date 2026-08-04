@@ -7,14 +7,14 @@
 ## 2. 强制质量命令
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm typecheck
-pnpm format:check
-pnpm test:unit
+mise exec -- pnpm install --frozen-lockfile
+mise exec -- pnpm typecheck
+mise exec -- pnpm format:check
+mise exec -- pnpm test:unit
 
-cargo fmt --check --manifest-path src-tauri/Cargo.toml
-cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml
+mise exec -- cargo fmt --check --manifest-path src-tauri/Cargo.toml
+mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 现有 `.github/workflows/ci.yml` 已覆盖：

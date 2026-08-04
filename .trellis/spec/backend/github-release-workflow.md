@@ -76,7 +76,7 @@ Only `refs/tags/v*` may run `publish-release`.
 - Assert the branch path contains the unsigned filename, `hdiutil verify`, a
   read-only attach, the `FyAgent.app` check, deterministic detach/cleanup, and
   artifact upload with missing-file failure.
-- Run `pnpm exec vitest run tests/releaseWorkflow.test.ts`.
+- Run `mise exec -- pnpm exec vitest run tests/releaseWorkflow.test.ts`.
 - For acceptance, require a successful GitHub `macos-14` run and inspect the
   uploaded artifact metadata. Windows static checks are not macOS evidence.
 

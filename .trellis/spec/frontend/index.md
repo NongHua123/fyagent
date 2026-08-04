@@ -23,6 +23,8 @@ Before changing renderer code:
 7. For product names, storage keys, serialized markers, deep links, or public
    source/install links, read the shared
    [Application Identity Contract](../backend/application-identity.md).
+8. Run local tooling through the shared
+   [Development Environment Contract](../backend/development-environment.md).
 
 ## Guidelines
 
@@ -41,15 +43,14 @@ Before changing renderer code:
 
 For frontend code changes, run the checks applicable to the affected behavior:
 
-```powershell
-pnpm typecheck
-pnpm format:check
-pnpm test:unit
+```bash
+mise exec -- pnpm typecheck
+mise exec -- pnpm format:check
+mise exec -- pnpm test:unit
 ```
 
-`pnpm lint` is mentioned in `CONTRIBUTING.md`, but it is not currently a
-package script. Treat the package scripts as the reproducible command source
-until that mismatch is resolved.
+`package.json` remains the source of runnable frontend scripts; `mise.toml`
+owns the Node.js and pnpm versions used to execute them.
 
 ## Evidence
 
@@ -59,3 +60,5 @@ until that mismatch is resolved.
 - [CONTRIBUTING.md](../../../CONTRIBUTING.md) records the maintained
   contribution expectations, including strict TypeScript and translated UI
   text.
+- [Development Environment](../backend/development-environment.md) defines the
+  required local mise command boundary.

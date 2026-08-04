@@ -234,13 +234,16 @@ Download the latest Linux build, including builds usable on Arch Linux, from the
 
 ### Environment Requirements
 
-- Node.js 18+
-- pnpm 8+
-- Rust 1.85+
-- Tauri CLI 2.8+
+- [mise](https://mise.jdx.dev/getting-started.html) 2026.8.0 or newer,
+  installed globally
+- [Tauri 2.0 system prerequisites](https://v2.tauri.app/start/prerequisites/)
 
-When developing inside WSL, install global mise 2026.8.0 or newer and use the
-repository's mise environment as the default source of tool versions:
+`mise.toml` is the single source of truth for local Node.js, pnpm, Python, and
+Rust/Cargo versions. The Tauri CLI is installed with the project dependencies;
+do not install or select separate tool versions from broad minimum-version
+requirements.
+
+After reviewing the repository config, initialize the development environment:
 
 ```bash
 mise trust
@@ -248,10 +251,10 @@ mise install
 mise exec -- pnpm install --frozen-lockfile
 ```
 
-The compatibility files `.node-version`, `package.json#packageManager`, and
-`rust-toolchain.toml` remain synchronized with `mise.toml`; do not use Node,
-pnpm, Python, Rust, or Cargo shims from `/mnt/<drive>`. Project scripts reuse
-the global mise installation and must not bootstrap a private copy.
+The commands below use `mise exec --` explicitly so they resolve the pinned
+tools even when shell activation is not configured. In an intentionally
+mise-activated shell, the prefix may be omitted. WSL must not resolve managed
+tools from `/mnt/<drive>` or Windows shims.
 
 For the experimental WSL2 workflow that cross-builds one ad-hoc, unnotarized
 macOS Universal DMG, see the
@@ -261,52 +264,50 @@ macOS Universal DMG, see the
 
 ```bash
 # Install dependencies
-pnpm install
+mise exec -- pnpm install --frozen-lockfile
 
 # Dev mode (hot reload)
-pnpm dev
+mise exec -- pnpm dev
 
 # Type check
-pnpm typecheck
+mise exec -- pnpm typecheck
 
 # Format code
-pnpm format
+mise exec -- pnpm format
 
 # Check code format
-pnpm format:check
+mise exec -- pnpm format:check
 
 # Run frontend unit tests
-pnpm test:unit
+mise exec -- pnpm test:unit
 
 # Run tests in watch mode (recommended for development)
-pnpm test:unit:watch
+mise exec -- pnpm test:unit:watch
 
 # Build application
-pnpm build
+mise exec -- pnpm build
 
 # Build debug version
-pnpm tauri build --debug
+mise exec -- pnpm tauri build --debug
 ```
 
 ### Rust Backend Development
 
 ```bash
-cd src-tauri
-
 # Format Rust code
-cargo fmt
+mise exec -- cargo fmt --manifest-path src-tauri/Cargo.toml
 
 # Run clippy checks
-cargo clippy
+mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml
 
 # Run backend tests
-cargo test
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
 
 # Run specific tests
-cargo test test_name
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml test_name
 
 # Run tests with test-hooks feature
-cargo test --features test-hooks
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --features test-hooks
 ```
 
 ### Testing Guide
@@ -321,13 +322,13 @@ cargo test --features test-hooks
 
 ```bash
 # Run all tests
-pnpm test:unit
+mise exec -- pnpm test:unit
 
 # Watch mode (auto re-run)
-pnpm test:unit:watch
+mise exec -- pnpm test:unit:watch
 
 # With coverage report
-pnpm test:unit --coverage
+mise exec -- pnpm test:unit --coverage
 ```
 
 ### Tech Stack
@@ -387,9 +388,9 @@ Issues and suggestions are welcome!
 
 Before submitting PRs, please ensure:
 
-- Pass type check: `pnpm typecheck`
-- Pass format check: `pnpm format:check`
-- Pass unit tests: `pnpm test:unit`
+- Pass type check: `mise exec -- pnpm typecheck`
+- Pass format check: `mise exec -- pnpm format:check`
+- Pass unit tests: `mise exec -- pnpm test:unit`
 
 For new features, please open an issue for discussion before submitting a PR. PRs for features that are not a good fit for the project may be closed.
 

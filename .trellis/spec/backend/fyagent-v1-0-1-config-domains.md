@@ -225,11 +225,17 @@ queries. Its API key clears on unmount and is never refilled from disk.
   API-Key-only revision conflict, duplicate reject/update-all, unknown-field
   preservation, backup/primary failure paths, and test-home isolation. Tests
   must not access the real profile.
-- Local gates when dependencies permit: `pnpm typecheck`, `pnpm format:check`,
-  `pnpm test:unit`, `pnpm run build:renderer`, `cargo fmt --check`, offline
-  locked `cargo clippy -D warnings`, offline locked `cargo test`, and
-  `git diff --check`. Do not characterize these as native E2E, platform, CI, or
-  release evidence.
+- Local gates when dependencies permit:
+  - `mise exec -- pnpm typecheck`
+  - `mise exec -- pnpm format:check`
+  - `mise exec -- pnpm test:unit`
+  - `mise exec -- pnpm run build:renderer`
+  - `mise exec -- cargo fmt --check --manifest-path src-tauri/Cargo.toml`
+  - `mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml --offline --locked -- -D warnings`
+  - `mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --offline --locked`
+  - `git diff --check`
+
+  Do not characterize these as native E2E, platform, CI, or release evidence.
 
 ## 7. Wrong vs Correct
 

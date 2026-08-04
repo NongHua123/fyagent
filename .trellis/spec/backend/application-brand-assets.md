@@ -19,7 +19,7 @@ The current source and generation entry point are:
 ```text
 source:  assets/fyagent.png
 format:  PNG, 1024x1024, RGBA with transparency
-command: pnpm tauri icon assets/fyagent.png --output src-tauri/icons
+command: mise exec -- pnpm tauri icon assets/fyagent.png --output src-tauri/icons
 ```
 
 The direct consumers are:
@@ -93,9 +93,10 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
   bounds.
 - Compare the diff/inventory against the pre-change checkout and assert the
   exclusion assets are unchanged.
-- Run `pnpm format:check`, `pnpm typecheck`, `pnpm build:renderer`,
-  `cargo check --manifest-path src-tauri/Cargo.toml`, and a desktop bundle build
-  appropriate to the host platform.
+- Run `mise exec -- pnpm format:check`, `mise exec -- pnpm typecheck`,
+  `mise exec -- pnpm build:renderer`,
+  `mise exec -- cargo check --manifest-path src-tauri/Cargo.toml`, and a desktop
+  bundle build appropriate to the host platform.
 - Keep Windows installer/shortcut/taskbar/window and macOS Finder/Dock/app
   switcher/menu-bar inspection as explicit manual acceptance with screenshots.
 

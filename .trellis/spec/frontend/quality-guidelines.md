@@ -4,15 +4,16 @@
 
 The currently runnable frontend checks declared by `package.json` are:
 
-```powershell
-pnpm typecheck
-pnpm format:check
-pnpm test:unit
+```bash
+mise exec -- pnpm typecheck
+mise exec -- pnpm format:check
+mise exec -- pnpm test:unit
 ```
 
-`CONTRIBUTING.md` mentions `pnpm lint`, but this checkout's `package.json` has
-no `lint` script or ESLint configuration. Do not report that command as a
-successful project check unless the project configuration adds it first.
+Run local checks through the repository's
+[mise environment](../backend/development-environment.md). Do not report a
+frontend command as a successful project check unless `package.json` declares
+it.
 
 ## Test Setup and Patterns
 
@@ -60,3 +61,5 @@ through accessible roles where the nearby tests do so.
   environment and shared setup files.
 - [tests/setupTests.ts](../../../tests/setupTests.ts) manages Testing Library,
   i18n, MSW, cleanup, and mock reset lifecycle.
+- [Development Environment](../backend/development-environment.md) owns local
+  runtime versions and command execution.

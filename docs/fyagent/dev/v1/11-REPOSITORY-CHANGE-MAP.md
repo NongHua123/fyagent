@@ -190,7 +190,7 @@ Codex CLI lifecycle management is disabled in FyAgent V1; version detection rema
 
 - 将用户提供的 1024×1024 RGBA PNG 以精确字节保存为 `assets/fyagent.png`，作为唯一可审计
   视觉源；不得 AI 重绘、改色或调整构图；
-- 执行 `pnpm tauri icon assets/fyagent.png --output src-tauri/icons`，覆盖现有桌面、
+- 执行 `mise exec -- pnpm tauri icon assets/fyagent.png --output src-tauri/icons`，覆盖现有桌面、
   Windows Store、Android 和 iOS 应用品牌路径，并保留生成的 `64x64.png`；
 - `src/assets/icons/app-icon.png` 必须与生成的 `src-tauri/icons/32x32.png` 字节一致；
 - `src-tauri/icons/tray/macos/` 的 `statusTemplate.png`、`statusTemplate@2x.png` 和

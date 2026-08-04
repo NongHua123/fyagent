@@ -4,26 +4,91 @@
 version = "22.12.0"
 backend = "core:node"
 
+[tools.node."platforms.linux-arm64"]
+checksum = "sha256:9e7905fdee722f9650a03ae644b51c4c6effd3b98ac93c588700072ab35c9ddb"
+url = "https://nodejs.org/dist/v22.12.0/node-v22.12.0-linux-arm64.tar.gz"
+
 [tools.node."platforms.linux-x64"]
 checksum = "sha256:e05a4d65232ae2b27b3d77da2e368522fb46b923335b8e0d5f77624c32484044"
 url = "https://nodejs.org/dist/v22.12.0/node-v22.12.0-linux-x64.tar.gz"
 
+[tools.node."platforms.macos-arm64"]
+checksum = "sha256:293dcc6c2408da21562d135b0412525e381bb6fe150d688edb58fe850d0f3e13"
+url = "https://nodejs.org/dist/v22.12.0/node-v22.12.0-darwin-arm64.tar.gz"
+
+[tools.node."platforms.macos-x64"]
+checksum = "sha256:52bc25dd026db7247c3c00439afdb83e95087248267f02d6c1a7250d1f896173"
+url = "https://nodejs.org/dist/v22.12.0/node-v22.12.0-darwin-x64.tar.gz"
+
+[tools.node."platforms.windows-arm64"]
+checksum = "sha256:17401720af48976e3f67c41e8968a135fb49ca1f88103a92e0e8c70605763854"
+url = "https://nodejs.org/dist/v22.12.0/node-v22.12.0-win-arm64.zip"
+
+[tools.node."platforms.windows-x64"]
+checksum = "sha256:2b8f2256382f97ad51e29ff71f702961af466c4616393f767455501e6aece9b8"
+url = "https://nodejs.org/dist/v22.12.0/node-v22.12.0-win-x64.zip"
+
 [[tools.pnpm]]
 version = "10.12.3"
 backend = "aqua:pnpm/pnpm"
+
+[tools.pnpm."platforms.linux-arm64"]
+checksum = "sha256:536b04389e5c2ac7abb54d22905ba43b06f7997fca11784003fc2d6eb94adbe6"
+url = "https://github.com/pnpm/pnpm/releases/download/v10.12.3/pnpm-linux-arm64"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/266763326"
 
 [tools.pnpm."platforms.linux-x64"]
 checksum = "sha256:7fe4928070a41efc53f115a1c05d797116a5db15e8059b46f2d7dbd370551d73"
 url = "https://github.com/pnpm/pnpm/releases/download/v10.12.3/pnpm-linux-x64"
 url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/266763325"
 
+[tools.pnpm."platforms.macos-arm64"]
+checksum = "sha256:22f4659bdeb5e6dafab514c40b5913167d38a3d104e74b3593ecad12aa7adf64"
+url = "https://github.com/pnpm/pnpm/releases/download/v10.12.3/pnpm-macos-arm64"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/266763327"
+
+[tools.pnpm."platforms.macos-x64"]
+checksum = "sha256:468d8de7a94ec96ff19e8071072d4ddcd1666eafabaab0e33aec3c582dce283d"
+url = "https://github.com/pnpm/pnpm/releases/download/v10.12.3/pnpm-macos-x64"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/266763324"
+
+[tools.pnpm."platforms.windows-arm64"]
+checksum = "sha256:6ba3fe02ce52724fd5d90e9a6b2760b69f031a022ec67c2fd7eeef68ad6f4915"
+url = "https://github.com/pnpm/pnpm/releases/download/v10.12.3/pnpm-win-x64.exe"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/266763330"
+
+[tools.pnpm."platforms.windows-x64"]
+checksum = "sha256:6ba3fe02ce52724fd5d90e9a6b2760b69f031a022ec67c2fd7eeef68ad6f4915"
+url = "https://github.com/pnpm/pnpm/releases/download/v10.12.3/pnpm-win-x64.exe"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/266763330"
+
 [[tools.python]]
 version = "3.12.8"
 backend = "core:python"
 
+[tools.python."platforms.linux-arm64"]
+checksum = "sha256:300e8098cfc305b329a258128afa1d6366ced039f16c70ec93ab4ff18f86c8ff"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20250115/cpython-3.12.8+20250115-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz"
+provenance = "github-attestations"
+
 [tools.python."platforms.linux-x64"]
 checksum = "sha256:34a5a1619aba16544ec8d6f225be59b333d650f58983eeca25193722dc9016fd"
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20250115/cpython-3.12.8+20250115-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
+provenance = "github-attestations"
+
+[tools.python."platforms.macos-arm64"]
+checksum = "sha256:dfb8a4c87116538717105ef3dec3668ae07590a5b5532109fec3ccad90be2fbc"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20250115/cpython-3.12.8+20250115-aarch64-apple-darwin-install_only_stripped.tar.gz"
+provenance = "github-attestations"
+
+[tools.python."platforms.macos-x64"]
+checksum = "sha256:9f5d4a71b9157a160cf8a8e93158404553b588ddd4a94e6c54753c26b03fee5e"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20250115/cpython-3.12.8+20250115-x86_64-apple-darwin-install_only_stripped.tar.gz"
+provenance = "github-attestations"
+
+[tools.python."platforms.windows-x64"]
+checksum = "sha256:8a4e9e748eeee7ae71048a108a55a9bac48f8bedf9dff413a7c87744f0408ef1"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20250115/cpython-3.12.8+20250115-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
 provenance = "github-attestations"
 
 [[tools.rust]]

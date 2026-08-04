@@ -45,10 +45,11 @@ The build target is always `universal-apple-darwin`, containing exactly
   deep-link schemes, and custom Info.plist overrides. Any configured resources,
   sidecars, file associations, frameworks, files, entitlements, signing
   identity, DMG customization, or explicit extra binary target fails closed.
-- Dependency installation runs as
-  `CI=true pnpm install --frozen-lockfile`. The CI environment is required so
-  the mise-managed pnpm store can replace an incompatible existing
-  `node_modules` directory without an interactive confirmation prompt.
+- Dependency installation runs inside the inherited mise environment as the
+  equivalent of `CI=true mise exec -- pnpm install --frozen-lockfile`. The CI
+  environment is required so the mise-managed pnpm store can replace an
+  incompatible existing `node_modules` directory without an interactive
+  confirmation prompt.
 - The Universal Mach-O must contain exactly both slices, target macOS 12.0,
   and contain no Linux/WSL load paths before app assembly.
 - The fully assembled app is ad-hoc signed before it enters the DMG. The DMG is

@@ -242,61 +242,75 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 
 ### 開発環境
 
-- Node.js 18+
-- pnpm 8+
-- Rust 1.85+
-- Tauri CLI 2.8+
+- グローバルにインストールした [mise](https://mise.jdx.dev/getting-started.html)
+  2026.8.0 以降
+- [Tauri 2.0 のシステム要件](https://v2.tauri.app/start/prerequisites/)
+
+ローカル開発で使用する Node.js、pnpm、Python、Rust/Cargo のバージョンは、
+`mise.toml` を唯一の情報源として統一します。Tauri CLI はプロジェクト依存関係として
+インストールされます。幅広い最低バージョン要件を基に別のツールを選択しないでください。
+
+リポジトリ設定を確認した後、開発環境を初期化します：
+
+```bash
+mise trust
+mise install
+mise exec -- pnpm install --frozen-lockfile
+```
+
+以下のコマンドは `mise exec --` を明示しているため、シェルを有効化していなくても
+固定されたツールを使用します。mise を明示的に有効化したシェルでは、この接頭辞を
+省略できます。WSL では `/mnt/<drive>` または Windows shim の管理対象ツールを
+使用しないでください。
 
 ### 開発コマンド
 
 ```bash
 # 依存関係をインストール
-pnpm install
+mise exec -- pnpm install --frozen-lockfile
 
 # ホットリロード付き開発モード
-pnpm dev
+mise exec -- pnpm dev
 
 # 型チェック
-pnpm typecheck
+mise exec -- pnpm typecheck
 
 # コード整形
-pnpm format
+mise exec -- pnpm format
 
 # フォーマット検証
-pnpm format:check
+mise exec -- pnpm format:check
 
 # フロントエンド単体テスト
-pnpm test:unit
+mise exec -- pnpm test:unit
 
 # ウォッチモード（開発に推奨）
-pnpm test:unit:watch
+mise exec -- pnpm test:unit:watch
 
 # アプリをビルド
-pnpm build
+mise exec -- pnpm build
 
 # デバッグビルド
-pnpm tauri build --debug
+mise exec -- pnpm tauri build --debug
 ```
 
 ### Rust バックエンド開発
 
 ```bash
-cd src-tauri
-
 # Rust コード整形
-cargo fmt
+mise exec -- cargo fmt --manifest-path src-tauri/Cargo.toml
 
 # clippy チェック
-cargo clippy
+mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml
 
 # バックエンドテスト
-cargo test
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
 
 # 特定テストのみ実行
-cargo test test_name
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml test_name
 
 # test-hooks フィーチャー付きでテスト
-cargo test --features test-hooks
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --features test-hooks
 ```
 
 ### テストガイド
@@ -311,13 +325,13 @@ cargo test --features test-hooks
 
 ```bash
 # 全テストを実行
-pnpm test:unit
+mise exec -- pnpm test:unit
 
 # ウォッチモード（自動再実行）
-pnpm test:unit:watch
+mise exec -- pnpm test:unit:watch
 
 # カバレッジレポート付き
-pnpm test:unit --coverage
+mise exec -- pnpm test:unit --coverage
 ```
 
 ### 技術スタック
@@ -377,9 +391,9 @@ Issue や提案を歓迎します！
 
 PR を送る前に以下をご確認ください：
 
-- 型チェック: `pnpm typecheck`
-- フォーマットチェック: `pnpm format:check`
-- 単体テスト: `pnpm test:unit`
+- 型チェック: `mise exec -- pnpm typecheck`
+- フォーマットチェック: `mise exec -- pnpm format:check`
+- 単体テスト: `mise exec -- pnpm test:unit`
 
 新機能の場合は、PR を送る前に Issue でディスカッションしてください。プロジェクトに合わない機能の PR はクローズされる場合があります。
 

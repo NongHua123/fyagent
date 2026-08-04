@@ -154,7 +154,17 @@ describe("WSL macOS Universal DMG workflow", () => {
     );
 
     const lock = read("mise.lock");
-    expect(lock).toContain("platforms.linux-x64");
+    for (const platform of [
+      "linux-x64",
+      "linux-arm64",
+      "macos-x64",
+      "macos-arm64",
+      "windows-x64",
+      "windows-arm64",
+    ]) {
+      expect(mise).toContain(`"${platform}"`);
+      expect(lock).toContain(`platforms.${platform}`);
+    }
     expect(lock).toContain('version = "22.12.0"');
     expect(lock).toContain('version = "10.12.3"');
     expect(lock).toContain('version = "3.12.8"');
@@ -164,13 +174,31 @@ describe("WSL macOS Universal DMG workflow", () => {
     );
   });
 
-  it("documents mise as the default WSL development version manager", () => {
-    const spec = read(".trellis/spec/backend/wsl-development-environment.md");
+  it("documents mise as the default local development version manager", () => {
+    const spec = read(".trellis/spec/backend/development-environment.md");
     expect(spec).toContain(
-      "global mise is the default version manager and command",
+      "global mise is the required version manager and command",
     );
-    expect(spec).toContain("including macOS cross-builds");
-    expect(spec).toContain("must not resolve Node, pnpm, Python, Rust, Cargo");
-    expect(spec).toContain("mise lock --platform linux-x64");
+    expect(spec).toContain("local development on");
+    expect(spec).toContain("mise exec -- <command>");
+    expect(spec).toContain(
+      "mise lock --platform linux-x64,linux-arm64,macos-x64,macos-arm64,windows-x64,windows-arm64",
+    );
+
+    for (const document of [
+      "README.md",
+      "README_ZH.md",
+      "README_JA.md",
+      "README_DE.md",
+      "CONTRIBUTING.md",
+    ]) {
+      const content = read(document);
+      expect(content).toContain("https://mise.jdx.dev/getting-started.html");
+      expect(content).toContain("mise install");
+      expect(content).toContain("mise exec -- pnpm");
+      expect(content).not.toMatch(/Node\.js (?:18|20)\+/);
+      expect(content).not.toContain("pnpm 8+");
+      expect(content).not.toContain("Rust 1.85+");
+    }
   });
 });

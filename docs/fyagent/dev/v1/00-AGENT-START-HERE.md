@@ -92,10 +92,13 @@ Agent 和 CI 不得：
 git switch main
 git status --short
 git rev-parse HEAD
-node --version
-pnpm --version
-rustc --version
-cargo --version
+mise --version
+mise trust
+mise install
+mise exec -- node --version
+mise exec -- pnpm --version
+mise exec -- rustc --version
+mise exec -- cargo --version
 ```
 
 必须确认：
@@ -211,14 +214,14 @@ src/main.tsx
 ## 9. 质量门槛命令
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm typecheck
-pnpm format:check
-pnpm test:unit
+mise exec -- pnpm install --frozen-lockfile
+mise exec -- pnpm typecheck
+mise exec -- pnpm format:check
+mise exec -- pnpm test:unit
 
-cargo fmt --check --manifest-path src-tauri/Cargo.toml
-cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml
+mise exec -- cargo fmt --check --manifest-path src-tauri/Cargo.toml
+mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 不得以“平台当前不可用”为由跳过 Windows、macOS 或 Linux CI。

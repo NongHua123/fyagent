@@ -88,7 +88,7 @@ feat(codex-desktop): add domain models and job state machine
 
 ### 完成定义
 
-- 三平台 cargo test可编译；
+- 三平台 `mise exec -- cargo test --manifest-path src-tauri/Cargo.toml` 可编译；
 - 平台 adapter可以是 fake/stub；
 - 契约 commit SHA发布给 Worker。
 
@@ -295,7 +295,7 @@ chore(fyagent): update visible branding and disable self-update
 - 移除 updater plugin/endpoint/artifacts；
 - 移除 update commands/UI；
 - 将用户提供的 1024×1024 RGBA PNG 原始字节保存为 `assets/fyagent.png`；
-- 运行 `pnpm tauri icon assets/fyagent.png --output src-tauri/icons` 生成桌面、Windows
+- 运行 `mise exec -- pnpm tauri icon assets/fyagent.png --output src-tauri/icons` 生成桌面、Windows
   Store、Android、iOS 图标并保留 `64x64.png`；
 - 从生成的 32×32 输出替换 About 图标；从源图 alpha 轮廓生成 24/48/72 像素 macOS
   template，按 24pt 画布中的 18pt 内容框等比居中，RGB 全黑并保留抗锯齿 alpha；

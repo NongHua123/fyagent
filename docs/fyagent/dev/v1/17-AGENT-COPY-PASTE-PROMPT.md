@@ -13,7 +13,7 @@ usage: reusable implementation and review checklists
 
 目标：基于当前仓库的 CC Switch 3.18.0 衍生代码，按最小侵入方式新增 Windows x64、Windows ARM64、macOS Apple Silicon 的官方 ChatGPT 桌面应用（包含 Codex）镜像安装功能。最终用户运行时必须只走中国大陆友好的 agentsmirror 内置端点；开发阶段联网不受限制。
 
-开始前执行并记录：git status --short、git rev-parse HEAD、当前分支、Node/pnpm/Rust/Cargo版本。不要丢弃任何现有用户修改，不要同步上游 CC Switch。
+开始前执行并记录：git status --short、git rev-parse HEAD、当前分支、mise 版本，以及通过 mise 解析的 Node/pnpm/Rust/Cargo 版本。不要丢弃任何现有用户修改，不要同步上游 CC Switch。
 
 如采用 worktree 并行，先由 Core 冻结领域/IPC 契约，再让 Windows、macOS、UI 在该契约上工作；共享注册文件、Cargo 配置、品牌/更新边界和旧 Codex CLI 清理必须由集成负责人统一协调，避免并行覆盖。
 
@@ -33,13 +33,13 @@ usage: reusable implementation and review checklists
 - 保持 Commands→Services→Domain/Platform 与 API→Query→Hook→Component 分层；App.tsx只挂载。
 
 每个原子提交必须说明文件范围、新依赖、测试、未执行真实安装和已知限制。完成后运行：
-pnpm install --frozen-lockfile
-pnpm typecheck
-pnpm format:check
-pnpm test:unit
-cargo fmt --check --manifest-path src-tauri/Cargo.toml
-cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml
+mise exec -- pnpm install --frozen-lockfile
+mise exec -- pnpm typecheck
+mise exec -- pnpm format:check
+mise exec -- pnpm test:unit
+mise exec -- cargo fmt --check --manifest-path src-tauri/Cargo.toml
+mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
 
 不得声称人工平台验收通过。输出最终commit列表、测试结果、契约偏差、已知限制和人工验收待办。
 ```

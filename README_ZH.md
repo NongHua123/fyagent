@@ -244,61 +244,73 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 
 ### 环境要求
 
-- Node.js 18+
-- pnpm 8+
-- Rust 1.85+
-- Tauri CLI 2.8+
+- 全局安装 [mise](https://mise.jdx.dev/getting-started.html) 2026.8.0 或更高版本
+- 安装 [Tauri 2.0 系统依赖](https://v2.tauri.app/start/prerequisites/)
+
+本地开发所用 Node.js、pnpm、Python 和 Rust/Cargo 的版本统一以
+`mise.toml` 为单一事实源。Tauri CLI 随项目依赖安装；不要再根据宽泛的最低版本要求
+自行安装或选择另一套开发工具。
+
+检查仓库配置后，初始化开发环境：
+
+```bash
+mise trust
+mise install
+mise exec -- pnpm install --frozen-lockfile
+```
+
+下列命令显式使用 `mise exec --`，即使没有配置 shell 激活也会解析到仓库固定的工具。
+若当前 shell 已明确激活 mise，可以省略该前缀。WSL 中禁止从 `/mnt/<drive>` 或
+Windows shim 解析受管工具。
 
 ### 开发命令
 
 ```bash
 # 安装依赖
-pnpm install
+mise exec -- pnpm install --frozen-lockfile
 
 # 开发模式（热重载）
-pnpm dev
+mise exec -- pnpm dev
 
 # 类型检查
-pnpm typecheck
+mise exec -- pnpm typecheck
 
 # 代码格式化
-pnpm format
+mise exec -- pnpm format
 
 # 检查代码格式
-pnpm format:check
+mise exec -- pnpm format:check
 
 # 运行前端单元测试
-pnpm test:unit
+mise exec -- pnpm test:unit
 
 # 监听模式运行测试（推荐开发时使用）
-pnpm test:unit:watch
+mise exec -- pnpm test:unit:watch
 
 # 构建应用
-pnpm build
+mise exec -- pnpm build
 
 # 构建调试版本
-pnpm tauri build --debug
+mise exec -- pnpm tauri build --debug
 ```
 
 ### Rust 后端开发
 
 ```bash
-cd src-tauri
-
 # 格式化 Rust 代码
-cargo fmt
+mise exec -- cargo fmt --manifest-path src-tauri/Cargo.toml
 
 # 运行 clippy 检查
-cargo clippy
+mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml
 
 # 运行后端测试
-cargo test
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
 
 # 运行特定测试
-cargo test test_name
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml test_name
 
 # 运行带测试 hooks 的测试
-cargo test --features test-hooks
+mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --features test-hooks
 ```
 
 ### 测试说明
@@ -313,13 +325,13 @@ cargo test --features test-hooks
 
 ```bash
 # 运行所有测试
-pnpm test:unit
+mise exec -- pnpm test:unit
 
 # 监听模式（自动重跑）
-pnpm test:unit:watch
+mise exec -- pnpm test:unit:watch
 
 # 带覆盖率报告
-pnpm test:unit --coverage
+mise exec -- pnpm test:unit --coverage
 ```
 
 ### 技术栈
@@ -379,9 +391,9 @@ pnpm test:unit --coverage
 
 提交 PR 前请确保：
 
-- 通过类型检查：`pnpm typecheck`
-- 通过格式检查：`pnpm format:check`
-- 通过单元测试：`pnpm test:unit`
+- 通过类型检查：`mise exec -- pnpm typecheck`
+- 通过格式检查：`mise exec -- pnpm format:check`
+- 通过单元测试：`mise exec -- pnpm test:unit`
 
 新功能开发前，欢迎先开 Issue 讨论实现方案，不适合项目的功能性 PR 有可能会被关闭。
 
