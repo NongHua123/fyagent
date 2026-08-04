@@ -241,3 +241,25 @@ Regenerated all application-brand icons from the approved FyAgent source, added 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: Sync upstream v3.19.1
+
+**Date**: 2026-08-05
+**Task**: Sync upstream v3.19.1
+**Branch**: `feature/fyagent-v1`
+
+### Summary
+
+Merged upstream v3.19.1 while preserving FyAgent boundaries, resolved conflicts semantically, fixed provider and session security regressions, and validated locally.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b8c68eb104b31ab4d77027aaac82f90d054a9e97` | (see git log) |
+| `ca0f055bd373217ebef9af907a3d828cab41c59c` | (see git log) |
+
+### Status
+
+[OK] **Completed**
