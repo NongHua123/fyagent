@@ -1,6 +1,6 @@
 use serde_json::json;
 use std::fs;
-use std::path::PathBuf;
+use std::sync::Arc;
 
 use fyagent_lib::{
     get_claude_settings_path, read_json_file, AppError, AppType, ConfigService, MultiAppConfig,
@@ -11,8 +11,27 @@ use fyagent_lib::{
 mod support;
 use support::{
     create_test_state, create_test_state_with_config, enable_codex_official_auth_preservation,
-    ensure_test_home, reset_test_fs, test_mutex,
+    ensure_test_home, reset_test_fs, test_mutex, RecoveringTestMutex,
 };
+
+#[test]
+fn shared_fixture_mutex_recovers_after_owner_panic() {
+    let mutex = Arc::new(RecoveringTestMutex::new());
+    let panicking_owner = Arc::clone(&mutex);
+    let result = std::thread::spawn(move || {
+        let _guard = panicking_owner.lock().expect("acquire local fixture mutex");
+        panic!("intentional fixture-lock poison");
+    })
+    .join();
+
+    assert!(
+        result.is_err(),
+        "the fixture owner must panic for this test"
+    );
+    let _guard = mutex
+        .lock()
+        .expect("the next fixture holder must recover poison");
+}
 
 #[test]
 fn sync_claude_provider_writes_live_settings() {
@@ -1162,16 +1181,16 @@ fn export_sql_writes_to_target_path() {
 fn export_sql_returns_error_for_invalid_path() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();
-    let _home = ensure_test_home();
+    let home = ensure_test_home();
 
     let state = create_test_state().expect("create test state");
 
-    // Try to export to an invalid path (nonexistent parent or invalid name on Windows)
-    let invalid_parent = if cfg!(windows) {
-        std::env::temp_dir().join("fyagent-test-invalid<>dir")
-    } else {
-        PathBuf::from("/nonexistent/directory")
-    };
+    // Use a regular file as the target's parent. Unlike a fixed nonexistent
+    // absolute path or permission bits, this fails deterministically even when
+    // tests run as root or under an elevated Windows account.
+    let invalid_parent = home.join(".fyagent").join("export-parent-is-file");
+    fs::write(&invalid_parent, b"blocks child creation")
+        .expect("create deterministic non-directory parent");
     let invalid_path = invalid_parent.join("export.sql");
     let err = state
         .db

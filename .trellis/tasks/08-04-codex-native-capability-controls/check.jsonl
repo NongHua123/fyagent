@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/fyagent-v1-0-1-config-domains.md", "reason": "Verify Codex capability, warning, proxy, and test contracts"}
+{"file": ".trellis/spec/backend/development-environment.md", "reason": "Verify privilege-independent filesystem tests and shared fixture lock recovery"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify unit tests, accessibility, formatting, and regression coverage"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify DTO and form typing"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify end-to-end mutation warning and proxy flows"}

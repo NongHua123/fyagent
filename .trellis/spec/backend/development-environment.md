@@ -73,6 +73,14 @@ tool.
 - GitHub Actions CI and release jobs are not local onboarding paths. Preserve
   their explicit runner setup, caching, signing, and target provisioning until
   a dedicated migration validates every runner architecture and release path.
+- Filesystem tests that require a write to fail must create a deterministic
+  invalid shape inside the isolated test root, such as using a regular file as
+  the requested target's parent. Do not infer failure from a fixed absolute
+  "nonexistent" path or permission bits: root, elevated Windows accounts, and
+  container mounts can make those paths writable. Shared fixture locks must
+  recover poisoning when every holder resets the fixture after acquisition, so
+  one assertion failure does not hide the root cause behind cascading lock
+  failures.
 
 ## 4. Validation & Error Matrix
 
@@ -113,6 +121,10 @@ tool.
   if a managed command differs or resolves below `/mnt`.
 - Assert WSL macOS scripts contain no mise download URL/checksum and do not
   export private mise, Cargo, or rustup home variables.
+- Run filesystem failure-path integration tests under an elevated/root context
+  as well as an ordinary user context; both must fail at the intended path
+  shape boundary without creating an absolute host directory, and a deliberately
+  poisoned shared fixture lock must be recoverable by the next holder.
 
 ## 7. Wrong vs Correct
 

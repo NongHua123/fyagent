@@ -126,6 +126,13 @@ impl fmt::Debug for TrustedRuntimeInstance {
 /// may report ambiguity instead of trying to disambiguate with an executable
 /// or display-name heuristic.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(
+    not(any(target_os = "windows", target_os = "macos", test)),
+    expect(
+        dead_code,
+        reason = "runtime inspection states are constructed only by supported platform adapters"
+    )
+)]
 pub(crate) enum RuntimeInspection {
     NotRunning,
     Running(Vec<TrustedRuntimeInstance>),
@@ -434,6 +441,7 @@ impl UnsupportedPlatformAdapter {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn architecture_unsupported(
         platform: DesktopPlatform,
         architecture: CpuArchitecture,

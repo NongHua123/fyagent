@@ -1402,7 +1402,8 @@ mod tests {
 
     #[test]
     fn test_collect_codex_session_files_nonexistent() {
-        let files = collect_codex_session_files(Path::new("/nonexistent/path"));
+        let temp = tempdir().expect("create isolated session root");
+        let files = collect_codex_session_files(&temp.path().join("missing"));
         assert!(files.is_empty());
     }
 
