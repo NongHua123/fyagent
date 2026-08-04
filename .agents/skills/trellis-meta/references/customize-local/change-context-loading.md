@@ -75,10 +75,10 @@ In both modes, make sure the agent ultimately reads:
 ## Troubleshooting Order
 
 ```bash
-python ./.trellis/scripts/task.py current --source
-python ./.trellis/scripts/task.py list-context <task>
-python ./.trellis/scripts/task.py validate <task>
-python ./.trellis/scripts/get_context.py --mode packages
+python3 ./.trellis/scripts/task.py current --source
+python3 ./.trellis/scripts/task.py list-context <task>
+python3 ./.trellis/scripts/task.py validate <task>
+python3 ./.trellis/scripts/get_context.py --mode packages
 ```
 
 Confirm the task and JSONL are correct before editing hooks/agents.

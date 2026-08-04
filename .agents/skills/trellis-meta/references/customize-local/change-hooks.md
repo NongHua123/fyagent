@@ -43,8 +43,8 @@ If the hook ultimately calls `.trellis/scripts/get_context.py` or `session_conte
 First confirm:
 
 ```bash
-python ./.trellis/scripts/task.py current --source
-python ./.trellis/scripts/task.py validate <task>
+python3 ./.trellis/scripts/task.py current --source
+python3 ./.trellis/scripts/task.py validate <task>
 ```
 
 If the task and JSONL are correct, determine whether the platform uses hook push or agent pull. For hook push, edit `inject-subagent-context`; for agent pull, edit the agent file.

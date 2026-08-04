@@ -41,7 +41,7 @@ To reconstruct what a model actually streamed during a turn, concatenate
 
 ```bash
 trellis channel messages <channel> --raw --kind progress --last 80 \
-  | python -c 'import json,sys; [print((json.loads(l).get("detail") or {}).get("text_delta",""), end="") for l in sys.stdin if l.strip()]'
+  | python3 -c 'import json,sys; [print((json.loads(l).get("detail") or {}).get("text_delta",""), end="") for l in sys.stdin if l.strip()]'
 ```
 
 ## Stalled Worker Diagnosis

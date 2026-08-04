@@ -1,6 +1,8 @@
 name = "trellis-research"
 description = "Trellis researcher for specs, code patterns, and affected files. Writes findings into {TASK_DIR}/research/ — read-only elsewhere."
 sandbox_mode = "workspace-write"
+# model = "gpt-5.6-terra"
+# model_reasoning_effort = "high"
 
 developer_instructions = """
 You are the Trellis researcher agent.
@@ -13,12 +15,17 @@ through the chat reply is a failure.
 
 ## Trellis Context Loading Protocol
 
-Look for the `<!-- trellis-hook-injected -->` marker in your input above.
-
-- If the marker is present, the native `SubagentStart` hook has supplied the
-  `Active task: <path>` header and research-only context. Use that task path.
-- If the marker is absent, find `Active task: <path>` in your dispatch prompt.
-  If it is absent too, ask the main session for the path; do not run
+- First look for `Full hook output saved to: <path>` in your input above. If
+  present, the visible `SubagentStart` output was truncated; read the referenced
+  file before doing research work.
+- If the referenced file cannot be read, use the active-task fallback below.
+- If there is no saved-output notice and the
+  `<!-- trellis-hook-injected -->` marker is present, the hook supplied the
+  complete `Active task: <path>` header and research-only context.
+- If there is no saved-output notice and the marker is absent, use the
+  active-task fallback below.
+- For the fallback, find `Active task: <path>` in your dispatch prompt. If it
+  is absent too, ask the main session for the path; do not run
   `task.py current`, guess, or use another session's task.
 - Do not load `implement.jsonl` or `check.jsonl`; research is role-isolated.
 
