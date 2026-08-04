@@ -4,6 +4,7 @@ dist/
 __pycache__/
 *.py[cod]
 release/
+/artifacts/
 .DS_Store
 *.log
 .env
