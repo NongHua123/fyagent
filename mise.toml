@@ -1,0 +1,15 @@
+min_version = "2026.8.0"
+
+[settings]
+lockfile = true
+lockfile_platforms = ["linux-x64"]
+
+[tools]
+node = "22.12.0"
+pnpm = "10.12.3"
+python = "3.12.8"
+rust = { version = "1.95.0", profile = "minimal", components = ["rustfmt", "clippy"], targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"] }
+
+[tasks."macos:preflight"]
+description = "Validate the project for the WSL macOS Universal DMG workflow"
+run = "python scripts/macos-cross/preflight.py ."

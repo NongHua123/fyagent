@@ -239,6 +239,24 @@ Download the latest Linux build, including builds usable on Arch Linux, from the
 - Rust 1.85+
 - Tauri CLI 2.8+
 
+When developing inside WSL, install global mise 2026.8.0 or newer and use the
+repository's mise environment as the default source of tool versions:
+
+```bash
+mise trust
+mise install
+mise exec -- pnpm install --frozen-lockfile
+```
+
+The compatibility files `.node-version`, `package.json#packageManager`, and
+`rust-toolchain.toml` remain synchronized with `mise.toml`; do not use Node,
+pnpm, Python, Rust, or Cargo shims from `/mnt/<drive>`. Project scripts reuse
+the global mise installation and must not bootstrap a private copy.
+
+For the experimental WSL2 workflow that cross-builds one ad-hoc, unnotarized
+macOS Universal DMG, see the
+[WSL macOS Universal DMG guide](docs/fyagent/dev/wsl-macos-universal-dmg.md).
+
 ### Development Commands
 
 ```bash

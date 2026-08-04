@@ -1,5 +1,8 @@
 node_modules/
 dist/
+/dist-macos/
+__pycache__/
+*.py[cod]
 release/
 .DS_Store
 *.log
