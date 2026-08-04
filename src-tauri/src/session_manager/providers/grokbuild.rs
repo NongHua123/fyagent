@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use serde_json::Value;
 
+use crate::session_manager::terminal::session_resume_argument;
 use crate::session_manager::{SessionMessage, SessionMeta};
 
 use super::utils::{extract_text, parse_timestamp_to_ms, truncate_summary, TITLE_MAX_CHARS};
@@ -189,7 +190,8 @@ fn parse_summary(path: &Path) -> Option<SessionMeta> {
         created_at,
         last_active_at,
         source_path: Some(path.to_string_lossy().to_string()),
-        resume_command: Some(format!("grok --resume {session_id}")),
+        resume_command: session_resume_argument(&session_id)
+            .map(|argument| format!("grok --resume {argument}")),
     })
 }
 
@@ -250,6 +252,29 @@ mod tests {
         assert_eq!(messages[0].role, "user");
         assert_eq!(messages[0].content, "hello");
         assert_eq!(messages[1].content, "Hi there");
+    }
+
+    #[test]
+    fn parse_summary_suppresses_unsafe_resume_commands() {
+        let temp = tempdir().expect("tempdir");
+        for (index, session_id) in [
+            "it's-a-grok-session",
+            "session & calc.exe & rem",
+            "--dangerously-bypass-approvals-and-sandbox",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let summary_path = temp.path().join(format!("summary-{index}.json"));
+            std::fs::write(
+                &summary_path,
+                serde_json::json!({ "info": { "id": session_id } }).to_string(),
+            )
+            .expect("write summary");
+
+            let meta = parse_summary(&summary_path).expect("parse summary");
+            assert_eq!(meta.resume_command, None, "unsafe id: {session_id}");
+        }
     }
 
     #[test]

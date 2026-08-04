@@ -337,6 +337,25 @@ fn shell_escape(value: &str) -> String {
     format!("'{}'", value.replace('\'', r"'\''"))
 }
 
+/// Prepare one persisted session ID for a generated resume command.
+///
+/// Session IDs normally use only conservative identifier characters. Keep
+/// those commands byte-for-byte compatible, but fail closed for every other
+/// persisted value. A generated command is launched through a shell on macOS
+/// and copied for an unspecified shell elsewhere, while a leading hyphen can
+/// also be parsed as a target-CLI option even when shell-quoted. Supporting a
+/// wider ID grammar therefore requires a typed argv/platform-aware launcher,
+/// not more string-command escaping here.
+pub(super) fn session_resume_argument(value: &str) -> Option<String> {
+    let mut bytes = value.bytes();
+    let is_plain_identifier = bytes
+        .next()
+        .is_some_and(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'));
+
+    is_plain_identifier.then(|| value.to_string())
+}
+
 fn escape_osascript(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
@@ -411,6 +430,38 @@ mod tests {
     fn shell_escape_handles_embedded_single_quote() {
         // 单引号是单引号包裹法唯一表示不了的字符，靠「闭合-转义-重开」绕过。
         assert_eq!(shell_escape("/tmp/it's"), r"'/tmp/it'\''s'");
+    }
+
+    #[test]
+    fn session_resume_argument_preserves_plain_session_ids() {
+        for session_id in [
+            "019f6af2-18b0-7673-958e-d25be650e172",
+            "ses_123",
+            "session.v2",
+        ] {
+            assert_eq!(
+                session_resume_argument(session_id).as_deref(),
+                Some(session_id)
+            );
+        }
+    }
+
+    #[test]
+    fn session_resume_argument_rejects_command_and_option_syntax() {
+        for value in [
+            "x; /usr/bin/touch /tmp/fyagent-session-id-injection #",
+            "session & calc.exe & rem",
+            "$(touch /tmp/fyagent-command-substitution)",
+            "`touch /tmp/fyagent-backtick-substitution`",
+            "it's-a-session",
+            "\"quoted\"\nnext-command",
+            "--dangerously-bypass-approvals-and-sandbox",
+            "-c",
+            "space separated",
+            "",
+        ] {
+            assert_eq!(session_resume_argument(value), None);
+        }
     }
 
     #[test]

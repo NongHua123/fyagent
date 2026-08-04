@@ -2,6 +2,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
+use crate::session_manager::terminal::session_resume_argument;
 use crate::session_manager::{SessionMessage, SessionMeta};
 
 use super::utils::{parse_timestamp_to_ms, truncate_summary};
@@ -169,7 +170,8 @@ fn parse_session(path: &Path) -> Option<SessionMeta> {
         created_at,
         last_active_at: last_active_at.or(created_at),
         source_path: Some(source_path),
-        resume_command: Some(format!("gemini --resume {session_id}")),
+        resume_command: session_resume_argument(&session_id)
+            .map(|argument| format!("gemini --resume {argument}")),
     })
 }
 
@@ -254,5 +256,45 @@ mod tests {
         assert_eq!(msgs[1].role, "assistant");
         assert!(msgs[1].content.contains("Here are the results."));
         assert!(msgs[1].content.contains("[Tool: web_fetch]"));
+    }
+
+    #[test]
+    fn parse_session_preserves_plain_resume_command() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("session.json");
+        std::fs::write(
+            &path,
+            serde_json::json!({ "sessionId": "gemini-session-123", "messages": [] }).to_string(),
+        )
+        .expect("write session");
+
+        let meta = parse_session(&path).expect("parse session");
+        assert_eq!(
+            meta.resume_command.as_deref(),
+            Some("gemini --resume gemini-session-123")
+        );
+    }
+
+    #[test]
+    fn parse_session_suppresses_unsafe_resume_commands() {
+        let temp = tempdir().expect("tempdir");
+        for (index, session_id) in [
+            "`touch /tmp/fyagent-gemini-session-id-injection`",
+            "session & calc.exe & rem",
+            "--dangerously-bypass-approvals-and-sandbox",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let path = temp.path().join(format!("session-{index}.json"));
+            std::fs::write(
+                &path,
+                serde_json::json!({ "sessionId": session_id, "messages": [] }).to_string(),
+            )
+            .expect("write session");
+
+            let meta = parse_session(&path).expect("parse session");
+            assert_eq!(meta.resume_command, None, "unsafe id: {session_id}");
+        }
     }
 }

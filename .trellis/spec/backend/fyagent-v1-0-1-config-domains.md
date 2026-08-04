@@ -120,6 +120,23 @@ accept `AppType`, Provider IDs, or renderer-controlled filesystem paths.
   managed shape remains and it has no user fields; otherwise remove only the
   capability fields. An explicit Provider table takes precedence over unified
   Codex session-history injection.
+- A native Responses Provider receives an official vendor model catalog that
+  grants freeform tools or vendor harness instructions only when its active
+  `base_url` parses as HTTPS to an approved host. The current DeepSeek catalog
+  permits exactly `deepseek.com` and its dot-delimited subdomains. Non-HTTPS
+  schemes and URL substring, path, or user-info matches such as
+  `deepseek.com.evil.example`, `notdeepseek.com`, or
+  `deepseek.com@evil.example` must keep the neutral native template.
+- Session resume commands cross a shell-command boundary in macOS terminal
+  launchers and are copied for an unspecified user shell on other platforms.
+  Every dynamic argument sourced from persisted session data must pass the
+  shared fail-closed helper before command construction. It accepts only a
+  nonempty ASCII identifier whose first character is alphanumeric or `_` and
+  whose remaining characters are alphanumeric, `_`, `-`, or `.`. Ordinary
+  UUID/provider-prefixed IDs retain their existing command text. For every
+  other shape, including leading hyphens, do not generate `resumeCommand`; a
+  future wider grammar requires typed argv and platform-aware launch/copy
+  behavior rather than shell-string escaping.
 - Successful Codex add/update mutations may return warning codes
   `CODEX_WEBSOCKET_NON_GPT_MODEL` and
   `CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED`. Compute them from the final saved
@@ -214,6 +231,7 @@ queries. Its API key clears on unmount and is never refilled from disk.
 | `supports_websockets` has a non-boolean value | Show a diagnostic; preserve on unrelated save; explicit enable overwrites with `true`, explicit disable deletes. |
 | Chat/Anthropic/official/managed/proxy Provider saves with `supports_websockets = true` | Save succeeds. Return model/proxy risk codes when applicable; do not rewrite the choice. |
 | Fixed official Provider has empty TOML and both controls remain off | Preserve empty TOML and create no Provider table or capability metadata. |
+| Persisted session ID is empty, starts with a hyphen, or contains characters outside the conservative ASCII grammar | Keep the session visible but omit `resumeCommand`; never interpolate the raw ID into a shell command. |
 | DB/provider action succeeds but live Codex bytes are unchanged | Return `liveConfigChanged: false`; do not ask to restart. |
 | Several/non-identical trusted installations or running instances exist | Return ambiguous/unavailable; do not close or launch any process. |
 | Graceful exit exceeds 8 seconds | Require the opaque second-confirmation token; no automatic force kill. |
@@ -269,11 +287,13 @@ queries. Its API key clears on unmount and is never refilled from disk.
 - Rust Codex: TOML comments/order/unknown headers, case-insensitive managed
   header repair and invalid-shape preservation, historical marker migration,
   official delayed generation/safe cleanup, WebSocket writes for Responses,
-  Chat, and Anthropic without a format gate, invalid-field explicit repair, GPT/non-GPT/mixed/empty
-  warning matrices, normal/official proxy projection and restore, live-byte
-  change truth table, command app guard, and fake-platform trusted restart state
-  machine including graceful timeout, force confirmation, original-installation
-  drift, and 15-second verification failure.
+  Chat, and Anthropic without a format gate, invalid-field explicit repair,
+  exact-host and malicious authority/path cases for any vendor catalog
+  capability grant, GPT/non-GPT/mixed/empty warning matrices, normal/official
+  proxy projection and restore, live-byte change truth table, command app guard,
+  and fake-platform trusted restart state machine including graceful timeout,
+  force confirmation, original-installation drift, and 15-second verification
+  failure.
 - Rust WorkBuddy: URL normalization/rejection, redirection and Authorization
   policy, timeout/2 MiB bounds, malformed entries after cap, exact order and
   case-sensitive de-duplication, no-key behavior, HMAC revision opacity and

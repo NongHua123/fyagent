@@ -1765,10 +1765,23 @@ fn codex_official_vendor_catalog_models(
     if profile != CodexCatalogToolProfile::NativeResponses {
         return None;
     }
-    let base_url = extract_codex_base_url(config_text)?.to_ascii_lowercase();
+    let base_url = extract_codex_base_url(config_text)?;
+    let parsed_base_url = url::Url::parse(&base_url).ok()?;
+    if parsed_base_url.scheme() != "https" {
+        return None;
+    }
+    let base_url_host = parsed_base_url
+        .host_str()?
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
     if CODEX_DEEPSEEK_OFFICIAL_CATALOG_HOSTS
         .iter()
-        .any(|host| base_url.contains(host))
+        .any(|official_host| {
+            base_url_host == *official_host
+                || base_url_host
+                    .strip_suffix(*official_host)
+                    .is_some_and(|prefix| prefix.ends_with('.'))
+        })
     {
         let models = load_codex_deepseek_official_catalog_models();
         if !models.is_empty() {
@@ -5202,6 +5215,52 @@ wire_api = "responses"
             .is_none(),
             "non-DeepSeek native hosts keep the neutral template"
         );
+
+        for trusted_base_url in ["https://deepseek.com/v1", "https://API.DeepSeek.COM./v1"] {
+            let config = format!(
+                r#"model_provider = "custom"
+
+[model_providers.custom]
+base_url = "{trusted_base_url}"
+wire_api = "responses"
+"#
+            );
+            assert!(
+                codex_official_vendor_catalog_models(
+                    &config,
+                    CodexCatalogToolProfile::NativeResponses
+                )
+                .is_some_and(|models| !models.is_empty()),
+                "the exact DeepSeek host and its subdomains retain the official catalog: {trusted_base_url}"
+            );
+        }
+
+        for untrusted_base_url in [
+            "http://api.deepseek.com/v1",
+            "ftp://api.deepseek.com/v1",
+            "https://api.deepseek.com.evil.example/v1",
+            "https://notdeepseek.com/v1",
+            "https://deepseek.com@evil.example/v1",
+            "https://aggregator.example/deepseek.com/v1",
+        ] {
+            let config = format!(
+                r#"model_provider = "custom"
+
+[model_providers.custom]
+base_url = "{untrusted_base_url}"
+wire_api = "responses"
+"#
+            );
+            assert!(
+                codex_official_vendor_catalog_models(
+                    &config,
+                    CodexCatalogToolProfile::NativeResponses
+                )
+                .is_none(),
+                "untrusted URL must not receive the official DeepSeek capability catalog: {untrusted_base_url}"
+            );
+        }
+
         assert!(
             codex_official_vendor_catalog_models("", CodexCatalogToolProfile::NativeResponses)
                 .is_none()
