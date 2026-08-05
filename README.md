@@ -257,8 +257,9 @@ mise-activated shell, the prefix may be omitted. WSL must not resolve managed
 tools from `/mnt/<drive>` or Windows shims.
 
 For the experimental WSL2 workflow that cross-builds one ad-hoc, unnotarized
-macOS Universal DMG, see the
-[WSL macOS Universal DMG guide](docs/fyagent/dev/wsl-macos-universal-dmg.md).
+macOS Universal DMG, run the
+[`scripts/macos-cross/build-universal-dmg.sh`](scripts/macos-cross/build-universal-dmg.sh)
+entrypoint from WSL2 Ubuntu.
 
 ### Development Commands
 
