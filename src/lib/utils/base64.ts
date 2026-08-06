@@ -51,8 +51,10 @@ export function decodeBase64Utf8(str: string): string {
       const bytes = Uint8Array.from(binString, (m) => m.codePointAt(0)!);
       return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
     }
-  } catch (e) {
-    console.error("Base64 decode error:", e, "Input:", str);
+  } catch {
+    // Do not log the encoded input or decoder exception.  Deep-link payloads
+    // can carry provider configuration and API credentials, and a decode
+    // failure must not turn them into browser-console diagnostics.
     // Last resort fallback using deprecated but sometimes working method
     try {
       return decodeURIComponent(

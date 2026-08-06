@@ -8,6 +8,22 @@ fn main() {
         std::process::exit(exit_code);
     }
 
+    // This runs before `fyagent_lib::run()` installs its panic hook or creates
+    // a Tauri builder. A formal Windows build must prove its runtime privilege
+    // and acquire the native per-user instance guard before any user data,
+    // logging, database, or tray initialization can occur.
+    #[cfg(target_os = "windows")]
+    match fyagent_lib::early_windows_startup_gate() {
+        fyagent_lib::WindowsStartupDisposition::Continue => {}
+        fyagent_lib::WindowsStartupDisposition::ForwardedToExistingInstance => return,
+        fyagent_lib::WindowsStartupDisposition::Blocked(code) => {
+            // Pre-logger diagnostics are fixed codes only: no SID, account,
+            // path, token, command line, or native error is ever printed.
+            eprintln!("{code}");
+            std::process::exit(1);
+        }
+    }
+
     // 在 Linux 上设置 WebKit 环境变量以解决 DMA-BUF 渲染问题
     // 某些 Linux 系统（如 Debian 13.2、Nvidia GPU）上 WebKitGTK 的 DMA-BUF 渲染器可能导致白屏/黑屏
     // 参考: https://github.com/tauri-apps/tauri/issues/9394

@@ -6,34 +6,50 @@
 //
 // Usage: node scripts/generate-download-manifest.mjs <assets-dir> <tag> <base-url> [output]
 
-import { readdirSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readdirSync, statSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
-const [assetsDir, tag, baseUrl, output = 'manifest.json'] = process.argv.slice(2);
+const [assetsDir, tag, baseUrl, output = "manifest.json"] =
+  process.argv.slice(2);
 
 if (!assetsDir || !tag || !baseUrl) {
-  console.error('Usage: node scripts/generate-download-manifest.mjs <assets-dir> <tag> <base-url> [output]');
+  console.error(
+    "Usage: node scripts/generate-download-manifest.mjs <assets-dir> <tag> <base-url> [output]",
+  );
   process.exit(1);
 }
 
 // Longer suffixes must come before their shorter counterparts
 // (e.g. -Windows-arm64.msi before -Windows.msi).
 const RULES = [
-  { suffix: '-macOS.dmg', platform: 'macos', kind: 'dmg', arch: 'universal' },
-  { suffix: '-macOS.zip', platform: 'macos', kind: 'zip', arch: 'universal' },
-  { suffix: '-Windows-arm64-Portable.zip', platform: 'windows', kind: 'portable', arch: 'arm64' },
-  { suffix: '-Windows-Portable.zip', platform: 'windows', kind: 'portable', arch: 'x64' },
-  { suffix: '-Windows-arm64.msi', platform: 'windows', kind: 'msi', arch: 'arm64' },
-  { suffix: '-Windows.msi', platform: 'windows', kind: 'msi', arch: 'x64' },
-  { suffix: '-Linux-arm64.AppImage', platform: 'linux', kind: 'appimage', arch: 'arm64' },
-  { suffix: '-Linux-x86_64.AppImage', platform: 'linux', kind: 'appimage', arch: 'x64' },
-  { suffix: '-Linux-arm64.deb', platform: 'linux', kind: 'deb', arch: 'arm64' },
-  { suffix: '-Linux-x86_64.deb', platform: 'linux', kind: 'deb', arch: 'x64' },
-  { suffix: '-Linux-arm64.rpm', platform: 'linux', kind: 'rpm', arch: 'arm64' },
-  { suffix: '-Linux-x86_64.rpm', platform: 'linux', kind: 'rpm', arch: 'x64' },
+  { suffix: "-macOS.dmg", platform: "macos", kind: "dmg", arch: "universal" },
+  { suffix: "-macOS.zip", platform: "macos", kind: "zip", arch: "universal" },
+  {
+    suffix: "-Windows-arm64.msi",
+    platform: "windows",
+    kind: "msi",
+    arch: "arm64",
+  },
+  { suffix: "-Windows.msi", platform: "windows", kind: "msi", arch: "x64" },
+  {
+    suffix: "-Linux-arm64.AppImage",
+    platform: "linux",
+    kind: "appimage",
+    arch: "arm64",
+  },
+  {
+    suffix: "-Linux-x86_64.AppImage",
+    platform: "linux",
+    kind: "appimage",
+    arch: "x64",
+  },
+  { suffix: "-Linux-arm64.deb", platform: "linux", kind: "deb", arch: "arm64" },
+  { suffix: "-Linux-x86_64.deb", platform: "linux", kind: "deb", arch: "x64" },
+  { suffix: "-Linux-arm64.rpm", platform: "linux", kind: "rpm", arch: "arm64" },
+  { suffix: "-Linux-x86_64.rpm", platform: "linux", kind: "rpm", arch: "x64" },
 ];
 
-const normalizedBase = baseUrl.replace(/\/+$/, '');
+const normalizedBase = baseUrl.replace(/\/+$/, "");
 const files = [];
 
 for (const name of readdirSync(assetsDir).sort()) {
@@ -57,7 +73,7 @@ if (files.length === 0) {
 }
 
 const manifest = {
-  version: tag.replace(/^v/, ''),
+  version: tag.replace(/^v/, ""),
   tag,
   pubDate: new Date().toISOString(),
   files,

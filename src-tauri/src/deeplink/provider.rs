@@ -19,7 +19,8 @@ use std::str::FromStr;
 /// 2. Merges config file if provided (v3.8+)
 /// 3. Converts it to a Provider structure
 /// 4. Delegates to ProviderService for actual import
-/// 5. Optionally sets as current provider if enabled=true
+/// 5. Optionally sets it as current only when the in-app confirmation has
+///    separately approved a link-requested `enabled=true` activation
 pub fn import_provider_from_deeplink(
     state: &AppState,
     request: DeepLinkImportRequest,
@@ -109,8 +110,11 @@ pub fn import_provider_from_deeplink(
 
     let provider_id = provider.id.clone();
 
-    // Use ProviderService to add the provider
-    ProviderService::add(state, app_type.clone(), provider, true)?;
+    // A deep link is allowed to request activation, but cannot authorize it.
+    // Until the in-app confirmation supplies its separate approval bit, store
+    // only a draft and leave any current provider/live config untouched.
+    let activation_approved = provider_activation_is_explicitly_approved(&merged_request);
+    ProviderService::add_draft(state, app_type.clone(), provider)?;
 
     // Add extra endpoints as custom endpoints (skip first one as it's the primary)
     for ep in all_endpoints.iter().skip(1) {
@@ -122,21 +126,23 @@ pub fn import_provider_from_deeplink(
                 &provider_id,
                 normalized.clone(),
             ) {
-                log::warn!(
-                    "Failed to add custom endpoint '{}': {e}",
-                    crate::url_for_log(&normalized)
-                );
+                let _ = (&normalized, e);
+                log::warn!("Could not add a custom endpoint from a deep link");
             }
         }
     }
 
-    // If enabled=true, set as current provider
-    if merged_request.enabled.unwrap_or(false) {
+    // Only an explicit UI approval can make a link-requested provider current.
+    if activation_approved {
         ProviderService::switch(state, app_type.clone(), &provider_id)?;
-        log::info!("Provider '{provider_id}' set as current for {app_type:?}");
+        log::info!("Set imported provider as current");
     }
 
     Ok(provider_id)
+}
+
+fn provider_activation_is_explicitly_approved(request: &DeepLinkImportRequest) -> bool {
+    request.enabled == Some(true) && request.activation_approved == Some(true)
 }
 
 /// Build a Provider structure from a deep link request
@@ -962,6 +968,23 @@ mod tests {
             model: Some("anthropic/claude-opus-4-8".to_string()),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn provider_activation_requires_a_link_request_and_explicit_ui_approval() {
+        let mut request = DeepLinkImportRequest {
+            resource: "provider".to_string(),
+            enabled: Some(true),
+            ..Default::default()
+        };
+
+        assert!(!provider_activation_is_explicitly_approved(&request));
+
+        request.activation_approved = Some(true);
+        assert!(provider_activation_is_explicitly_approved(&request));
+
+        request.enabled = Some(false);
+        assert!(!provider_activation_is_explicitly_approved(&request));
     }
 
     /// deeplink 同时声明 `api_key` 与 `env_key` 时，导入结果只保留用户可见的

@@ -46,7 +46,7 @@
     ],
     "windows": {
       "wix": {
-        "template": "wix/per-user-main.wxs"
+        "template": "wix/per-machine-main.wxs"
       }
     },
     "macOS": {

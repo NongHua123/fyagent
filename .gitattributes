@@ -37,6 +37,11 @@
 *.exe binary
 *.dll binary
 
+# Desktop visual baselines are binary review artifacts. Keep the future
+# platform/scale/locale baselines in Git LFS instead of inflating normal Git
+# history; no test command is allowed to update these files implicitly.
+tests/e2e/visual-baselines/**/*.png filter=lfs diff=lfs merge=lfs -text
+
 # Trellis: append-only developer journals should merge cleanly across
 # parallel sessions/worktrees — each session only appends a new block, so
 # there is nothing to actually conflict on.

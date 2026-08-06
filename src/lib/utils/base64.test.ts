@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { decodeBase64Utf8 } from "./base64";
 
 /** 标准 Base64（带 padding）。 */
@@ -24,6 +24,9 @@ function payloadWithNonAlphanumericBase64(): string {
 }
 
 describe("decodeBase64Utf8", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
   it("decodes standard Base64", () => {
     expect(decodeBase64Utf8(toStandard("hello world"))).toBe("hello world");
   });
@@ -98,5 +101,13 @@ describe("decodeBase64Utf8", () => {
   it("returns the input unchanged when it is not Base64 at all", () => {
     // 回落到原串而不是空串：确认框宁可显示看不懂的东西，也不能让 payload 消失
     expect(decodeBase64Utf8("!!!not base64!!!")).toBe("!!!not base64!!!");
+  });
+
+  it("does not log an undecodable payload that contains a secret", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const payload = "invalid-base64-api-key=sk-test-secret-value";
+
+    expect(decodeBase64Utf8(payload)).toBe(payload);
+    expect(error).not.toHaveBeenCalled();
   });
 });

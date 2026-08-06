@@ -898,6 +898,50 @@ mod tests {
 
     #[test]
     #[serial]
+    fn add_draft_preserves_the_existing_live_config_and_current_provider() {
+        with_test_home(|state, _| {
+            let original_live =
+                b"# existing user-managed Codex configuration\nmodel = \"fixture\"\n";
+            write_test_codex_live_config(original_live);
+
+            let provider = codex_provider_with_usage(
+                "deeplink-draft",
+                "https://draft.example.test/v1",
+                "draft-only-key",
+                None,
+                None,
+                None,
+            );
+
+            ProviderService::add_draft(state, AppType::Codex, provider)
+                .expect("store deep-link provider as a draft");
+
+            assert_eq!(
+                state
+                    .db
+                    .get_current_provider(AppType::Codex.as_str())
+                    .expect("read current provider"),
+                None,
+                "a draft must not become current merely because no provider was selected",
+            );
+            assert_eq!(
+                fs::read(get_codex_config_path()).expect("read preserved live config"),
+                original_live,
+                "a draft must not write a live configuration",
+            );
+            assert!(
+                state
+                    .db
+                    .get_provider_by_id("deeplink-draft", AppType::Codex.as_str())
+                    .expect("query saved draft")
+                    .is_some(),
+                "the draft must still be available for a later explicit switch",
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
     fn update_preserves_usage_credentials_that_only_match_previous_config() {
         with_test_home(|state, _| {
             let provider = codex_provider_with_usage(
@@ -3013,6 +3057,27 @@ impl ProviderService {
         provider: Provider,
         add_to_live: bool,
     ) -> Result<bool, AppError> {
+        Self::add_with_initial_activation(state, app_type, provider, add_to_live, true)
+    }
+
+    /// Store a provider without selecting it as the initial provider or
+    /// writing any live configuration. Deep-link imports use this path until
+    /// the confirmation UI has recorded an explicit activation approval.
+    pub fn add_draft(
+        state: &AppState,
+        app_type: AppType,
+        provider: Provider,
+    ) -> Result<bool, AppError> {
+        Self::add_with_initial_activation(state, app_type, provider, false, false)
+    }
+
+    fn add_with_initial_activation(
+        state: &AppState,
+        app_type: AppType,
+        provider: Provider,
+        add_to_live: bool,
+        activate_if_no_current_provider: bool,
+    ) -> Result<bool, AppError> {
         let mut provider = provider;
         // Normalize Claude model keys
         Self::normalize_provider_if_claude(&app_type, &mut provider);
@@ -3048,7 +3113,7 @@ impl ProviderService {
 
         // For other apps: Check if sync is needed (if this is current provider, or no current provider)
         let current = state.db.get_current_provider(app_type.as_str())?;
-        if current.is_none() {
+        if activate_if_no_current_provider && current.is_none() {
             // No current provider, set as current and sync
             state
                 .db

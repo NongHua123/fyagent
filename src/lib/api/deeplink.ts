@@ -17,6 +17,9 @@ export interface DeepLinkImportRequest {
     | "hermes";
   name?: string;
   enabled?: boolean;
+  // Set only by the in-app confirmation UI. Protocol URLs may request
+  // activation through `enabled`, but cannot authorize it.
+  activationApproved?: boolean;
 
   // Provider fields
   homepage?: string;

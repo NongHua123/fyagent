@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { DeepLinkImportRequest, deeplinkApi } from "@/lib/api/deeplink";
 import { parseDeepLinkConfigPreview } from "@/utils/deepLinkConfigPreview";
@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
@@ -27,17 +28,15 @@ import {
 } from "@/utils/deeplinkRisk";
 import { decodeBase64Utf8 } from "@/lib/utils/base64";
 
-interface DeeplinkError {
-  url: string;
-  error: string;
-}
-
 export function DeepLinkImportDialog() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [request, setRequest] = useState<DeepLinkImportRequest | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [providerActivationApproved, setProviderActivationApproved] =
+    useState(false);
+  const latestImportSequenceRef = useRef(0);
 
   // 容错判断：MCP 导入结果可能缺少 type 字段
   const isMcpImportResult = (
@@ -58,43 +57,58 @@ export function DeepLinkImportDialog() {
   };
 
   useEffect(() => {
+    let disposed = false;
+
     // Listen for deep link import events
     const unlistenImport = listen<DeepLinkImportRequest>(
       "deeplink-import",
       async (event) => {
+        const importSequence = ++latestImportSequenceRef.current;
+        // This confirmation belongs to the visible dialog, never to a value
+        // supplied by the protocol payload. Every newly received link starts
+        // with activation unchecked even if it requested `enabled=true`.
+        setProviderActivationApproved(false);
+        let nextRequest = event.payload;
+
         // If config is present, merge it to get the complete configuration
         if (event.payload.config || event.payload.configUrl) {
           try {
-            const mergedRequest = await deeplinkApi.mergeDeeplinkConfig(
-              event.payload,
-            );
-            setRequest(mergedRequest);
-          } catch (error) {
-            console.error("Failed to merge config:", error);
-            toast.error(t("deeplink.configMergeError"), {
-              description:
-                error instanceof Error ? error.message : String(error),
-            });
-            // Fall back to original request
-            setRequest(event.payload);
+            nextRequest = await deeplinkApi.mergeDeeplinkConfig(event.payload);
+          } catch {
+            if (
+              disposed ||
+              importSequence !== latestImportSequenceRef.current
+            ) {
+              return;
+            }
+            // Config payloads can contain credentials, so show only a
+            // translated, credential-free failure state in the renderer.
+            toast.error(t("deeplink.configMergeError"));
+            // Fall back to the original request below.
           }
-        } else {
-          setRequest(event.payload);
         }
 
+        // A config merge is asynchronous. Do not let an older link replace a
+        // newer confirmation or inherit its activation approval.
+        if (disposed || importSequence !== latestImportSequenceRef.current) {
+          return;
+        }
+
+        setRequest(nextRequest);
         setIsOpen(true);
       },
     );
 
     // Listen for deep link error events
-    const unlistenError = listen<DeeplinkError>("deeplink-error", (event) => {
-      console.error("Deep link error:", event.payload);
-      toast.error(t("deeplink.parseError"), {
-        description: event.payload.error,
-      });
+    const unlistenError = listen("deeplink-error", () => {
+      // Never inspect this payload: older hosts included the original custom
+      // protocol URL here, and such a URL may carry an API key.
+      toast.error(t("deeplink.parseError"));
     });
 
     return () => {
+      disposed = true;
+      latestImportSequenceRef.current += 1;
       unlistenImport.then((fn) => fn());
       unlistenError.then((fn) => fn());
     };
@@ -103,10 +117,19 @@ export function DeepLinkImportDialog() {
   const handleImport = async () => {
     if (!request) return;
 
+    const importSequence = latestImportSequenceRef.current;
     setIsImporting(true);
 
     try {
-      const result = await deeplinkApi.importFromDeeplink(request);
+      const importRequest: DeepLinkImportRequest =
+        request.resource === "provider"
+          ? {
+              ...request,
+              activationApproved:
+                request.enabled === true && providerActivationApproved,
+            }
+          : request;
+      const result = await deeplinkApi.importFromDeeplink(importRequest);
       const refreshMcp = async (summary: {
         importedCount: number;
         importedIds: string[];
@@ -199,13 +222,15 @@ export function DeepLinkImportDialog() {
         });
       }
 
-      // Close dialog after all refreshes complete
-      setIsOpen(false);
-    } catch (error) {
-      console.error("Failed to import from deep link:", error);
-      toast.error(t("deeplink.importError"), {
-        description: error instanceof Error ? error.message : String(error),
-      });
+      // A new link can arrive while this import is pending. Completing the
+      // older import must not close the newer confirmation dialog.
+      if (importSequence === latestImportSequenceRef.current) {
+        setIsOpen(false);
+      }
+    } catch {
+      // Import errors can originate from a link-supplied config; do not turn
+      // them into a copyable renderer error.
+      toast.error(t("deeplink.importError"));
     } finally {
       setIsImporting(false);
     }
@@ -403,6 +428,54 @@ export function DeepLinkImportDialog() {
                       {maskedApiKey}
                     </div>
                   </div>
+
+                  {/*
+                    A link can request a provider switch, but it cannot
+                    authorize one.  The checkbox below starts unchecked and
+                    is the only UI path that sets activationApproved.
+                  */}
+                  <div className="grid grid-cols-3 items-start gap-4">
+                    <div className="font-medium text-sm text-muted-foreground">
+                      {t("deeplink.providerActivation")}
+                    </div>
+                    <div
+                      className={`col-span-2 text-sm ${
+                        request.enabled === true
+                          ? "font-medium text-yellow-700 dark:text-yellow-500"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {request.enabled === true
+                        ? providerActivationApproved
+                          ? t("deeplink.providerActivationEnabled")
+                          : t("deeplink.providerActivationPending")
+                        : t("deeplink.providerActivationDisabled")}
+                    </div>
+                  </div>
+
+                  {request.enabled === true && (
+                    <div
+                      role="alert"
+                      className="text-yellow-600 dark:text-yellow-500 text-sm flex items-start gap-2"
+                    >
+                      <span aria-hidden="true">⚠️</span>
+                      <span>{t("deeplink.providerActivationWarning")}</span>
+                    </div>
+                  )}
+
+                  {request.enabled === true && (
+                    <label className="flex cursor-pointer items-start gap-2 rounded border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm">
+                      <Checkbox
+                        id="deeplink-provider-activation"
+                        checked={providerActivationApproved}
+                        onCheckedChange={(checked) =>
+                          setProviderActivationApproved(checked === true)
+                        }
+                        className="mt-0.5"
+                      />
+                      <span>{t("deeplink.providerActivationApproval")}</span>
+                    </label>
+                  )}
 
                   {/* Model Fields - 根据应用类型显示不同的模型字段 */}
                   {request.app === "claude" ? (
@@ -719,7 +792,13 @@ export function DeepLinkImportDialog() {
                 {t("common.cancel")}
               </Button>
               <Button onClick={handleImport} disabled={isImporting}>
-                {isImporting ? t("deeplink.importing") : t("deeplink.import")}
+                {isImporting
+                  ? t("deeplink.importing")
+                  : request.resource === "provider" &&
+                      request.enabled === true &&
+                      providerActivationApproved
+                    ? t("deeplink.importAndActivate")
+                    : t("deeplink.import")}
               </Button>
             </DialogFooter>
           </>

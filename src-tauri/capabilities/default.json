@@ -5,8 +5,7 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "opener:default",
-    "log:default",
+    "log:allow-log",
     "core:window:allow-set-skip-taskbar",
     "core:window:allow-start-dragging",
     "core:window:allow-minimize",
@@ -15,6 +14,6 @@
     "core:window:allow-close",
     "core:window:allow-set-decorations",
     "process:allow-exit",
-    "dialog:default"
+    "dialog:allow-message"
   ]
 }

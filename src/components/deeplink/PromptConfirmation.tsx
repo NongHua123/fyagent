@@ -46,15 +46,17 @@ export function PromptConfirmation({
         <label className="block text-sm font-medium text-muted-foreground">
           {t("deeplink.prompt.contentPreview")}
         </label>
-        <pre className="mt-1 max-h-48 overflow-auto bg-muted/50 p-2 rounded text-xs whitespace-pre-wrap border">
-          {decodedContent.substring(0, 500)}
-          {decodedContent.length > 500 && "..."}
+        <pre className="mt-1 max-h-48 overflow-auto bg-muted/50 p-2 rounded text-xs whitespace-pre-wrap break-all border">
+          {decodedContent}
         </pre>
       </div>
 
-      {request.enabled && (
-        <div className="text-yellow-600 dark:text-yellow-500 text-sm flex items-center gap-2">
-          <span>⚠️</span>
+      {request.enabled === true && (
+        <div
+          role="alert"
+          className="text-yellow-600 dark:text-yellow-500 text-sm flex items-center gap-2"
+        >
+          <span aria-hidden="true">⚠️</span>
           <span>{t("deeplink.prompt.enabledWarning")}</span>
         </div>
       )}

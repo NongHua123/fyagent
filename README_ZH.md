@@ -178,7 +178,7 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 
 ### Windows 用户
 
-从 [Releases](https://github.com/NongHua123/cc-switch/releases) 页面下载最新版本的 `FyAgent-v{版本号}-Windows.msi` 安装包或 `FyAgent-v{版本号}-Windows-Portable.zip` 绿色版。
+从 [Releases](https://github.com/NongHua123/cc-switch/releases) 页面下载最新版本的 `FyAgent-v{版本号}-Windows.msi` 安装包。FyAgent 不再发布 Windows 绿色版 ZIP；请使用 MSI 安装包，以便通过受支持的全机器安装路径安装。
 
 ### macOS 用户
 

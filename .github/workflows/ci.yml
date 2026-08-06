@@ -96,7 +96,13 @@ jobs:
         run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
 
       - name: Clippy
+        env:
+          # Keep all Windows CI artifacts in the ordinary-user test mode. A
+          # distributable administrator binary is built only by release.yml.
+          FYAGENT_WINDOWS_MANIFEST: test
         run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
       - name: Run tests
+        env:
+          FYAGENT_WINDOWS_MANIFEST: test
         run: cargo test --manifest-path src-tauri/Cargo.toml

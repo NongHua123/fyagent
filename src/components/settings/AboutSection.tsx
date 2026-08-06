@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { getVersion } from "@tauri-apps/api/app";
 import { settingsApi } from "@/lib/api";
 import type {
+  RuntimePrivilegeStatus,
   ToolInstallation,
   ToolInstallationReport,
 } from "@/lib/api/settings";
@@ -41,6 +42,7 @@ import { ToolInstallRow } from "./ToolInstallRow";
 
 interface AboutSectionProps {
   isPortable: boolean;
+  runtimePrivilege?: RuntimePrivilegeStatus | null;
 }
 
 interface ToolVersion {
@@ -209,7 +211,10 @@ function mergeToolVersions(
   return merged;
 }
 
-export function AboutSection({ isPortable }: AboutSectionProps) {
+export function AboutSection({
+  isPortable,
+  runtimePrivilege = null,
+}: AboutSectionProps) {
   // ... (use hooks as before) ...
   const { t } = useTranslation();
   // 惰性初始化自模块缓存：重挂时首帧即渲染上次的值，避免 loading 闪烁；首次挂载缓存
@@ -773,6 +778,21 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
                   <Badge variant="secondary" className="gap-1.5">
                     <Info className="h-3 w-3" />
                     {t("settings.portableMode")}
+                  </Badge>
+                )}
+                {runtimePrivilege?.platform === "windows" && (
+                  <Badge
+                    variant={
+                      runtimePrivilege.elevated ? "secondary" : "destructive"
+                    }
+                    className="gap-1.5"
+                  >
+                    <Info className="h-3 w-3" />
+                    {t(
+                      runtimePrivilege.elevated
+                        ? "settings.runtimePrivilegeAdministrator"
+                        : "settings.runtimePrivilegeStandardUser",
+                    )}
                   </Badge>
                 )}
               </div>

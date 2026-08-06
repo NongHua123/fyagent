@@ -168,7 +168,7 @@ For detailed guides on every feature, check out the **[User Manual](docs/user-ma
 
 ### Windows Users
 
-Download the latest `FyAgent-v{version}-Windows.msi` installer or `FyAgent-v{version}-Windows-Portable.zip` portable version from the [Releases](https://github.com/NongHua123/cc-switch/releases) page.
+Download the latest `FyAgent-v{version}-Windows.msi` installer from the [Releases](https://github.com/NongHua123/cc-switch/releases) page. FyAgent no longer publishes a Windows Portable ZIP because the supported Windows application runs through the protected per-machine installation path.
 
 ### macOS Users
 

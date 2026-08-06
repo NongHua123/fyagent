@@ -147,4 +147,23 @@ describe("AboutSection", () => {
       );
     });
   });
+
+  it("shows the Windows administrator runtime status only in About", () => {
+    render(
+      <AboutSection
+        isPortable={false}
+        runtimePrivilege={{
+          platform: "windows",
+          supported: true,
+          elevated: true,
+          localAdministrator: true,
+          interactiveUserMatch: "match",
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText("settings.runtimePrivilegeAdministrator"),
+    ).toBeInTheDocument();
+  });
 });

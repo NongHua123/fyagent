@@ -176,7 +176,7 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 
 ### Windows ユーザー
 
-[Releases](https://github.com/NongHua123/cc-switch/releases) ページから最新版の `FyAgent-v{version}-Windows.msi` インストーラー、またはポータブル版 `FyAgent-v{version}-Windows-Portable.zip` をダウンロード。
+[Releases](https://github.com/NongHua123/cc-switch/releases) ページから最新版の `FyAgent-v{version}-Windows.msi` インストーラーをダウンロードしてください。FyAgent は Windows ポータブル ZIP を今後配布せず、サポート対象の全マシン インストール パスには MSI を使用します。
 
 ### macOS ユーザー
 

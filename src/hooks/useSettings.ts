@@ -13,6 +13,7 @@ import {
   type ResolvedDirectories,
 } from "./useDirectorySettings";
 import { useSettingsMetadata } from "./useSettingsMetadata";
+import type { RuntimePrivilegeStatus } from "@/lib/api/settings";
 
 interface SaveResult {
   requiresRestart: boolean;
@@ -23,6 +24,7 @@ export interface UseSettingsResult {
   isLoading: boolean;
   isSaving: boolean;
   isPortable: boolean;
+  runtimePrivilege: RuntimePrivilegeStatus | null;
   appConfigDir?: string;
   resolvedDirs: ResolvedDirectories;
   requiresRestart: boolean;
@@ -96,6 +98,7 @@ export function useSettings(): UseSettingsResult {
   // 3️⃣ 元数据管理
   const {
     isPortable,
+    runtimePrivilege,
     requiresRestart,
     isLoading: isMetadataLoading,
     acknowledgeRestart,
@@ -501,6 +504,7 @@ export function useSettings(): UseSettingsResult {
     isLoading,
     isSaving: saveMutation.isPending,
     isPortable,
+    runtimePrivilege,
     appConfigDir,
     resolvedDirs,
     requiresRestart,

@@ -335,6 +335,16 @@ export const handlers = [
 
   http.post(`${TAURI_ENDPOINT}/is_portable_mode`, () => success(false)),
 
+  http.post(`${TAURI_ENDPOINT}/get_runtime_privilege_status`, () =>
+    success({
+      platform: "other",
+      supported: false,
+      elevated: false,
+      localAdministrator: false,
+      interactiveUserMatch: "unavailable",
+    }),
+  ),
+
   http.post(
     `${TAURI_ENDPOINT}/select_config_directory`,
     async ({ request }) => {

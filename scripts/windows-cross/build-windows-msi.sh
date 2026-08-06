@@ -284,7 +284,7 @@ check_project_inputs() {
     src-tauri/Cargo.lock
     src-tauri/tauri.conf.json
     src-tauri/tauri.windows.conf.json
-    src-tauri/wix/per-user-main.wxs
+    src-tauri/wix/per-machine-main.wxs
   )
 
   for required_file in "${required_files[@]}"; do

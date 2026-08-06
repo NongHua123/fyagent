@@ -58,7 +58,7 @@ pub fn import_skill_from_deeplink(
     // Save using Database
     state.db.save_skill_repo(&repo)?;
 
-    log::info!("Successfully added skill repo '{owner}/{name}'");
+    log::info!("Added skill repository from deep link");
 
     Ok(format!("{owner}/{name}"))
 }

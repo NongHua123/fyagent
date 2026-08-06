@@ -99,7 +99,7 @@ pub fn import_mcp_from_deeplink(
         // Check if server already exists
         let server = if let Some(existing) = existing_servers.get(id) {
             // Server exists - merge apps only, keep other fields unchanged
-            log::info!("MCP server '{id}' already exists, merging apps only");
+            log::info!("MCP server already exists; merging enabled applications");
 
             let merged_apps = merge_mcp_apps(&existing.apps, &target_apps);
 
@@ -115,7 +115,7 @@ pub fn import_mcp_from_deeplink(
             }
         } else {
             // New server - create with provided config
-            log::info!("Creating new MCP server: {id}");
+            log::info!("Creating MCP server from deep link");
             McpServer {
                 id: id.clone(),
                 name: id.clone(),
@@ -131,14 +131,15 @@ pub fn import_mcp_from_deeplink(
         match McpService::upsert_server(state, server) {
             Ok(_) => {
                 imported_ids.push(id.clone());
-                log::info!("Successfully imported/updated MCP server: {id}");
+                log::info!("Imported or updated MCP server from deep link");
             }
             Err(e) => {
                 failed.push(McpImportError {
                     id: id.clone(),
-                    error: format!("{e}"),
+                    error: "MCP server could not be imported".to_string(),
                 });
-                log::warn!("Failed to import MCP server '{id}': {e}");
+                let _ = e;
+                log::warn!("MCP server import from deep link failed");
             }
         }
     }

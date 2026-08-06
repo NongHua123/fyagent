@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 
 // Re-export public API
 pub use mcp::import_mcp_from_deeplink;
-pub use parser::parse_deeplink_url;
+pub use parser::{parse_deeplink_url, validate_deeplink_request};
 pub use prompt::import_prompt_from_deeplink;
 pub use provider::{import_provider_from_deeplink, parse_and_merge_config};
 pub use skill::import_skill_from_deeplink;
@@ -49,6 +49,11 @@ pub struct DeepLinkImportRequest {
     /// Whether to enable after import (default: false)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+    /// Explicit in-app approval to activate a provider. This is deliberately
+    /// never populated by the protocol parser: a link may request activation
+    /// through `enabled`, but only the confirmation UI can approve it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub activation_approved: Option<bool>,
 
     // ============ Provider-specific fields ============
     /// Provider homepage URL

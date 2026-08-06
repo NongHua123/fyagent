@@ -27,6 +27,7 @@ mod model_capabilities;
 mod openclaw_config;
 mod opencode_config;
 mod panic_hook;
+mod platform;
 mod prompt;
 mod prompt_files;
 mod provider;
@@ -39,6 +40,7 @@ mod store;
 mod tray;
 mod usage_events;
 mod usage_script;
+mod windows_runtime;
 
 use crate::codex_desktop::types::JobStage;
 pub use app_config::{AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps};
@@ -72,7 +74,7 @@ pub use settings::{update_settings, AppSettings};
 pub use store::AppState;
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-use tauri_plugin_opener::OpenerExt;
+pub use windows_runtime::{early_windows_startup_gate, WindowsStartupDisposition};
 
 use std::{fmt, sync::Arc};
 #[cfg(target_os = "macos")]
@@ -135,14 +137,6 @@ impl fmt::Display for RedactedUrl<'_> {
             self.url,
             self.known_secrets,
         ))
-    }
-}
-
-/// 为日志提供惰性 URL 脱敏包装；只有日志实际输出时才解析和重建 URL。
-pub(crate) fn url_for_log(url: &str) -> RedactedUrl<'_> {
-    RedactedUrl {
-        url,
-        known_secrets: &[],
     }
 }
 
@@ -249,6 +243,18 @@ fn runtime_log_level_allows(level: log::Level, max_level: log::LevelFilter) -> b
     max_level.to_level().is_some_and(|maximum| level <= maximum)
 }
 
+fn emit_safe_deeplink_error(app: &tauri::AppHandle) {
+    // Do not expose the rejected URL or parser diagnostic. Deep links may
+    // legitimately carry credentials, and the renderer only needs a safe,
+    // localized failure category.
+    if let Err(error) = app.emit(
+        "deeplink-error",
+        serde_json::json!({ "code": "invalid_deeplink" }),
+    ) {
+        log::error!("Failed to emit safe deep-link error event: {error}");
+    }
+}
+
 /// 统一处理 fyagent:// 深链接 URL
 ///
 /// - 解析 URL
@@ -264,19 +270,11 @@ fn handle_deeplink_url(
         return false;
     }
 
-    log::info!(
-        "✓ Deep link URL detected from {source}: {}",
-        url_for_log(url_str)
-    );
+    log::info!("Deep link URL detected from {source}");
 
     match crate::deeplink::parse_deeplink_url(url_str) {
         Ok(request) => {
-            log::info!(
-                "✓ Successfully parsed deep link: resource={}, app={:?}, name={:?}",
-                request.resource,
-                request.app,
-                request.name
-            );
+            log::info!("Successfully parsed deep link request");
 
             if let Err(e) = app.emit("deeplink-import", &request) {
                 log::error!("✗ Failed to emit deeplink-import event: {e}");
@@ -297,22 +295,46 @@ fn handle_deeplink_url(
                 }
             }
         }
-        Err(e) => {
-            log::error!("✗ Failed to parse deep link URL: {e}");
-
-            if let Err(emit_err) = app.emit(
-                "deeplink-error",
-                serde_json::json!({
-                    "url": url_str,
-                    "error": e.to_string()
-                }),
-            ) {
-                log::error!("✗ Failed to emit deeplink-error event: {emit_err}");
-            }
+        Err(_) => {
+            log::warn!("Rejected invalid deep link from {source}");
+            emit_safe_deeplink_error(app);
         }
     }
 
     true
+}
+
+/// Handles a raw, bounded activation envelope received before/alongside Tauri.
+/// The pipe protocol authenticates the sender but never attests to the content:
+/// every candidate URL returns through the ordinary deep-link parser before the
+/// renderer sees it, and a non-link activation merely restores the main window.
+#[cfg(target_os = "windows")]
+fn handle_windows_activation(
+    app: tauri::AppHandle,
+    activation: crate::windows_runtime::ActivationEnvelope,
+) {
+    if crate::lightweight::is_lightweight_mode() {
+        if let Err(error) = crate::lightweight::exit_lightweight_mode(&app) {
+            log::error!("Windows activation could not restore the main window: {error}");
+            return;
+        }
+    }
+
+    let mut handled_deeplink = false;
+    for argument in activation.args() {
+        if handle_deeplink_url(&app, argument, true, "windows activation pipe") {
+            handled_deeplink = true;
+            break;
+        }
+    }
+
+    if !handled_deeplink {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }
 }
 
 /// 更新托盘菜单的Tauri命令
@@ -355,16 +377,29 @@ pub fn run() {
     // 设置 panic hook，在应用崩溃时记录日志到 <app_config_dir>/crash.log（默认 ~/.fyagent/crash.log）
     panic_hook::setup_panic_hook();
 
+    // Windows 正式程序以管理员权限运行；在 Tauri、用户目录、数据库和托盘初始化前
+    // 清理 FyAgent 自身遗留的 Run 值。清理失败时不继续启动，避免把已禁用的自启
+    // 策略静默降级为“尽力而为”。
+    #[cfg(target_os = "windows")]
+    if let Err(error) = auto_launch::enforce_platform_auto_launch_policy() {
+        eprintln!("FyAgent cannot enforce the Windows auto-launch policy: {error}");
+        return;
+    }
+
     let mut builder = tauri::Builder::default();
 
-    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    // Windows owns single-business-instance detection before Tauri exists so a
+    // rejected second launch cannot initialize the runtime, logger, database,
+    // tray, or renderer. Keep the cross-platform plugin on its native
+    // macOS/Linux paths only.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             log::info!("=== Single Instance Callback Triggered ===");
             log::debug!("Args count: {}", args.len());
-            for (i, arg) in args.iter().enumerate() {
-                log::debug!("  arg[{i}]: {}", url_for_log(arg));
-            }
+            // Arguments can be arbitrary local paths or custom-protocol URLs
+            // carrying credentials. Retain only their count for diagnostics;
+            // parsing below is the sole consumer of their contents.
 
             if crate::lightweight::is_lightweight_mode() {
                 if let Err(e) = crate::lightweight::exit_lightweight_mode(app) {
@@ -443,6 +478,22 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            #[cfg(target_os = "windows")]
+            {
+                // The listener itself was bound before `Builder::default()`.
+                // Register the Tauri-side consumer at the first setup line so
+                // any envelope queued during construction is re-parsed and
+                // focused before user configuration or database work begins.
+                let activation_app = app.handle().clone();
+                crate::windows_runtime::install_activation_handler(move |activation| {
+                    let activation_app = activation_app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        handle_windows_activation(activation_app, activation);
+                    });
+                })
+                .map_err(|code| std::io::Error::other(code.as_str()))?;
+            }
+
             let _ = rustls::crypto::ring::default_provider().install_default();
 
             // 预先刷新 Store 覆盖配置，确保后续路径读取正确（日志/数据库等）
@@ -672,17 +723,20 @@ pub fn run() {
             app_state
                 .codex_desktop_service
                 .attach_log_directory_opener(Arc::new(move |directory: &std::path::Path| {
-                    log_opener_handle
-                        .opener()
-                        .open_path(directory.to_string_lossy().to_string(), None::<String>)
-                        .map_err(|_| {
+                    tauri::async_runtime::block_on(
+                        crate::platform::process_launch::open_directory_as_user(
+                            log_opener_handle.clone(),
+                            directory.to_path_buf(),
+                        ),
+                    )
+                    .map_err(|_| {
                             crate::codex_desktop::error::InstallerError::new(
                                 crate::codex_desktop::error::InstallerErrorCode::InternalError,
                             )
                             .with_diagnostic_message(
                                 "the application log directory could not be opened",
                             )
-                        })
+                    })
                 }));
 
             // ============================================================
@@ -1085,9 +1139,8 @@ pub fn run() {
                         }
                     }
 
-                    for (i, url) in urls.iter().enumerate() {
+                    for url in urls {
                         let url_str = url.as_str();
-                        log::debug!("  URL[{i}]: {}", url_for_log(url_str));
 
                         if handle_deeplink_url(&app_handle, url_str, true, "on_open_url") {
                             break; // Process only first fyagent:// URL
@@ -1411,6 +1464,7 @@ pub fn run() {
             commands::pick_directory,
             commands::open_external,
             commands::get_init_error,
+            commands::get_runtime_privilege_status,
             commands::get_migration_result,
             commands::get_skills_migration_result,
             commands::get_app_config_path,
@@ -1864,10 +1918,6 @@ pub fn run() {
                 RunEvent::Opened { urls } => {
                     if let Some(url) = urls.first() {
                         let url_str = url.to_string();
-                        log::info!(
-                            "RunEvent::Opened with URL: {}",
-                            url_for_log(&url_str)
-                        );
 
                         if url_str.starts_with("fyagent://") {
                             if crate::lightweight::is_lightweight_mode() {
@@ -1877,48 +1927,12 @@ pub fn run() {
                                 }
                             }
 
-                            // 解析并广播深链接事件，复用与 single_instance 相同的逻辑
-                            match crate::deeplink::parse_deeplink_url(&url_str) {
-                                Ok(request) => {
-                                    log::info!(
-                                        "Successfully parsed deep link from RunEvent::Opened: resource={}, app={:?}",
-                                        request.resource,
-                                        request.app
-                                    );
-
-                                    if let Err(e) =
-                                        app_handle.emit("deeplink-import", &request)
-                                    {
-                                        log::error!(
-                                            "Failed to emit deep link event from RunEvent::Opened: {e}"
-                                        );
-                                    }
-                                }
-                                Err(e) => {
-                                    log::error!(
-                                        "Failed to parse deep link URL from RunEvent::Opened: {e}"
-                                    );
-
-                                    if let Err(emit_err) = app_handle.emit(
-                                        "deeplink-error",
-                                        serde_json::json!({
-                                            "url": url_str,
-                                            "error": e.to_string()
-                                        }),
-                                    ) {
-                                        log::error!(
-                                            "Failed to emit deep link error event from RunEvent::Opened: {emit_err}"
-                                        );
-                                    }
-                                }
-                            }
-
-                            // 确保主窗口可见
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let _ = window.unminimize();
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
+                            let _ = handle_deeplink_url(
+                                app_handle,
+                                &url_str,
+                                true,
+                                "run_event_opened",
+                            );
                         }
                     }
                 }
@@ -2527,12 +2541,19 @@ pub fn save_window_state_before_exit(app_handle: &tauri::AppHandle) {
 
 /// 主动释放 single-instance 锁。
 ///
-/// macOS single-instance 使用 `/tmp/{identifier}.sock`。我们有若干路径会直接
-/// `std::process::exit(0)`，不会触发插件挂在 `RunEvent::Exit` 上的清理钩子。
-/// 重启前主动 destroy 可以避免新进程误连旧 listener 后自行退出。
+/// macOS/Linux 使用插件提供的 listener；Windows 在 Tauri 前绑定受认证的
+/// named-pipe guard。我们有若干路径会直接 `std::process::exit(0)`，不会触发
+/// 插件挂在 `RunEvent::Exit` 上的清理钩子。重启前主动释放可以避免新进程误连
+/// 旧 listener 后自行退出。
 pub fn destroy_single_instance_lock(app_handle: &tauri::AppHandle) {
-    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    crate::windows_runtime::release_instance_guard();
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     tauri_plugin_single_instance::destroy(app_handle);
+
+    #[cfg(target_os = "windows")]
+    let _ = app_handle;
 }
 
 /// 清理托盘图标、释放 single-instance 锁后重启当前应用。

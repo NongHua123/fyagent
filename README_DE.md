@@ -35,7 +35,7 @@ Modernes KI-gestütztes Programmieren stützt sich auf Werkzeuge wie Claude Code
 ## Screenshots
 
 |                  Hauptoberfläche                   |                  Anbieter hinzufügen                  |
-| :-----------------------------------------------: | :--------------------------------------------: |
+| :------------------------------------------------: | :---------------------------------------------------: |
 | ![Hauptoberfläche](assets/screenshots/main-en.png) | ![Anbieter hinzufügen](assets/screenshots/add-en.png) |
 
 ## Funktionen
@@ -176,7 +176,7 @@ Ausführliche Anleitungen zu jeder Funktion finden Sie im **[Benutzerhandbuch](d
 
 ### Windows-Nutzer
 
-Laden Sie das neueste Installationsprogramm `FyAgent-v{version}-Windows.msi` oder die portable Version `FyAgent-v{version}-Windows-Portable.zip` von der Seite [Releases](https://github.com/NongHua123/cc-switch/releases) herunter.
+Laden Sie das neueste Installationsprogramm `FyAgent-v{version}-Windows.msi` von der Seite [Releases](https://github.com/NongHua123/cc-switch/releases) herunter. FyAgent veröffentlicht kein portables Windows-ZIP mehr; verwenden Sie den MSI-Installer für den unterstützten installationsweiten Pfad.
 
 ### macOS-Nutzer
 
