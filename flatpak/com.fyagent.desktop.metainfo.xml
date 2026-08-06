@@ -4,10 +4,10 @@
   <name>FyAgent</name>
   <summary>All-in-One Assistant for Claude Code, Codex &amp; Gemini CLI</summary>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>MIT</project_license>
 
   <description>
     <p>FyAgent is a cross-platform desktop app for managing and switching provider configurations for Claude Code, Codex, and Gemini CLI.</p>
+    <p>FyAgent is source-available; see the repository LICENSE for its mixed licensing terms.</p>
     <ul>
       <li>Manage multiple provider configurations and endpoints</li>
       <li>One-click switch and sync to client live configurations</li>
@@ -20,6 +20,6 @@
     <binary>fyagent</binary>
   </provides>
 
-  <url type="homepage">https://github.com/NongHua123/cc-switch</url>
-  <url type="bugtracker">https://github.com/NongHua123/cc-switch/issues</url>
+  <url type="homepage">https://github.com/NongHua123/fyagent</url>
+  <url type="bugtracker">https://github.com/NongHua123/fyagent/issues</url>
 </component>

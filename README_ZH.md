@@ -4,15 +4,14 @@
 
 ### Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw 和 Hermes Agent 的全方位管理工具
 
-[![Version](https://img.shields.io/github/v/release/NongHua123/cc-switch?color=blue&label=version)](https://github.com/NongHua123/cc-switch/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/NongHua123/cc-switch/releases)
+[![Version](https://img.shields.io/github/v/release/NongHua123/fyagent?color=blue&label=version)](https://github.com/NongHua123/fyagent/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/NongHua123/fyagent/releases)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
-[![Downloads](https://img.shields.io/github/downloads/NongHua123/cc-switch/total)](https://github.com/NongHua123/cc-switch/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/NongHua123/fyagent/total)](https://github.com/NongHua123/fyagent/releases/latest)
 
-<a href="https://trendshift.io/repositories/15372" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15372" alt="farion1231%2Fcc-switch | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-<a href="https://www.star-history.com/#NongHua123/cc-switch&Date"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=NongHua123/cc-switch&theme=dark" /><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=NongHua123/cc-switch" width="196" height="55" /></picture></a>
+<a href="https://www.star-history.com/#NongHua123/fyagent&Date"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=NongHua123/fyagent&theme=dark" /><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=NongHua123/fyagent" width="196" height="55" /></picture></a>
 
-### 🌐 项目仓库：**[GitHub](https://github.com/NongHua123/cc-switch)**
+### 🌐 项目仓库：**[GitHub](https://github.com/NongHua123/fyagent)**
 
 [English](README.md) | 中文 | [日本語](README_JA.md) | [Deutsch](README_DE.md) | [更新日志](CHANGELOG.md)
 
@@ -178,17 +177,17 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 
 ### Windows 用户
 
-从 [Releases](https://github.com/NongHua123/cc-switch/releases) 页面下载最新版本的 `FyAgent-v{版本号}-Windows.msi` 安装包。FyAgent 不再发布 Windows 绿色版 ZIP；请使用 MSI 安装包，以便通过受支持的全机器安装路径安装。
+从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载最新版本的 `FyAgent-v{版本号}-Windows.msi` 安装包。FyAgent 不再发布 Windows 绿色版 ZIP；请使用 MSI 安装包，以便通过受支持的全机器安装路径安装。
 
 ### macOS 用户
 
-从 [Releases](https://github.com/NongHua123/cc-switch/releases) 页面下载 `FyAgent-v{版本号}-macOS.dmg`（推荐）或 `.zip`。
+从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载 `FyAgent-v{版本号}-macOS.dmg`（推荐）或 `.zip`。
 
 > **注意**：代码签名和公证状态以具体 Release 发布的证据为准；安装前请核对所下载 FyAgent 构建对应的发布说明。
 
 ### Linux 用户
 
-从 [Releases](https://github.com/NongHua123/cc-switch/releases) 页面下载最新版本的 Linux 安装包；这些构建也可用于 Arch Linux：
+从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载最新版本的 Linux 安装包；这些构建也可用于 Arch Linux：
 
 - `FyAgent-v{版本号}-Linux-{架构}.deb`（Debian/Ubuntu）
 - `FyAgent-v{版本号}-Linux-{架构}.rpm`（Fedora/RHEL/openSUSE）
@@ -420,8 +419,12 @@ mise exec -- pnpm test:unit --coverage
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=NongHua123/cc-switch&type=Date)](https://www.star-history.com/#NongHua123/cc-switch&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=NongHua123/fyagent&type=Date)](https://www.star-history.com/#NongHua123/fyagent&Date)
 
 ## License
 
-MIT © Jason Young
+FyAgent 是源码可用软件，并非 OSI 所定义的开源软件。FyAgent 自有的组件和修改部分采用
+[PolyForm Noncommercial License 1.0.0](LICENSES/PolyForm-Noncommercial-1.0.0.txt)
+授权；商业使用须另行取得书面授权。源自 CC Switch 的部分仍采用 MIT 许可证。详见
+[LICENSE](LICENSE)、[LICENSING.md](LICENSING.md) 和
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
