@@ -9,10 +9,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { WorkBuddyDuplicateId } from "@/lib/api";
-
 interface WorkBuddyDuplicateConflictDialogProps {
-  duplicates: WorkBuddyDuplicateId[];
+  existingIds: string[];
   isOpen: boolean;
   isSaving: boolean;
   onCancel: () => void;
@@ -20,7 +18,7 @@ interface WorkBuddyDuplicateConflictDialogProps {
 }
 
 export function WorkBuddyDuplicateConflictDialog({
-  duplicates,
+  existingIds,
   isOpen,
   isSaving,
   onCancel,
@@ -47,19 +45,9 @@ export function WorkBuddyDuplicateConflictDialog({
         </DialogHeader>
 
         <ul className="max-h-48 space-y-1 overflow-y-auto rounded-md border border-yellow-500/20 bg-yellow-500/5 p-3 text-sm">
-          {duplicates.map((duplicate) => (
-            <li
-              key={duplicate.id}
-              className="flex items-center justify-between gap-3"
-            >
-              <code className="min-w-0 truncate font-mono text-xs">
-                {duplicate.id}
-              </code>
-              <span className="shrink-0 text-muted-foreground">
-                {t("workbuddy.duplicateDialog.occurrences", {
-                  count: duplicate.count,
-                })}
-              </span>
+          {existingIds.map((id) => (
+            <li key={id} className="min-w-0">
+              <code className="block truncate font-mono text-xs">{id}</code>
             </li>
           ))}
         </ul>
@@ -69,7 +57,12 @@ export function WorkBuddyDuplicateConflictDialog({
         </p>
 
         <DialogFooter className="flex gap-2 border-t-0 bg-transparent pt-2 sm:justify-end">
-          <Button variant="outline" disabled={isSaving} onClick={onCancel}>
+          <Button
+            variant="outline"
+            disabled={isSaving}
+            onClick={onCancel}
+            autoFocus
+          >
             {t("common.cancel")}
           </Button>
           <Button disabled={isSaving} onClick={onConfirm}>

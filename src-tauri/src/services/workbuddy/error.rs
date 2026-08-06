@@ -6,8 +6,6 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use super::types::DuplicateModelId;
-
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 pub enum WorkBuddyErrorCode {
     #[serde(rename = "WORKBUDDY_INVALID_URL")]
@@ -28,16 +26,20 @@ pub enum WorkBuddyErrorCode {
     ConfigReadFailed,
     #[serde(rename = "WORKBUDDY_CONFIG_INVALID_JSON")]
     ConfigInvalidJson,
-    #[serde(rename = "WORKBUDDY_CONFIG_ROOT_NOT_ARRAY")]
-    ConfigRootNotArray,
+    #[serde(rename = "WORKBUDDY_CONFIG_ROOT_UNSUPPORTED")]
+    ConfigRootUnsupported,
+    #[serde(rename = "WORKBUDDY_CONFIG_MODELS_NOT_ARRAY")]
+    ConfigModelsNotArray,
     #[serde(rename = "WORKBUDDY_CONFIG_INVALID_ENTRY")]
     ConfigInvalidEntry,
     #[serde(rename = "WORKBUDDY_CONFIG_NO_TARGET_MODELS")]
     ConfigNoTargetModels,
     #[serde(rename = "WORKBUDDY_CONFIG_CONCURRENT_MODIFICATION")]
     ConfigConcurrentModification,
-    #[serde(rename = "WORKBUDDY_CONFIG_DUPLICATE_TARGET")]
-    ConfigDuplicateTarget,
+    #[serde(rename = "WORKBUDDY_OVERWRITE_TOKEN_INVALID")]
+    OverwriteTokenInvalid,
+    #[serde(rename = "WORKBUDDY_OVERWRITE_TOKEN_EXPIRED")]
+    OverwriteTokenExpired,
     #[serde(rename = "WORKBUDDY_CONFIG_BACKUP_FAILED")]
     ConfigBackupFailed,
     #[serde(rename = "WORKBUDDY_CONFIG_WRITE_FAILED")]
@@ -58,11 +60,13 @@ impl WorkBuddyErrorCode {
             Self::FetchInvalidSchema => "workbuddy.error.fetchInvalidSchema",
             Self::ConfigReadFailed => "workbuddy.error.configReadFailed",
             Self::ConfigInvalidJson => "workbuddy.error.configInvalidJson",
-            Self::ConfigRootNotArray => "workbuddy.error.configRootNotArray",
+            Self::ConfigRootUnsupported => "workbuddy.error.configRootUnsupported",
+            Self::ConfigModelsNotArray => "workbuddy.error.configModelsNotArray",
             Self::ConfigInvalidEntry => "workbuddy.error.configInvalidEntry",
             Self::ConfigNoTargetModels => "workbuddy.error.configNoTargetModels",
             Self::ConfigConcurrentModification => "workbuddy.error.configConcurrentModification",
-            Self::ConfigDuplicateTarget => "workbuddy.error.configDuplicateTarget",
+            Self::OverwriteTokenInvalid => "workbuddy.error.overwriteTokenInvalid",
+            Self::OverwriteTokenExpired => "workbuddy.error.overwriteTokenExpired",
             Self::ConfigBackupFailed => "workbuddy.error.configBackupFailed",
             Self::ConfigWriteFailed => "workbuddy.error.configWriteFailed",
             Self::InternalError => "workbuddy.error.internal",
@@ -79,8 +83,6 @@ pub struct WorkBuddyErrorDetails {
     pub redacted_summary: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub invalid_entry_index: Option<usize>,
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub duplicate_ids: Vec<DuplicateModelId>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -121,11 +123,6 @@ impl WorkBuddyError {
         self
     }
 
-    pub fn with_duplicate_ids(mut self, duplicate_ids: Vec<DuplicateModelId>) -> Self {
-        self.details.duplicate_ids = duplicate_ids;
-        self
-    }
-
     pub const fn code(&self) -> WorkBuddyErrorCode {
         self.code
     }
@@ -162,22 +159,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn duplicate_error_serializes_only_stable_non_secret_fields() {
-        let dto = WorkBuddyError::new(WorkBuddyErrorCode::ConfigDuplicateTarget)
-            .with_duplicate_ids(vec![DuplicateModelId {
-                id: "model-a".to_string(),
-                count: 2,
-            }])
-            .to_dto();
+    fn overwrite_token_error_serializes_only_stable_non_secret_fields() {
+        let dto = WorkBuddyError::new(WorkBuddyErrorCode::OverwriteTokenInvalid).to_dto();
 
-        assert_eq!(dto.code, WorkBuddyErrorCode::ConfigDuplicateTarget);
-        assert_eq!(dto.message_key, "workbuddy.error.configDuplicateTarget");
+        assert_eq!(dto.code, WorkBuddyErrorCode::OverwriteTokenInvalid);
+        assert_eq!(dto.message_key, "workbuddy.error.overwriteTokenInvalid");
         assert_eq!(
             serde_json::to_value(dto).unwrap(),
             serde_json::json!({
-                "code": "WORKBUDDY_CONFIG_DUPLICATE_TARGET",
-                "messageKey": "workbuddy.error.configDuplicateTarget",
-                "details": { "duplicateIds": [{ "id": "model-a", "count": 2 }] }
+                "code": "WORKBUDDY_OVERWRITE_TOKEN_INVALID",
+                "messageKey": "workbuddy.error.overwriteTokenInvalid",
+                "details": {}
             })
         );
     }

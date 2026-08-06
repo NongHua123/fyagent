@@ -34,8 +34,12 @@ export type {
   WorkBuddyErrorCode,
   WorkBuddyFetchModelsRequest,
   WorkBuddyFetchModelsResult,
+  WorkBuddyModelIds,
+  WorkBuddyConcurrentModificationResult,
+  WorkBuddyOverwriteConfirmationRequiredResult,
   WorkBuddySaveModelsRequest,
   WorkBuddySaveModelsResult,
+  WorkBuddySaveModelsSavedResult,
   WorkBuddyStatus,
 } from "./workbuddy";
 export type { Profile, ProfilePayload, ProfilesResponse } from "./profiles";

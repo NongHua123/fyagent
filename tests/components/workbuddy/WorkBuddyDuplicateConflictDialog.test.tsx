@@ -11,7 +11,7 @@ describe("WorkBuddyDuplicateConflictDialog", () => {
 
     render(
       <WorkBuddyDuplicateConflictDialog
-        duplicates={[{ id: "duplicate-model", count: 2 }]}
+        existingIds={["duplicate-model"]}
         isOpen
         isSaving={false}
         onCancel={onCancel}

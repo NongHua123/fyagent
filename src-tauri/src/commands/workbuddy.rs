@@ -4,8 +4,8 @@ use crate::services::workbuddy::{
     self,
     error::WorkBuddyErrorDto,
     types::{
-        FetchWorkBuddyModelsRequest, FetchWorkBuddyModelsResult, SaveWorkBuddyModelsRequest,
-        SaveWorkBuddyModelsResult, WorkBuddyStatus,
+        FetchWorkBuddyModelsRequest, FetchWorkBuddyModelsResult, SaveWorkBuddyModelsOutcome,
+        SaveWorkBuddyModelsRequest, WorkBuddyModelIdsResult, WorkBuddyStatus,
     },
 };
 
@@ -13,6 +13,16 @@ use crate::services::workbuddy::{
 #[tauri::command]
 pub async fn get_workbuddy_status() -> Result<WorkBuddyStatus, WorkBuddyErrorDto> {
     workbuddy::get_workbuddy_status().await.map_err(Into::into)
+}
+
+/// Return the only existing-model projection the renderer may display.
+/// Configuration paths, URLs, credentials, vendor metadata, and duplicate
+/// entry counts remain inside the WorkBuddy service.
+#[tauri::command]
+pub async fn get_workbuddy_model_ids() -> Result<WorkBuddyModelIdsResult, WorkBuddyErrorDto> {
+    workbuddy::get_workbuddy_model_ids()
+        .await
+        .map_err(Into::into)
 }
 
 /// Fetch a bounded OpenAI-compatible model list through WorkBuddy's restricted
@@ -32,7 +42,7 @@ pub async fn fetch_workbuddy_models(
 #[tauri::command(rename_all = "camelCase")]
 pub async fn save_workbuddy_models(
     request: SaveWorkBuddyModelsRequest,
-) -> Result<SaveWorkBuddyModelsResult, WorkBuddyErrorDto> {
+) -> Result<SaveWorkBuddyModelsOutcome, WorkBuddyErrorDto> {
     workbuddy::save_workbuddy_models(request)
         .await
         .map_err(Into::into)

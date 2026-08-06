@@ -1,9 +1,14 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import { workBuddyApi, type WorkBuddyStatus } from "@/lib/api/workbuddy";
+import {
+  workBuddyApi,
+  type WorkBuddyModelIds,
+  type WorkBuddyStatus,
+} from "@/lib/api/workbuddy";
 
 export const workBuddyKeys = {
   all: ["workbuddy"] as const,
   status: () => [...workBuddyKeys.all, "status"] as const,
+  modelIds: () => [...workBuddyKeys.all, "model-ids"] as const,
 };
 
 /**
@@ -15,3 +20,15 @@ export const useWorkBuddyStatusQuery = (): UseQueryResult<WorkBuddyStatus> =>
     queryKey: workBuddyKeys.status(),
     queryFn: () => workBuddyApi.getStatus(),
   });
+
+/**
+ * This query intentionally projects only safe, de-duplicated IDs. API keys,
+ * URLs, vendors, occurrence counts, and the full configuration document never
+ * enter the renderer cache.
+ */
+export const useWorkBuddyModelIdsQuery =
+  (): UseQueryResult<WorkBuddyModelIds> =>
+    useQuery({
+      queryKey: workBuddyKeys.modelIds(),
+      queryFn: () => workBuddyApi.getModelIds(),
+    });

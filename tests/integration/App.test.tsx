@@ -270,12 +270,16 @@ describe("App integration with MSW", () => {
     server.use(
       http.post("http://tauri.local/get_workbuddy_status", () =>
         HttpResponse.json({
-          path: "C:/Users/test/.workbuddy/models.json",
+          path: ".workbuddy/models.json",
           exists: false,
           modelCount: 0,
           revision: null,
           backupExists: false,
+          format: "missing",
         }),
+      ),
+      http.post("http://tauri.local/get_workbuddy_model_ids", () =>
+        HttpResponse.json({ ids: [], revision: null }),
       ),
     );
     const { default: App } = await import("@/App");

@@ -4,22 +4,25 @@ import {
   CheckSquare,
   Eye,
   EyeOff,
-  FileText,
   Loader2,
   RefreshCw,
   Save,
+  Search,
   Square,
+  X,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { WorkBuddyIcon } from "@/components/BrandIcons";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -27,11 +30,20 @@ import {
   type WorkBuddyError,
   type WorkBuddySaveModelsRequest,
   workBuddyApi,
-} from "@/lib/api";
-import { useWorkBuddyStatusQuery, workBuddyKeys } from "@/lib/query";
+} from "@/lib/api/workbuddy";
+import { settingsApi } from "@/lib/api/settings";
+import {
+  useWorkBuddyModelIdsQuery,
+  useWorkBuddyStatusQuery,
+  workBuddyKeys,
+} from "@/lib/query/workbuddy";
 import { cn } from "@/lib/utils";
 import { WorkBuddyDuplicateConflictDialog } from "./WorkBuddyDuplicateConflictDialog";
+import { WorkBuddyExistingModelsCard } from "./WorkBuddyExistingModelsCard";
+import { WorkBuddyStatusCard } from "./WorkBuddyStatusCard";
 import { hasWorkBuddyRemoteHttpWarning } from "./urlSafety";
+
+const WORKBUDDY_WEBSITE_URL = "https://www.workbuddy.cn/";
 
 const parseManualModelIds = (value: string): string[] =>
   value
@@ -49,27 +61,32 @@ const errorKeyByCode: Partial<Record<WorkBuddyError["code"], string>> = {
   WORKBUDDY_FETCH_INVALID_SCHEMA: "workbuddy.error.fetchInvalidSchema",
   WORKBUDDY_CONFIG_READ_FAILED: "workbuddy.error.configReadFailed",
   WORKBUDDY_CONFIG_INVALID_JSON: "workbuddy.error.configInvalidJson",
-  WORKBUDDY_CONFIG_ROOT_NOT_ARRAY: "workbuddy.error.configRootNotArray",
+  WORKBUDDY_CONFIG_ROOT_NOT_ARRAY: "workbuddy.error.configUnsupportedRoot",
+  WORKBUDDY_CONFIG_ROOT_UNSUPPORTED: "workbuddy.error.configUnsupportedRoot",
+  WORKBUDDY_CONFIG_MODELS_NOT_ARRAY: "workbuddy.error.configModelsNotArray",
   WORKBUDDY_CONFIG_INVALID_ENTRY: "workbuddy.error.configInvalidEntry",
   WORKBUDDY_CONFIG_NO_TARGET_MODELS: "workbuddy.error.configNoTargetModels",
   WORKBUDDY_CONFIG_CONCURRENT_MODIFICATION:
     "workbuddy.error.configConcurrentModification",
   WORKBUDDY_CONFIG_BACKUP_FAILED: "workbuddy.error.configBackupFailed",
   WORKBUDDY_CONFIG_WRITE_FAILED: "workbuddy.error.configWriteFailed",
-  WORKBUDDY_INTERNAL_ERROR: "workbuddy.error.internal",
   WORKBUDDY_CONFIG_DUPLICATE_TARGET: "workbuddy.error.configDuplicateTarget",
+  WORKBUDDY_CONFIG_EXISTING_TARGET: "workbuddy.error.configDuplicateTarget",
+  WORKBUDDY_OVERWRITE_TOKEN_INVALID: "workbuddy.error.overwriteTokenInvalid",
+  WORKBUDDY_OVERWRITE_TOKEN_EXPIRED: "workbuddy.error.overwriteTokenExpired",
+  WORKBUDDY_INTERNAL_ERROR: "workbuddy.error.internal",
 };
 
-interface PendingDuplicateSave {
+interface PendingOverwriteSave {
   request: WorkBuddySaveModelsRequest;
-  duplicates: NonNullable<WorkBuddyError["details"]["duplicateIds"]>;
+  token: string;
+  existingIds: string[];
 }
 
 interface WorkBuddyErrorPresentation {
   message: string;
   httpStatus?: number;
   redactedSummary?: string;
-  invalidEntryIndex?: number;
 }
 
 function WorkBuddyErrorDescription({
@@ -94,13 +111,6 @@ function WorkBuddyErrorDescription({
           })}
         </p>
       ) : null}
-      {error.invalidEntryIndex !== undefined ? (
-        <p className="text-xs">
-          {t("workbuddy.error.invalidEntryIndex", {
-            index: error.invalidEntryIndex,
-          })}
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -109,6 +119,7 @@ export function WorkBuddyPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const statusQuery = useWorkBuddyStatusQuery();
+  const existingModelIdsQuery = useWorkBuddyModelIdsQuery();
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [allowNoApiKey, setAllowNoApiKey] = useState(false);
@@ -121,6 +132,7 @@ export function WorkBuddyPage() {
   );
   const [hasFetchedModels, setHasFetchedModels] = useState(false);
   const [fetchedModelsTruncated, setFetchedModelsTruncated] = useState(false);
+  const [remoteSearch, setRemoteSearch] = useState("");
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [fetchError, setFetchError] =
@@ -130,8 +142,9 @@ export function WorkBuddyPage() {
   );
   const [isFetching, setIsFetching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [pendingDuplicateSave, setPendingDuplicateSave] =
-    useState<PendingDuplicateSave | null>(null);
+  const [isOpeningWebsite, setIsOpeningWebsite] = useState(false);
+  const [pendingOverwriteSave, setPendingOverwriteSave] =
+    useState<PendingOverwriteSave | null>(null);
   const fetchSequenceRef = useRef(0);
   const apiKeyRef = useRef("");
   const isMountedRef = useRef(true);
@@ -142,16 +155,24 @@ export function WorkBuddyPage() {
 
   useEffect(() => {
     isMountedRef.current = true;
-
-    return () => {
-      // The key is intentionally component-only and is never persisted or
-      // copied into a query cache. Clear the last retained value on unmount.
-      isMountedRef.current = false;
-      fetchSequenceRef.current += 1;
+    const clearApiKeyReference = () => {
       apiKeyRef.current = "";
+      fetchSequenceRef.current += 1;
+    };
+
+    window.addEventListener("pagehide", clearApiKeyReference);
+    return () => {
+      isMountedRef.current = false;
+      window.removeEventListener("pagehide", clearApiKeyReference);
+      clearApiKeyReference();
     };
   }, []);
 
+  const existingModelIds = existingModelIdsQuery.data?.ids ?? [];
+  const existingModelIdSet = useMemo(
+    () => new Set(existingModelIds),
+    [existingModelIds],
+  );
   const selectedFetchedModelIds = useMemo(
     () => fetchedModels.filter((modelId) => selectedModelIds.has(modelId)),
     [fetchedModels, selectedModelIds],
@@ -160,11 +181,42 @@ export function WorkBuddyPage() {
     () => parseManualModelIds(manualModels),
     [manualModels],
   );
-  const hasTargetModels = useMemo(
-    () => new Set([...selectedFetchedModelIds, ...manualModelIds]).size > 0,
+  const targetModelIds = useMemo(
+    () => new Set([...selectedFetchedModelIds, ...manualModelIds]),
     [manualModelIds, selectedFetchedModelIds],
   );
+  const hasTargetModels = targetModelIds.size > 0;
+  const hasExistingTarget = useMemo(
+    () =>
+      [...targetModelIds].some((modelId) => existingModelIdSet.has(modelId)),
+    [existingModelIdSet, targetModelIds],
+  );
+  const showClearExistingApiKeys = !apiKey.trim() && hasExistingTarget;
   const remoteHttpWarning = hasWorkBuddyRemoteHttpWarning(baseUrl);
+  const filteredFetchedModels = useMemo(() => {
+    const query = remoteSearch.trim().toLocaleLowerCase();
+    if (!query) return fetchedModels;
+    return fetchedModels.filter((modelId) =>
+      modelId.toLocaleLowerCase().includes(query),
+    );
+  }, [fetchedModels, remoteSearch]);
+  const selectedFilteredModelCount = useMemo(
+    () =>
+      filteredFetchedModels.filter((modelId) => selectedModelIds.has(modelId))
+        .length,
+    [filteredFetchedModels, selectedModelIds],
+  );
+
+  useEffect(() => {
+    if (!showClearExistingApiKeys) setClearExistingApiKeys(false);
+  }, [showClearExistingApiKeys]);
+
+  const refreshConfiguration = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: workBuddyKeys.status() }),
+      queryClient.invalidateQueries({ queryKey: workBuddyKeys.modelIds() }),
+    ]);
+  }, [queryClient]);
 
   const setKey = useCallback(
     (value: string) => {
@@ -202,8 +254,7 @@ export function WorkBuddyPage() {
 
       const fallbackKey =
         errorKeyByCode[structured.code] ?? "workbuddy.error.internal";
-      const { httpStatus, redactedSummary, invalidEntryIndex } =
-        structured.details;
+      const { httpStatus, redactedSummary } = structured.details;
       return {
         presentation: {
           message: t(structured.messageKey, {
@@ -213,11 +264,6 @@ export function WorkBuddyPage() {
             ? { httpStatus }
             : {}),
           ...(redactedSummary ? { redactedSummary } : {}),
-          ...(typeof invalidEntryIndex === "number" &&
-          Number.isInteger(invalidEntryIndex) &&
-          invalidEntryIndex >= 0
-            ? { invalidEntryIndex }
-            : {}),
         },
         structured,
       };
@@ -226,20 +272,24 @@ export function WorkBuddyPage() {
   );
 
   const buildSaveRequest = useCallback(
-    (duplicatePolicy?: "reject" | "updateAll"): WorkBuddySaveModelsRequest => ({
+    (overwriteToken?: string): WorkBuddySaveModelsRequest => ({
       baseUrl,
       apiKey: apiKeyRef.current,
       allowNoApiKey,
       selectedModelIds: selectedFetchedModelIds,
       manualModelIds,
       clearExistingApiKeys,
-      expectedRevision: statusQuery.data?.revision ?? null,
-      ...(duplicatePolicy ? { duplicatePolicy } : {}),
+      expectedRevision:
+        existingModelIdsQuery.data?.revision ??
+        statusQuery.data?.revision ??
+        null,
+      ...(overwriteToken ? { overwriteToken } : {}),
     }),
     [
       allowNoApiKey,
       baseUrl,
       clearExistingApiKeys,
+      existingModelIdsQuery.data?.revision,
       manualModelIds,
       selectedFetchedModelIds,
       statusQuery.data?.revision,
@@ -251,38 +301,51 @@ export function WorkBuddyPage() {
       setIsSaving(true);
       setSaveError(null);
       try {
-        await workBuddyApi.saveModels(request);
-        apiKeyRef.current = "";
-        setApiKey("");
-        setClearExistingApiKeys(false);
-        setPendingDuplicateSave(null);
-        await queryClient.invalidateQueries({
-          queryKey: workBuddyKeys.status(),
-        });
-        toast.success(t("workbuddy.saveSuccess"));
+        const result = await workBuddyApi.saveModels(request);
+        if (result.state === "saved") {
+          setPendingOverwriteSave(null);
+          await refreshConfiguration();
+          toast.success(t("workbuddy.saveSuccess"));
+          return;
+        }
+
+        if (result.state === "overwrite_confirmation_required") {
+          // The immutable snapshot prevents confirmation from saving later
+          // edits. The opaque token is renderer-memory only and consumed once.
+          setPendingOverwriteSave({
+            request: { ...request },
+            token: result.token,
+            existingIds: result.existingIds,
+          });
+          return;
+        }
+
+        setPendingOverwriteSave(null);
+        await refreshConfiguration();
+        const presentation = {
+          message: t("workbuddy.error.configConcurrentModification"),
+        };
+        setSaveError(presentation);
+        toast.error(presentation.message);
       } catch (error) {
         const { presentation, structured } = getSafeErrorMessage(error);
-        const isInitialDuplicateConflict =
-          structured?.code === "WORKBUDDY_CONFIG_DUPLICATE_TARGET" &&
-          request.duplicatePolicy !== "updateAll";
+        const mustRefresh =
+          structured?.code === "WORKBUDDY_CONFIG_CONCURRENT_MODIFICATION" ||
+          structured?.code === "WORKBUDDY_OVERWRITE_TOKEN_INVALID" ||
+          structured?.code === "WORKBUDDY_OVERWRITE_TOKEN_EXPIRED";
 
-        if (isInitialDuplicateConflict) {
-          // Keep a full, immutable snapshot so the confirmation cannot save a
-          // later-edited URL/key/model set by accident.
-          setPendingDuplicateSave({
-            request: { ...request },
-            duplicates: structured.details.duplicateIds ?? [],
-          });
-        } else {
-          setPendingDuplicateSave(null);
-          setSaveError(presentation);
-          toast.error(presentation.message);
+        if (mustRefresh) {
+          setPendingOverwriteSave(null);
+          await refreshConfiguration();
         }
+
+        setSaveError(presentation);
+        toast.error(presentation.message);
       } finally {
-        setIsSaving(false);
+        if (isMountedRef.current) setIsSaving(false);
       }
     },
-    [getSafeErrorMessage, queryClient, t],
+    [getSafeErrorMessage, refreshConfiguration, t],
   );
 
   const handleFetch = async (): Promise<void> => {
@@ -325,7 +388,7 @@ export function WorkBuddyPage() {
     }
 
     setModelsError(null);
-    void saveRequest(buildSaveRequest("reject"));
+    void saveRequest(buildSaveRequest());
   };
 
   const toggleFetchedModel = (modelId: string, checked: boolean): void => {
@@ -338,9 +401,42 @@ export function WorkBuddyPage() {
     setModelsError(null);
   };
 
+  const selectFilteredModels = (): void => {
+    setSelectedModelIds((current) => {
+      const next = new Set(current);
+      filteredFetchedModels.forEach((modelId) => next.add(modelId));
+      return next;
+    });
+    setModelsError(null);
+  };
+
+  const clearFilteredModels = (): void => {
+    setSelectedModelIds((current) => {
+      const next = new Set(current);
+      filteredFetchedModels.forEach((modelId) => next.delete(modelId));
+      return next;
+    });
+  };
+
+  const handleOpenWebsite = async (): Promise<void> => {
+    setIsOpeningWebsite(true);
+    try {
+      await settingsApi.openExternal(WORKBUDDY_WEBSITE_URL);
+    } catch {
+      // Keep the platform error private: it may include a system path or
+      // browser detail and does not help the user resolve this fixed action.
+      toast.error(t("workbuddy.status.downloadFailed"));
+    } finally {
+      if (isMountedRef.current) setIsOpeningWebsite(false);
+    }
+  };
+
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-5 px-4 py-6 sm:px-6">
-      <header className="flex items-start gap-3">
+    <div
+      className="w-full min-w-0 space-y-5 px-4 py-6 sm:px-6 lg:px-8"
+      style={{ scrollbarGutter: "stable" }}
+    >
+      <header className="flex min-w-0 items-start gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/50">
           <WorkBuddyIcon size={24} />
         </span>
@@ -352,64 +448,23 @@ export function WorkBuddyPage() {
         </div>
       </header>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <FileText className="h-4 w-4" />
-            {t("workbuddy.status.title")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent
-          className="space-y-2 text-sm"
-          aria-live="polite"
-          aria-busy={statusQuery.isLoading}
-        >
-          {statusQuery.isLoading ? (
-            <p className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              {t("workbuddy.status.loading")}
-            </p>
-          ) : statusQuery.data ? (
-            <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-              <div className="min-w-0">
-                <dt className="text-xs text-muted-foreground">
-                  {t("workbuddy.status.path")}
-                </dt>
-                <dd
-                  className="truncate font-mono text-xs"
-                  title={statusQuery.data.path}
-                >
-                  {statusQuery.data.path}
-                </dd>
-              </div>
-              <div className="flex gap-5 sm:items-end">
-                <div>
-                  <dt className="text-xs text-muted-foreground">
-                    {t("workbuddy.status.exists")}
-                  </dt>
-                  <dd>
-                    {statusQuery.data.exists
-                      ? t("workbuddy.status.existsYes")
-                      : t("workbuddy.status.existsNo")}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">
-                    {t("workbuddy.status.modelCount")}
-                  </dt>
-                  <dd>{statusQuery.data.modelCount}</dd>
-                </div>
-              </div>
-            </dl>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {t("workbuddy.status.unavailable")}
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      <div className="grid min-w-0 gap-5 xl:grid-cols-2">
+        <WorkBuddyStatusCard
+          status={statusQuery.data}
+          isLoading={statusQuery.isLoading}
+          isOpeningWebsite={isOpeningWebsite}
+          onOpenWebsite={() => void handleOpenWebsite()}
+        />
+        <WorkBuddyExistingModelsCard
+          ids={existingModelIds}
+          isLoading={existingModelIdsQuery.isLoading}
+          isRefreshing={existingModelIdsQuery.isFetching}
+          hasError={existingModelIdsQuery.isError}
+          onRefresh={() => void existingModelIdsQuery.refetch()}
+        />
+      </div>
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader className="pb-4">
           <CardTitle className="text-base">
             {t("workbuddy.connection.title")}
@@ -514,7 +569,7 @@ export function WorkBuddyPage() {
             </div>
           </div>
 
-          {allowNoApiKey && !apiKey.trim() ? (
+          {showClearExistingApiKeys ? (
             <label className="flex cursor-pointer items-start gap-2 text-sm">
               <Checkbox
                 checked={clearExistingApiKeys}
@@ -558,38 +613,69 @@ export function WorkBuddyPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader className="space-y-3 pb-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-base">
-              {t("workbuddy.models.title")}
+              {t("workbuddy.remoteModels.title")}
             </CardTitle>
             {hasFetchedModels ? (
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedModelIds(new Set(fetchedModels));
-                    setModelsError(null);
-                  }}
-                >
-                  <CheckSquare className="h-4 w-4" />
-                  {t("workbuddy.models.selectAll")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSelectedModelIds(new Set())}
-                >
-                  <Square className="h-4 w-4" />
-                  {t("workbuddy.models.deselectAll")}
-                </Button>
-              </div>
+              <p className="text-sm text-muted-foreground">
+                {t("workbuddy.remoteModels.selectionSummary", {
+                  selected: selectedFilteredModelCount,
+                  total: filteredFetchedModels.length,
+                })}
+              </p>
             ) : null}
           </div>
+          {hasFetchedModels ? (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={remoteSearch}
+                  onChange={(event) => setRemoteSearch(event.target.value)}
+                  placeholder={t("workbuddy.remoteModels.searchPlaceholder")}
+                  aria-label={t("workbuddy.remoteModels.searchPlaceholder")}
+                  className="pr-9 pl-9"
+                />
+                {remoteSearch ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
+                    onClick={() => setRemoteSearch("")}
+                    aria-label={t("workbuddy.remoteModels.clearSearch")}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={filteredFetchedModels.length === 0}
+                  onClick={selectFilteredModels}
+                >
+                  <CheckSquare className="h-4 w-4" />
+                  {t("workbuddy.remoteModels.selectCurrent")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={filteredFetchedModels.length === 0}
+                  onClick={clearFilteredModels}
+                >
+                  <Square className="h-4 w-4" />
+                  {t("workbuddy.remoteModels.deselectCurrent")}
+                </Button>
+              </div>
+            </div>
+          ) : null}
           {fetchedModelsTruncated ? (
             <Alert>
               <AlertCircle className="h-4 w-4" />
@@ -602,41 +688,54 @@ export function WorkBuddyPage() {
         </CardHeader>
         <CardContent className="space-y-5">
           {hasFetchedModels ? (
-            fetchedModels.length > 0 ? (
-              <div
-                className="max-h-64 divide-y overflow-y-auto rounded-md border border-border/70"
-                aria-label={t("workbuddy.models.fetchedList")}
-              >
-                {fetchedModels.map((modelId) => {
-                  const checked = selectedModelIds.has(modelId);
-                  const checkboxId = `workbuddy-model-${modelId}`;
-                  return (
-                    <label
-                      key={modelId}
-                      htmlFor={checkboxId}
-                      className={cn(
-                        "flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-muted/50",
-                        !checked && "text-muted-foreground",
-                      )}
-                    >
-                      <Checkbox
-                        id={checkboxId}
-                        checked={checked}
-                        onCheckedChange={(value) =>
-                          toggleFetchedModel(modelId, value === true)
-                        }
-                      />
-                      <code className="min-w-0 truncate font-mono text-xs">
-                        {modelId}
-                      </code>
-                    </label>
-                  );
-                })}
-              </div>
-            ) : (
+            fetchedModels.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 {t("workbuddy.models.emptyFetch")}
               </p>
+            ) : filteredFetchedModels.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {t("workbuddy.remoteModels.noMatch")}
+              </p>
+            ) : (
+              <ScrollArea
+                className="h-64 rounded-md border border-border/70"
+                aria-label={t("workbuddy.models.fetchedList")}
+              >
+                <ul className="divide-y divide-border/70">
+                  {filteredFetchedModels.map((modelId) => {
+                    const checked = selectedModelIds.has(modelId);
+                    const checkboxId = `workbuddy-model-${modelId}`;
+                    const isExisting = existingModelIdSet.has(modelId);
+                    return (
+                      <li key={modelId}>
+                        <label
+                          htmlFor={checkboxId}
+                          className={cn(
+                            "flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-muted/50",
+                            !checked && "text-muted-foreground",
+                          )}
+                        >
+                          <Checkbox
+                            id={checkboxId}
+                            checked={checked}
+                            onCheckedChange={(value) =>
+                              toggleFetchedModel(modelId, value === true)
+                            }
+                          />
+                          <code className="min-w-0 flex-1 truncate font-mono text-xs">
+                            {modelId}
+                          </code>
+                          {isExisting ? (
+                            <Badge variant="secondary" className="shrink-0">
+                              {t("workbuddy.remoteModels.existing")}
+                            </Badge>
+                          ) : null}
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </ScrollArea>
             )
           ) : (
             <p className="text-sm text-muted-foreground">
@@ -698,17 +797,16 @@ export function WorkBuddyPage() {
       </Card>
 
       <WorkBuddyDuplicateConflictDialog
-        duplicates={pendingDuplicateSave?.duplicates ?? []}
-        isOpen={Boolean(pendingDuplicateSave)}
+        existingIds={pendingOverwriteSave?.existingIds ?? []}
+        isOpen={Boolean(pendingOverwriteSave)}
         isSaving={isSaving}
-        onCancel={() => setPendingDuplicateSave(null)}
+        onCancel={() => setPendingOverwriteSave(null)}
         onConfirm={() => {
-          if (!pendingDuplicateSave) return;
-          const request = {
-            ...pendingDuplicateSave.request,
-            duplicatePolicy: "updateAll" as const,
-          };
-          void saveRequest(request);
+          if (!pendingOverwriteSave) return;
+          void saveRequest({
+            ...pendingOverwriteSave.request,
+            overwriteToken: pendingOverwriteSave.token,
+          });
         }}
       />
     </div>

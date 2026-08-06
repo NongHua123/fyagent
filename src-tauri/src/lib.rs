@@ -1719,6 +1719,7 @@ pub fn run() {
             commands::is_lightweight_mode,
             // WorkBuddy is an isolated top-level configuration domain.
             commands::get_workbuddy_status,
+            commands::get_workbuddy_model_ids,
             commands::fetch_workbuddy_models,
             commands::save_workbuddy_models,
             commands::codex_desktop_get_local_status,

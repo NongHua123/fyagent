@@ -6,6 +6,16 @@ export interface WorkBuddyStatus {
   modelCount: number;
   revision: string | null;
   backupExists: boolean;
+  format: "legacyArray" | "objectRoot" | "missing";
+}
+
+export interface WorkBuddyModelIds {
+  /**
+   * First-occurrence, case-preserving IDs only. Configuration details and
+   * credentials deliberately stay in the native service.
+   */
+  ids: string[];
+  revision: string | null;
 }
 
 export interface WorkBuddyFetchModelsRequest {
@@ -30,16 +40,34 @@ export interface WorkBuddySaveModelsRequest
   manualModelIds: string[];
   clearExistingApiKeys: boolean;
   expectedRevision: string | null;
-  duplicatePolicy?: "reject" | "updateAll";
+  /** Opaque, short-lived confirmation capability issued by the backend. */
+  overwriteToken?: string;
 }
 
-export interface WorkBuddySaveModelsResult {
+export interface WorkBuddySaveModelsSavedResult {
+  state: "saved";
   revision: string;
   modelCount: number;
   createdEntries: number;
   updatedEntries: number;
-  duplicateIds: WorkBuddyDuplicateId[];
 }
+
+export interface WorkBuddyOverwriteConfirmationRequiredResult {
+  state: "overwrite_confirmation_required";
+  /** Opaque capability; never persist or put this value in a query key. */
+  token: string;
+  /** Unique existing model IDs, without occurrence counts or details. */
+  existingIds: string[];
+}
+
+export interface WorkBuddyConcurrentModificationResult {
+  state: "concurrent_modification";
+}
+
+export type WorkBuddySaveModelsResult =
+  | WorkBuddySaveModelsSavedResult
+  | WorkBuddyOverwriteConfirmationRequiredResult
+  | WorkBuddyConcurrentModificationResult;
 
 export type WorkBuddyErrorCode =
   | "WORKBUDDY_INVALID_URL"
@@ -52,19 +80,22 @@ export type WorkBuddyErrorCode =
   | "WORKBUDDY_CONFIG_READ_FAILED"
   | "WORKBUDDY_CONFIG_INVALID_JSON"
   | "WORKBUDDY_CONFIG_ROOT_NOT_ARRAY"
+  | "WORKBUDDY_CONFIG_ROOT_UNSUPPORTED"
+  | "WORKBUDDY_CONFIG_MODELS_NOT_ARRAY"
   | "WORKBUDDY_CONFIG_INVALID_ENTRY"
   | "WORKBUDDY_CONFIG_NO_TARGET_MODELS"
   | "WORKBUDDY_CONFIG_CONCURRENT_MODIFICATION"
   | "WORKBUDDY_CONFIG_BACKUP_FAILED"
   | "WORKBUDDY_CONFIG_WRITE_FAILED"
   | "WORKBUDDY_INTERNAL_ERROR"
-  | "WORKBUDDY_CONFIG_DUPLICATE_TARGET";
+  | "WORKBUDDY_CONFIG_DUPLICATE_TARGET"
+  | "WORKBUDDY_CONFIG_EXISTING_TARGET"
+  | "WORKBUDDY_OVERWRITE_TOKEN_INVALID"
+  | "WORKBUDDY_OVERWRITE_TOKEN_EXPIRED";
 
 export interface WorkBuddyErrorDetails {
   httpStatus?: number;
   redactedSummary?: string;
-  invalidEntryIndex?: number;
-  duplicateIds?: WorkBuddyDuplicateId[];
 }
 
 export interface WorkBuddyError {
@@ -86,18 +117,6 @@ const tryParseJson = (value: unknown): unknown => {
   }
 };
 
-const toDuplicateIds = (value: unknown): WorkBuddyDuplicateId[] | undefined => {
-  if (!Array.isArray(value)) return undefined;
-
-  const duplicateIds = value.flatMap((item) => {
-    if (!isRecord(item) || typeof item.id !== "string") return [];
-    const count = typeof item.count === "number" ? item.count : 0;
-    return [{ id: item.id, count }];
-  });
-
-  return duplicateIds.length > 0 ? duplicateIds : undefined;
-};
-
 const toWorkBuddyError = (value: unknown): WorkBuddyError | null => {
   const parsed = tryParseJson(value);
   if (!isRecord(parsed) || typeof parsed.code !== "string") return null;
@@ -117,11 +136,6 @@ const toWorkBuddyError = (value: unknown): WorkBuddyError | null => {
         typeof details.redactedSummary === "string"
           ? details.redactedSummary
           : undefined,
-      invalidEntryIndex:
-        typeof details.invalidEntryIndex === "number"
-          ? details.invalidEntryIndex
-          : undefined,
-      duplicateIds: toDuplicateIds(details.duplicateIds),
     },
   };
 };
@@ -146,6 +160,10 @@ export const getWorkBuddyError = (error: unknown): WorkBuddyError | null => {
 export const workBuddyApi = {
   async getStatus(): Promise<WorkBuddyStatus> {
     return await invoke("get_workbuddy_status");
+  },
+
+  async getModelIds(): Promise<WorkBuddyModelIds> {
+    return await invoke("get_workbuddy_model_ids");
   },
 
   async fetchModels(
