@@ -29,6 +29,8 @@ Options:
 
 Only universal-apple-darwin is supported. The output is ad-hoc signed,
 unnotarized, experimental, and not suitable for public release.
+Successful local artifacts (DMG, SHA-256, and manifest) are published under:
+  dist-bundle/macos/
 EOF
 }
 

@@ -10,14 +10,16 @@ notarized release path.
 
 ## 2. Signatures
 
-The only public entry point and outputs are:
+The supported mise entry point delegates to the repository-owned script and
+produces these local outputs:
 
 ```text
+mise run build:cross-macos:universal
 ./scripts/macos-cross/build-universal-dmg.sh [--accept-risk]
 
-dist-macos/FyAgent-<version>-macOS-universal-adhoc-unnotarized-experimental.dmg
-dist-macos/FyAgent-<version>-macOS-universal-adhoc-unnotarized-experimental.dmg.sha256
-dist-macos/FyAgent-<version>-macOS-universal-adhoc-unnotarized-experimental.dmg.manifest.json
+dist-bundle/macos/FyAgent-<version>-macOS-universal-adhoc-unnotarized-experimental.dmg
+dist-bundle/macos/FyAgent-<version>-macOS-universal-adhoc-unnotarized-experimental.dmg.sha256
+dist-bundle/macos/FyAgent-<version>-macOS-universal-adhoc-unnotarized-experimental.dmg.manifest.json
 ```
 
 The build target is always `universal-apple-darwin`, containing exactly
@@ -40,7 +42,10 @@ The build target is always `universal-apple-darwin`, containing exactly
   deployment target inputs. A cache marker mismatch is a miss, never a reason
   to trust an old executable.
 - The first use of a new fixed-input set requires an explicit third-party SDK,
-  Apple license, GPL-3.0 tool, and experimental DMG acknowledgement.
+  Apple license, GPL-3.0 tool, and experimental DMG acknowledgement. The
+  purpose-built mise task retains the interactive prompt and does not
+  auto-install missing tools before the wrapper runs; in a non-interactive
+  environment, rerun it as `mise run build:cross-macos:universal --accept-risk`.
 - Manual app assembly supports only the current main binary, ICNS icon,
   deep-link schemes, and custom Info.plist overrides. Any configured resources,
   sidecars, file associations, frameworks, files, entitlements, signing

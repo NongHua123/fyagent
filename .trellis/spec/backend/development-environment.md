@@ -26,19 +26,25 @@ The active versions are:
 Node.js 22.12.0
 pnpm    10.12.3
 Python  3.12.8
-Rust    1.95.0 + rustfmt + clippy
+Rust    1.95.0 + rustfmt + clippy + llvm-tools
 ```
 
 The Rust definition also provisions `aarch64-apple-darwin` and
-`x86_64-apple-darwin` for the WSL macOS cross-build workflow. Tauri CLI is a
-project dependency installed by pnpm rather than a separately managed global
-tool.
+`x86_64-apple-darwin` for the WSL macOS cross-build workflow, plus
+`aarch64-pc-windows-msvc` and `x86_64-pc-windows-msvc` for the Linux-to-Windows
+MSI cross-build workflow. Tauri CLI is a project dependency installed by pnpm
+rather than a separately managed global tool.
 
 ## 3. Contracts
 
 - The user-installed global mise is the required version manager and command
   environment for local development. After reviewing the repository config,
   run `mise trust` once and `mise install` whenever the declared tools change.
+- `task.run_auto_install = false` makes `mise run` enter repository task
+  scripts without first installing missing tools. This preserves each
+  cross-build script's own gate order: Windows requires its prepared toolchain,
+  while macOS validates its host and risk acknowledgement before it provisions
+  its pinned tools.
 - Copy-pasteable project commands must use `mise exec -- <command>` so they do
   not depend on shell activation. An unprefixed `node`, `pnpm`, `python`,
   `rustc`, or `cargo` command is valid only in a shell where mise is activated
@@ -114,7 +120,7 @@ tool.
 - Assert `mise.lock` contains applicable entries for every configured target
   platform and the expected Rust tool/options entry.
 - Run `mise install`, then verify `node`, `pnpm`, `python`, `rustc`, `cargo`,
-  rustfmt, clippy, and required Rust targets from inside `mise exec`.
+  rustfmt, clippy, llvm-tools, and required Rust targets from inside `mise exec`.
 - Verify maintained onboarding and quality-gate documents identify mise as the
   local command environment and use explicit `mise exec` examples.
 - In WSL packaging tests, compare `command -v` with global `mise which` and fail

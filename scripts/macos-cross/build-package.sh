@@ -22,7 +22,7 @@ cleanup() {
     fi
   done
   if [[ -n "$publish_dir" && -e "$publish_dir" ]]; then
-    fyagent_remove_owned_tree "$publish_dir" "$PROJECT_ROOT/dist-macos"
+    fyagent_remove_owned_tree "$publish_dir" "$PROJECT_ROOT/dist-bundle/macos"
   fi
 }
 trap cleanup EXIT
@@ -109,7 +109,7 @@ python "$SCRIPT_DIR/verify_artifacts.py" --project-root "$PROJECT_ROOT" manifest
 python "$SCRIPT_DIR/verify_artifacts.py" --project-root "$PROJECT_ROOT" manifest-check \
   --manifest "$temporary_manifest" --dmg "$temporary_dmg"
 
-dist_dir="$PROJECT_ROOT/dist-macos"
+dist_dir="$PROJECT_ROOT/dist-bundle/macos"
 mkdir -p "$dist_dir"
 final_dmg="$dist_dir/$artifact_base"
 final_checksum="$dist_dir/${artifact_base}.sha256"

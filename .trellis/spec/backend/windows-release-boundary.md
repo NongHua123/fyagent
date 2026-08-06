@@ -24,7 +24,12 @@ FYAGENT_WINDOWS_MANIFEST = release | test | dev
 ```
 
 ```text
+mise run build:cross-windows:x64
+mise run build:cross-windows:arm64
+mise run build:cross-windows
 ./scripts/windows-cross/build-windows-msi.sh [--arch all|x64|arm64]
+
+dist-bundle/windows/<version>/<arch>/...
 ```
 
 ```text
@@ -65,6 +70,14 @@ or an unbounded argv payload.
   `FYAGENT_WINDOWS_MANIFEST=release` inside each architecture's actual Tauri
   build subshell. Preflight success alone is not sufficient, and the variable
   must not be left unset or changed to `test` for a distributable candidate.
+- The default local candidate publication root is
+  `dist-bundle/windows/`. A successful invocation publishes the selected
+  version under `dist-bundle/windows/<version>/`; `--output-dir` is the
+  explicit local override. Only `build:cross-windows` builds and atomically
+  publishes both architectures as one version tree.
+- `mise run` does not auto-install missing tools before this workflow starts;
+  the cross-build script's preflight requires the Windows toolchain to be
+  prepared explicitly rather than treating task execution as provisioning.
 - `fyagent-test.manifest` linker arguments use only
   `cargo:rustc-link-arg-tests`. Do not use the all-target
   `cargo:rustc-link-arg` form and do not try to cancel it for application

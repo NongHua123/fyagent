@@ -9,7 +9,7 @@ ORIGINAL_ARGS=("$@")
 ARCH_SELECTION="all"
 CHECK_ONLY=0
 KEEP_FAILED_WORK="${FYAGENT_WINDOWS_KEEP_FAILED_WORK:-1}"
-OUTPUT_ROOT="${FYAGENT_WINDOWS_OUTPUT_ROOT:-$PROJECT_ROOT/artifacts/windows}"
+OUTPUT_ROOT="${FYAGENT_WINDOWS_OUTPUT_ROOT:-$PROJECT_ROOT/dist-bundle/windows}"
 WINDOWS_MSI_DATA_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/fyagent-windows-msi"
 WINDOWS_MSI_CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/fyagent-windows-msi"
 DEFAULT_WIX_TOOLS_DIR="$WINDOWS_MSI_DATA_ROOT/wix/WixTools314"
@@ -30,7 +30,7 @@ project dependencies must be prepared before it starts.
 
 Options:
   --arch <all|x64|arm64>  Architectures to build (default: all).
-  --output-dir <path>     Candidate output root (default: artifacts/windows).
+  --output-dir <path>     Candidate output root (default: dist-bundle/windows).
   --check-only            Validate the complete build environment, then exit.
   --discard-failed-work   Remove the private Wine/work directory after failure.
   -h, --help              Show this help.

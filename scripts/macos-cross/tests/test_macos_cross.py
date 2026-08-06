@@ -196,7 +196,7 @@ class ProjectMetadataTests(unittest.TestCase):
         self.addCleanup(fixture.close)
         lock_path = fixture.root / "src-tauri" / "Cargo.lock"
         lock_text = lock_path.read_text(encoding="utf-8")
-        old = 'name = "fyagent"\nversion = "0.1.0"'
+        old = 'name = "fyagent"\nversion = "0.2.0"'
         self.assertIn(old, lock_text)
         lock_path.write_text(
             lock_text.replace(old, 'name = "fyagent"\nversion = "9.9.9"', 1),

@@ -10,7 +10,7 @@ const tauriConfigPath = path.join(
   "src-tauri",
   "tauri.conf.json",
 );
-const FYAGENT_V1_0_1_VERSION = "0.1.0";
+const FYAGENT_V1_0_2_VERSION = "0.2.0";
 
 // SemVer 2.0.0: numeric prerelease identifiers cannot contain leading zeroes,
 // while non-numeric identifiers and build metadata may contain ASCII hyphens.
@@ -30,7 +30,7 @@ function readCargoPackageVersion(content: string): string {
 }
 
 describe("FyAgent application version metadata", () => {
-  it("keeps npm, Cargo, and Tauri on the locked v1-0.1 SemVer version", () => {
+  it("keeps npm, Cargo, and Tauri on the locked v1-0.2 SemVer version", () => {
     const packageVersion = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"))
       .version as string;
     const cargoVersion = readCargoPackageVersion(
@@ -40,7 +40,7 @@ describe("FyAgent application version metadata", () => {
       .version as string;
 
     expect(packageVersion).toMatch(semverPattern);
-    expect(packageVersion).toBe(FYAGENT_V1_0_1_VERSION);
+    expect(packageVersion).toBe(FYAGENT_V1_0_2_VERSION);
     expect(cargoVersion).toBe(packageVersion);
     expect(tauriVersion).toBe(packageVersion);
   });

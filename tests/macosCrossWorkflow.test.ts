@@ -11,10 +11,12 @@ describe("WSL macOS Universal DMG workflow", () => {
   const constants = read("scripts/macos-cross/constants.sh");
   const publicEntrypoint = read("scripts/macos-cross/build-universal-dmg.sh");
   const buildPipeline = read("scripts/macos-cross/build-package.sh");
+  const windowsCrossBuild = read("scripts/windows-cross/build-windows-msi.sh");
   const verifier = read("scripts/macos-cross/verify_artifacts.py");
   const bootstrap = read("scripts/macos-cross/bootstrap-host.sh");
   const provision = read("scripts/macos-cross/provision-toolchains.sh");
   const mise = read("mise.toml");
+  const gitignore = read(".gitignore");
   const workflowSource = fs
     .readdirSync(SCRIPT_DIR)
     .filter((file) => file.endsWith(".sh") || file.endsWith(".py"))
@@ -92,6 +94,42 @@ describe("WSL macOS Universal DMG workflow", () => {
     expect(buildPipeline).toContain("CI=true pnpm install --frozen-lockfile");
   });
 
+  it("exposes the supported cross-build tasks and publication roots", () => {
+    for (const [task, command] of [
+      [
+        "build:cross-windows:x64",
+        "bash scripts/windows-cross/build-windows-msi.sh --arch x64",
+      ],
+      [
+        "build:cross-windows:arm64",
+        "bash scripts/windows-cross/build-windows-msi.sh --arch arm64",
+      ],
+      [
+        "build:cross-windows",
+        "bash scripts/windows-cross/build-windows-msi.sh --arch all",
+      ],
+      [
+        "build:cross-macos:universal",
+        "bash scripts/macos-cross/build-universal-dmg.sh",
+      ],
+    ]) {
+      expect(mise).toContain(`[tasks."${task}"]`);
+      expect(mise).toContain(`run = "${command}"`);
+    }
+    expect(mise).toContain(
+      '[tasks."build:cross-macos:universal"]\ndescription = "Build the experimental macOS Universal DMG cross-build artifact (prompts for risk acknowledgement)"\ninteractive = true\nraw_args = true\nrun = "bash scripts/macos-cross/build-universal-dmg.sh"',
+    );
+    expect(mise).toContain("task.run_auto_install = false");
+
+    expect(windowsCrossBuild).toContain(
+      'OUTPUT_ROOT="${FYAGENT_WINDOWS_OUTPUT_ROOT:-$PROJECT_ROOT/dist-bundle/windows}"',
+    );
+    expect(buildPipeline).toContain(
+      'dist_dir="$PROJECT_ROOT/dist-bundle/macos"',
+    );
+    expect(gitignore).toContain("/dist-bundle/");
+  });
+
   it("signs the app before packaging and the DMG before checksumming", () => {
     const appSign = buildPipeline.indexOf('rcodesign sign "$app_path"');
     const packageDmg = buildPipeline.indexOf('"$SCRIPT_DIR/make-dmg.sh"');
@@ -149,9 +187,15 @@ describe("WSL macOS Universal DMG workflow", () => {
     );
     expect(mise).toContain('python = "3.12.8"');
     expect(mise).toContain('version = "1.95.0"');
-    expect(mise).toContain(
-      'targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]',
-    );
+    expect(mise).toContain('components = ["rustfmt", "clippy", "llvm-tools"]');
+    for (const target of [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "aarch64-pc-windows-msvc",
+      "x86_64-pc-windows-msvc",
+    ]) {
+      expect(mise).toContain(`"${target}"`);
+    }
 
     const lock = read("mise.lock");
     for (const platform of [
@@ -169,8 +213,9 @@ describe("WSL macOS Universal DMG workflow", () => {
     expect(lock).toContain('version = "10.12.3"');
     expect(lock).toContain('version = "3.12.8"');
     expect(lock).toContain('version = "1.95.0"');
+    expect(lock).toContain('components = "clippy,llvm-tools,rustfmt"');
     expect(lock).toContain(
-      'targets = "aarch64-apple-darwin,x86_64-apple-darwin"',
+      'targets = "aarch64-apple-darwin,aarch64-pc-windows-msvc,x86_64-apple-darwin,x86_64-pc-windows-msvc"',
     );
   });
 
@@ -185,13 +230,14 @@ describe("WSL macOS Universal DMG workflow", () => {
       "mise lock --platform linux-x64,linux-arm64,macos-x64,macos-arm64,windows-x64,windows-arm64",
     );
 
-    for (const document of [
+    const developmentDocuments = [
       "README.md",
       "README_ZH.md",
       "README_JA.md",
       "README_DE.md",
       "CONTRIBUTING.md",
-    ]) {
+    ];
+    for (const document of developmentDocuments) {
       const content = read(document);
       expect(content).toContain("https://mise.jdx.dev/getting-started.html");
       expect(content).toContain("mise install");
@@ -199,6 +245,19 @@ describe("WSL macOS Universal DMG workflow", () => {
       expect(content).not.toMatch(/Node\.js (?:18|20)\+/);
       expect(content).not.toContain("pnpm 8+");
       expect(content).not.toContain("Rust 1.85+");
+    }
+
+    for (const document of [
+      "README.md",
+      "README_ZH.md",
+      "README_JA.md",
+      "README_DE.md",
+    ]) {
+      const content = read(document);
+      expect(content).toMatch(/^mise run build:cross-windows:x64$/m);
+      expect(content).toMatch(/^mise run build:cross-windows:arm64$/m);
+      expect(content).toMatch(/^mise run build:cross-windows$/m);
+      expect(content).toMatch(/^mise run build:cross-macos:universal$/m);
     }
   });
 });

@@ -256,10 +256,32 @@ tools even when shell activation is not configured. In an intentionally
 mise-activated shell, the prefix may be omitted. WSL must not resolve managed
 tools from `/mnt/<drive>` or Windows shims.
 
-For the experimental WSL2 workflow that cross-builds one ad-hoc, unnotarized
-macOS Universal DMG, run the
-[`scripts/macos-cross/build-universal-dmg.sh`](scripts/macos-cross/build-universal-dmg.sh)
-entrypoint from WSL2 Ubuntu.
+### Cross-Platform Build Commands
+
+These `mise` tasks call the repository-owned cross-build scripts and retain
+their existing preflight gates. Task execution intentionally does not
+auto-install missing mise tools: normal development uses the `mise install`
+step above, the macOS wrapper provisions its pinned tools only after its host
+and risk checks, and the Windows workflow requires its toolchain to be prepared
+before it starts.
+
+```bash
+mise run build:cross-windows:x64
+mise run build:cross-windows:arm64
+mise run build:cross-windows
+mise run build:cross-macos:universal
+```
+
+The Windows tasks require the existing prepared x86_64 Linux cross-build
+toolchain. `build:cross-windows` is the atomic dual-architecture delivery
+entry point; its candidates are published under
+`dist-bundle/windows/<version>/<arch>/`. The macOS task is supported only
+from WSL2 Ubuntu 22.04 or 24.04 and prompts for its pinned SDK, license, GPL
+tool, and experimental-DMG acknowledgement on first use. In a non-interactive
+environment, run `mise run build:cross-macos:universal --accept-risk` to
+provide that acknowledgement explicitly. It publishes the DMG, checksum, and
+manifest under `dist-bundle/macos/`. Both directories are Git-ignored local
+candidate outputs, not public release locations.
 
 ### Development Commands
 

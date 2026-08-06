@@ -8,8 +8,8 @@ Only the latest release of FyAgent receives security updates.
 
 | Version / 版本 | Supported / 是否支持 |
 |----------------|---------------------|
-| Latest 3.x     | ✅ Yes / 是          |
-| < 3.0          | ❌ No / 否           |
+| Latest FyAgent release / 最新 FyAgent 版本 | ✅ Yes / 是          |
+| Earlier releases / 更早版本                | ❌ No / 否           |
 
 ## Threat Model / 威胁模型
 

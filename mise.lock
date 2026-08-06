@@ -99,3 +99,12 @@ backend = "core:rust"
 components = "clippy,rustfmt"
 profile = "minimal"
 targets = "aarch64-apple-darwin,x86_64-apple-darwin"
+
+[[tools.rust]]
+version = "1.95.0"
+backend = "core:rust"
+
+[tools.rust.options]
+components = "clippy,llvm-tools,rustfmt"
+profile = "minimal"
+targets = "aarch64-apple-darwin,aarch64-pc-windows-msvc,x86_64-apple-darwin,x86_64-pc-windows-msvc"

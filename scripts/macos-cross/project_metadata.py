@@ -220,9 +220,10 @@ def inspect_project(root: Path) -> Inspection:
     else:
         if str(rust_mise.get("version", "")) != EXPECTED_RUST_VERSION:
             errors.append(f"mise.toml Rust version must be {EXPECTED_RUST_VERSION}")
-        expected_targets = {"aarch64-apple-darwin", "x86_64-apple-darwin"}
-        if set(rust_mise.get("targets", [])) != expected_targets:
-            errors.append("mise.toml Rust targets must contain exactly both macOS architectures")
+        expected_macos_targets = {"aarch64-apple-darwin", "x86_64-apple-darwin"}
+        actual_targets = set(rust_mise.get("targets", []))
+        if not expected_macos_targets.issubset(actual_targets):
+            errors.append("mise.toml Rust targets must include both macOS architectures")
 
     icon_entries = bundle.get("icon", [])
     if not isinstance(icon_entries, list):
