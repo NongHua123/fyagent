@@ -780,6 +780,8 @@
     "resetDefault": "Reset to default directory (takes effect after saving)",
     "aboutHint": "View FyAgent version information and local tool status.",
     "portableMode": "Portable mode is enabled.",
+    "runtimePrivilegeAdministrator": "Runtime privilege: Administrator",
+    "runtimePrivilegeStandardUser": "Runtime privilege: Standard user",
     "manualInstallCommands": "Manual Install Commands",
     "oneClickInstallHint": "Install or upgrade Claude Code / Gemini CLI / Grok Build / OpenCode / OpenClaw / Hermes",
     "localEnvCheck": "Local environment check",
@@ -885,7 +887,24 @@
       "existsYes": "Exists",
       "existsNo": "Not created yet",
       "modelCount": "Configured models",
-      "unavailable": "Configuration status is currently unavailable."
+      "backup": "Backup file",
+      "backupYes": "Available",
+      "backupNo": "Not created",
+      "unavailable": "Configuration status is currently unavailable.",
+      "download": "Download WorkBuddy",
+      "downloadHint": "Open the WorkBuddy website in the default browser",
+      "downloadFailed": "Could not open the WorkBuddy website. Check your default browser settings."
+    },
+    "existingModels": {
+      "title": "Existing models ({{count}})",
+      "loading": "Loading existing models...",
+      "refresh": "Refresh",
+      "searchPlaceholder": "Search existing model IDs",
+      "clearSearch": "Clear existing model search",
+      "list": "Existing model IDs",
+      "empty": "No configured models yet.",
+      "noMatch": "No matching model IDs.",
+      "readFailed": "Could not read the existing model configuration. Check models.json."
     },
     "connection": { "title": "Connection" },
     "baseUrl": "Base URL",
@@ -919,16 +938,26 @@
       "manualPlaceholder": "one-model-id-per-line",
       "manualHint": "One model ID per line. Blank lines are ignored."
     },
+    "remoteModels": {
+      "title": "Remote models",
+      "selectionSummary": "Selected {{selected}} / current results {{total}}",
+      "searchPlaceholder": "Search model ID, name, or vendor",
+      "clearSearch": "Clear remote model search",
+      "selectCurrent": "Select current results",
+      "deselectCurrent": "Deselect current results",
+      "noMatch": "No matching remote models.",
+      "existing": "Existing"
+    },
     "validation": {
       "apiKeyRequired": "An API key is required unless \"Allow no API key\" is enabled.",
       "modelRequired": "Select or enter at least one model before saving."
     },
     "duplicateDialog": {
-      "title": "Duplicate model IDs found",
-      "description": "Some selected model IDs already occur more than once in the existing file.",
+      "title": "Overwrite existing models?",
+      "description": "These models already exist. Continuing updates their connection address and API key.",
       "occurrences": "{{count}} occurrences",
-      "keepDuplicates": "Overwrite updates every duplicate entry's managed fields. It does not remove or merge duplicates.",
-      "confirm": "Overwrite duplicate entries"
+      "keepDuplicates": "Every configuration entry with the same ID is updated. No entries are removed or merged.",
+      "confirm": "Continue saving"
     },
     "error": {
       "invalidUrl": "Enter a valid HTTP or HTTPS URL.",
@@ -941,10 +970,14 @@
       "configReadFailed": "The existing WorkBuddy configuration could not be read safely.",
       "configInvalidJson": "The existing WorkBuddy configuration is not valid JSON.",
       "configRootNotArray": "The existing WorkBuddy configuration must be a JSON array.",
+      "configUnsupportedRoot": "The WorkBuddy configuration structure is not recognized. Check models.json.",
+      "configModelsNotArray": "The WorkBuddy configuration structure is not recognized. Check models.json.",
       "configInvalidEntry": "A model entry in the existing WorkBuddy configuration is invalid.",
       "configNoTargetModels": "Select or enter at least one model before saving.",
       "configConcurrentModification": "The WorkBuddy configuration changed outside FyAgent. Refresh and try again.",
       "configDuplicateTarget": "Duplicate target model IDs require confirmation.",
+      "overwriteTokenInvalid": "The overwrite confirmation is no longer valid. Refresh and save again.",
+      "overwriteTokenExpired": "The overwrite confirmation expired. Refresh and save again.",
       "configBackupFailed": "A backup could not be created, so the configuration was not changed.",
       "configWriteFailed": "The configuration could not be written safely.",
       "httpStatus": "HTTP status: {{status}}",
@@ -989,6 +1022,25 @@
     }
   },
   "codexRestart": {
+    "confirm": {
+      "title": "Restart Codex",
+      "saved": "Configuration saved.",
+      "uniqueRuntime": "Codex is running.",
+      "multipleInstances": "Multiple Codex instances are running.",
+      "multipleInstallations": "Multiple Codex installations are available.",
+      "identityAmbiguous": "The Codex instance could not be identified uniquely.",
+      "risk": "Continuing will force-close every matching Codex instance. Unsaved work may be lost, and only one instance will be started afterward.",
+      "manual": "Restart manually later",
+      "force": "Force close and restart"
+    },
+    "progress": "Restarting Codex…",
+    "progressDescription": "Please wait.",
+    "incomplete": {
+      "title": "Codex restart did not complete",
+      "body": "Configuration was saved, but Codex restart did not complete.",
+      "manual": "I will restart manually",
+      "retry": "Try restarting again"
+    },
     "title": "Configuration updated",
     "description": "Codex is currently running. Restart it to load the configuration you just saved.",
     "restartAction": "Restart Codex",
@@ -2543,6 +2595,13 @@
     "configUrl": "Config File URL",
     "configMergeError": "Failed to merge configuration file",
     "primaryEndpoint": "Primary",
+    "providerActivation": "After import",
+    "providerActivationEnabled": "Set this provider as current and apply its configuration immediately",
+    "providerActivationPending": "This provider will be imported only until you explicitly approve activation",
+    "providerActivationDisabled": "Do not switch to this provider automatically",
+    "providerActivationWarning": "This link requests replacement of the current provider configuration. Continue only if you trust the source.",
+    "providerActivationApproval": "I approve setting this provider as current and writing its configuration to the target app.",
+    "importAndActivate": "Import and set as current",
     "mcp": {
       "title": "Batch Import MCP Servers",
       "targetApps": "Target Apps",
@@ -2558,7 +2617,7 @@
       "app": "App",
       "name": "Name",
       "description": "Description",
-      "contentPreview": "Content Preview",
+      "contentPreview": "Content to import",
       "enabledWarning": "After import, this prompt will be enabled immediately and other prompts will be disabled"
     },
     "skill": {
@@ -3125,6 +3184,16 @@
       "latestVersion": "Latest version",
       "unavailable": "Unavailable",
       "progress": "Installation progress"
+    },
+    "version": {
+      "localLoading": "Checking local version",
+      "localError": "Could not check local version",
+      "remoteLoading": "Fetching latest version",
+      "refreshing": "Refreshing latest version",
+      "refreshNetworkFailed": "Could not fetch the latest version. Check your network connection.",
+      "fetchFailed": "Fetch failed",
+      "platformUnavailable": "No version is available for this platform",
+      "metadataInvalid": "Version information is invalid"
     },
     "state": {
       "hidden": "This feature is not supported on the current platform",

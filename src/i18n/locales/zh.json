@@ -780,6 +780,8 @@
     "resetDefault": "恢复默认目录（需保存后生效）",
     "aboutHint": "查看 FyAgent 版本信息和本地工具状态。",
     "portableMode": "当前已启用便携模式。",
+    "runtimePrivilegeAdministrator": "运行权限：管理员",
+    "runtimePrivilegeStandardUser": "运行权限：普通用户",
     "manualInstallCommands": "手动安装命令",
     "oneClickInstallHint": "安装或升级 Claude Code / Gemini CLI / Grok Build / OpenCode / OpenClaw / Hermes",
     "localEnvCheck": "本地环境检查",
@@ -885,7 +887,24 @@
       "existsYes": "已存在",
       "existsNo": "尚未创建",
       "modelCount": "已配置模型数",
-      "unavailable": "暂时无法读取配置状态。"
+      "backup": "备份文件",
+      "backupYes": "已存在",
+      "backupNo": "尚未创建",
+      "unavailable": "暂时无法读取配置状态。",
+      "download": "下载 WorkBuddy",
+      "downloadHint": "将在默认浏览器中打开 WorkBuddy 官网",
+      "downloadFailed": "无法打开 WorkBuddy 官网，请检查系统默认浏览器设置。"
+    },
+    "existingModels": {
+      "title": "已有模型（{{count}}）",
+      "loading": "正在读取已有模型…",
+      "refresh": "刷新",
+      "searchPlaceholder": "搜索已有模型 ID",
+      "clearSearch": "清空已有模型搜索",
+      "list": "已有模型 ID",
+      "empty": "暂无已配置模型。",
+      "noMatch": "没有匹配的模型 ID。",
+      "readFailed": "无法读取现有模型配置，请检查 models.json。"
     },
     "connection": { "title": "连接配置" },
     "baseUrl": "基础 URL",
@@ -919,16 +938,26 @@
       "manualPlaceholder": "每行一个模型 ID",
       "manualHint": "每行一个模型 ID，空行会被忽略。"
     },
+    "remoteModels": {
+      "title": "远程模型",
+      "selectionSummary": "已选择 {{selected}} / 当前结果 {{total}}",
+      "searchPlaceholder": "搜索模型 ID、名称或 Vendor",
+      "clearSearch": "清空远程模型搜索",
+      "selectCurrent": "全选当前结果",
+      "deselectCurrent": "取消选择当前结果",
+      "noMatch": "没有匹配的远程模型。",
+      "existing": "已存在"
+    },
     "validation": {
       "apiKeyRequired": "除非已启用“允许无 API Key”，否则必须填写 API Key。",
       "modelRequired": "请至少选择或输入一个模型后再保存。"
     },
     "duplicateDialog": {
-      "title": "发现重复模型 ID",
-      "description": "部分目标模型 ID 在现有文件中出现了多次。",
+      "title": "覆盖已有模型？",
+      "description": "以下模型已经存在。继续后将更新这些模型的连接地址和 API Key。",
       "occurrences": "出现 {{count}} 次",
-      "keepDuplicates": "覆盖会更新每个重复条目的受管字段，不会删除或合并重复条目。",
-      "confirm": "覆盖重复条目"
+      "keepDuplicates": "配置文件中所有同 ID 条目都会一并更新，不会删除或合并条目。",
+      "confirm": "继续保存"
     },
     "error": {
       "invalidUrl": "请输入有效的 HTTP 或 HTTPS URL。",
@@ -941,10 +970,14 @@
       "configReadFailed": "无法安全读取现有 WorkBuddy 配置。",
       "configInvalidJson": "现有 WorkBuddy 配置不是有效 JSON。",
       "configRootNotArray": "现有 WorkBuddy 配置根节点必须是 JSON 数组。",
+      "configUnsupportedRoot": "WorkBuddy 配置结构无法识别，请检查 models.json。",
+      "configModelsNotArray": "WorkBuddy 配置结构无法识别，请检查 models.json。",
       "configInvalidEntry": "现有 WorkBuddy 配置中存在无效模型条目。",
       "configNoTargetModels": "请至少选择或输入一个模型后再保存。",
       "configConcurrentModification": "WorkBuddy 配置已在 FyAgent 外被修改，请刷新后重试。",
       "configDuplicateTarget": "重复目标模型 ID 需要确认。",
+      "overwriteTokenInvalid": "覆盖确认已失效，请刷新后重新保存。",
+      "overwriteTokenExpired": "覆盖确认已过期，请刷新后重新保存。",
       "configBackupFailed": "备份创建失败，配置未被修改。",
       "configWriteFailed": "无法安全写入配置。",
       "httpStatus": "HTTP 状态码：{{status}}",
@@ -989,6 +1022,25 @@
     }
   },
   "codexRestart": {
+    "confirm": {
+      "title": "需要重启 Codex",
+      "saved": "配置已保存。",
+      "uniqueRuntime": "Codex 正在运行。",
+      "multipleInstances": "检测到多个正在运行的 Codex。",
+      "multipleInstallations": "检测到多个可用的 Codex 安装。",
+      "identityAmbiguous": "当前无法确认唯一的 Codex 实例。",
+      "risk": "继续后将强制关闭所有匹配的 Codex。未保存的工作可能丢失，随后只会启动一个实例。",
+      "manual": "稍后手动重启",
+      "force": "强制关闭并重启"
+    },
+    "progress": "正在重启 Codex…",
+    "progressDescription": "请稍候。",
+    "incomplete": {
+      "title": "Codex 重启未完成",
+      "body": "配置已保存，但 Codex 重启未完成。",
+      "manual": "我将手动重启",
+      "retry": "再次尝试重启"
+    },
     "title": "配置已更新",
     "description": "当前 Codex 正在运行。重启后会加载刚刚保存的新配置。",
     "restartAction": "重启 Codex",
@@ -2543,6 +2595,13 @@
     "configUrl": "配置文件 URL",
     "configMergeError": "合并配置文件失败",
     "primaryEndpoint": "主",
+    "providerActivation": "导入后的操作",
+    "providerActivationEnabled": "将立即切换到此供应商并写入当前应用配置",
+    "providerActivationPending": "仅会导入此供应商；需由你明确同意后才会启用",
+    "providerActivationDisabled": "仅导入，不会自动切换到此供应商",
+    "providerActivationWarning": "此链接请求替换当前供应商配置。请仅在确认来源可信后继续。",
+    "providerActivationApproval": "我同意将此供应商设为当前供应商，并向目标应用写入其配置。",
+    "importAndActivate": "导入并设为当前供应商",
     "mcp": {
       "title": "批量导入 MCP Servers",
       "targetApps": "目标应用",
@@ -2558,7 +2617,7 @@
       "app": "应用",
       "name": "名称",
       "description": "描述",
-      "contentPreview": "内容预览",
+      "contentPreview": "将导入的完整内容",
       "enabledWarning": "导入后将立即启用此提示词，其他提示词将被禁用"
     },
     "skill": {
@@ -3125,6 +3184,16 @@
       "latestVersion": "最新版本",
       "unavailable": "暂不可用",
       "progress": "安装进度"
+    },
+    "version": {
+      "localLoading": "正在检测本地版本",
+      "localError": "本地版本检测失败",
+      "remoteLoading": "正在获取最新版本号",
+      "refreshing": "正在刷新最新版本",
+      "refreshNetworkFailed": "获取最新版本失败，请检查网络是否正常",
+      "fetchFailed": "获取失败",
+      "platformUnavailable": "当前平台暂无可用版本",
+      "metadataInvalid": "版本信息异常"
     },
     "state": {
       "hidden": "当前平台不支持此功能",

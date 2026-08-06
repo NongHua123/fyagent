@@ -780,8 +780,9 @@
     "resetDefault": "還原預設目錄（需儲存後生效）",
     "aboutHint": "檢視 FyAgent 版本資訊與本機工具狀態。",
     "portableMode": "目前已啟用可攜模式。",
+    "runtimePrivilegeAdministrator": "執行權限：系統管理員",
+    "runtimePrivilegeStandardUser": "執行權限：一般使用者",
     "manualInstallCommands": "手動安裝指令",
-    "oneClickInstall": "一鍵安裝",
     "oneClickInstallHint": "安裝或更新 Claude Code / Gemini CLI / Grok Build / OpenCode / OpenClaw / Hermes",
     "localEnvCheck": "本地環境檢查",
     "updateAllTools": "全部更新（{{count}}）",
@@ -886,7 +887,24 @@
       "existsYes": "已存在",
       "existsNo": "尚未建立",
       "modelCount": "已設定模型數",
-      "unavailable": "目前無法讀取設定狀態。"
+      "backup": "備份檔",
+      "backupYes": "已存在",
+      "backupNo": "尚未建立",
+      "unavailable": "目前無法讀取設定狀態。",
+      "download": "下載 WorkBuddy",
+      "downloadHint": "將在預設瀏覽器中開啟 WorkBuddy 官網",
+      "downloadFailed": "無法開啟 WorkBuddy 官網，請檢查系統預設瀏覽器設定。"
+    },
+    "existingModels": {
+      "title": "已有模型（{{count}}）",
+      "loading": "正在讀取已有模型…",
+      "refresh": "重新整理",
+      "searchPlaceholder": "搜尋已有模型 ID",
+      "clearSearch": "清空已有模型搜尋",
+      "list": "已有模型 ID",
+      "empty": "尚無已設定模型。",
+      "noMatch": "沒有符合的模型 ID。",
+      "readFailed": "無法讀取既有模型設定，請檢查 models.json。"
     },
     "connection": { "title": "連線設定" },
     "baseUrl": "基礎 URL",
@@ -920,16 +938,26 @@
       "manualPlaceholder": "每行一個模型 ID",
       "manualHint": "每行一個模型 ID，空行會被忽略。"
     },
+    "remoteModels": {
+      "title": "遠端模型",
+      "selectionSummary": "已選擇 {{selected}} / 目前結果 {{total}}",
+      "searchPlaceholder": "搜尋模型 ID、名稱或 Vendor",
+      "clearSearch": "清空遠端模型搜尋",
+      "selectCurrent": "全選目前結果",
+      "deselectCurrent": "取消選擇目前結果",
+      "noMatch": "沒有符合的遠端模型。",
+      "existing": "已存在"
+    },
     "validation": {
       "apiKeyRequired": "除非已啟用「允許無 API Key」，否則必須填寫 API Key。",
       "modelRequired": "請至少選擇或輸入一個模型後再儲存。"
     },
     "duplicateDialog": {
-      "title": "發現重複模型 ID",
-      "description": "部分目標模型 ID 在既有檔案中出現了多次。",
+      "title": "覆蓋已有模型？",
+      "description": "以下模型已經存在。繼續後將更新這些模型的連線位址和 API Key。",
       "occurrences": "出現 {{count}} 次",
-      "keepDuplicates": "覆蓋會更新每個重複項目的受管欄位，不會刪除或合併重複項目。",
-      "confirm": "覆蓋重複項目"
+      "keepDuplicates": "設定檔中所有同 ID 項目都會一併更新，不會刪除或合併項目。",
+      "confirm": "繼續儲存"
     },
     "error": {
       "invalidUrl": "請輸入有效的 HTTP 或 HTTPS URL。",
@@ -942,10 +970,14 @@
       "configReadFailed": "無法安全讀取既有 WorkBuddy 設定。",
       "configInvalidJson": "既有 WorkBuddy 設定不是有效 JSON。",
       "configRootNotArray": "既有 WorkBuddy 設定根節點必須是 JSON 陣列。",
+      "configUnsupportedRoot": "WorkBuddy 設定結構無法識別，請檢查 models.json。",
+      "configModelsNotArray": "WorkBuddy 設定結構無法識別，請檢查 models.json。",
       "configInvalidEntry": "既有 WorkBuddy 設定中有無效模型項目。",
       "configNoTargetModels": "請至少選擇或輸入一個模型後再儲存。",
       "configConcurrentModification": "WorkBuddy 設定已在 FyAgent 外被修改，請重新整理後再試。",
       "configDuplicateTarget": "重複目標模型 ID 需要確認。",
+      "overwriteTokenInvalid": "覆蓋確認已失效，請重新整理後再次儲存。",
+      "overwriteTokenExpired": "覆蓋確認已過期，請重新整理後再次儲存。",
       "configBackupFailed": "備份建立失敗，設定未被修改。",
       "configWriteFailed": "無法安全寫入設定。",
       "httpStatus": "HTTP 狀態碼：{{status}}",
@@ -990,6 +1022,25 @@
     }
   },
   "codexRestart": {
+    "confirm": {
+      "title": "需要重新啟動 Codex",
+      "saved": "設定已儲存。",
+      "uniqueRuntime": "Codex 正在執行。",
+      "multipleInstances": "偵測到多個正在執行的 Codex。",
+      "multipleInstallations": "偵測到多個可用的 Codex 安裝。",
+      "identityAmbiguous": "目前無法確認唯一的 Codex 執行個體。",
+      "risk": "繼續後將強制關閉所有相符的 Codex。未儲存的工作可能遺失，之後只會啟動一個執行個體。",
+      "manual": "稍後手動重新啟動",
+      "force": "強制關閉並重新啟動"
+    },
+    "progress": "正在重新啟動 Codex…",
+    "progressDescription": "請稍候。",
+    "incomplete": {
+      "title": "Codex 重新啟動未完成",
+      "body": "設定已儲存，但 Codex 重新啟動未完成。",
+      "manual": "我將手動重新啟動",
+      "retry": "再次嘗試重新啟動"
+    },
     "title": "設定已更新",
     "description": "目前 Codex 正在執行。重新啟動後會載入剛剛儲存的新設定。",
     "restartAction": "重新啟動 Codex",
@@ -1010,6 +1061,106 @@
       "forceQuit": "無法強制關閉已驗證的 Codex 執行個體。",
       "launch": "無法從可信任安裝記錄啟動 Codex。",
       "verify": "Codex 已啟動，但無法確認新的可信任執行個體。"
+    }
+  },
+  "codexDesktop": {
+    "title": "Codex 桌面應用程式",
+    "description": "透過中國大陸友善鏡像，下載並安裝最新版 OpenAI 官方 ChatGPT 桌面應用程式（包含 Codex）。",
+    "source": "OpenAI 官方安裝套件 · 中國大陸最佳化鏡像",
+    "actions": {
+      "install": "一鍵安裝 Codex",
+      "update": "更新 Codex",
+      "launch": "啟動 Codex",
+      "cancel": "取消",
+      "retry": "重試",
+      "refresh": "重新整理",
+      "copyErrorDetails": "複製錯誤詳細資料",
+      "openLogDirectory": "開啟記錄資料夾"
+    },
+    "details": {
+      "localVersion": "本機版本",
+      "latestVersion": "最新版本",
+      "unavailable": "暫時無法使用",
+      "progress": "安裝進度"
+    },
+    "version": {
+      "localLoading": "正在偵測本機版本",
+      "localError": "無法偵測本機版本",
+      "remoteLoading": "正在取得最新版本號",
+      "refreshing": "正在更新最新版本",
+      "refreshNetworkFailed": "取得最新版本失敗，請檢查網路是否正常",
+      "fetchFailed": "取得失敗",
+      "platformUnavailable": "目前平台暫無可用版本",
+      "metadataInvalid": "版本資訊異常"
+    },
+    "state": {
+      "hidden": "目前平台不支援此功能",
+      "checking": "正在檢查桌面應用程式狀態",
+      "preflight": "正在進行安裝前檢查",
+      "unsupportedArchitecture": "目前尚不支援 Intel Mac",
+      "ambiguous": "偵測到多個 Codex 桌面應用程式安裝，請先手動處理。",
+      "readyInstall": "可安裝最新版本 {{version}}",
+      "updateAvailable": "可更新至 {{version}}",
+      "upToDate": "已是最新版本",
+      "localNewer": "已安裝較新版本，不提供降級",
+      "remoteUnavailable": "暫時無法取得最新版本，請檢查網路或全域 Proxy 後重試",
+      "remoteUnavailableInstalled": "暫時無法檢查更新，仍可啟動已安裝的應用程式",
+      "downloading": "正在下載官方安裝套件",
+      "verifyingDownload": "正在驗證官方安裝套件",
+      "installing": "正在安裝",
+      "verifyingInstallation": "正在確認安裝結果",
+      "succeeded": "已安裝",
+      "failed": "安裝未完成",
+      "cancelled": "已取消"
+    },
+    "error": {
+      "title": "Codex 桌面應用程式操作失敗",
+      "details": "錯誤詳細資料",
+      "platformUnsupported": "目前平台不支援 Codex 桌面應用程式安裝。",
+      "osVersionUnsupported": "目前作業系統版本不符合安裝需求。",
+      "architectureUnsupported": "目前處理器架構不受支援。",
+      "sourceUnavailable": "暫時無法取得最新版本，請檢查網路或全域 Proxy 後重試。",
+      "releaseMetadataInvalid": "最新版本的發行資訊無效，已封鎖安裝。",
+      "releaseNotAvailable": "目前平台暫時沒有可用的安裝套件。",
+      "metadataChanged": "發行資訊已變更，請重新整理後重試。",
+      "redirectRejected": "下載重新導向不符合安全需求，已封鎖下載。",
+      "downloadFailed": "下載官方安裝套件失敗，請重試。",
+      "downloadTimeout": "下載逾時，請檢查網路後重試。",
+      "downloadCancelled": "已取消下載。",
+      "insufficientDiskSpace": "可用磁碟空間不足，請釋放空間後重試。",
+      "checksumMissing": "安裝套件缺少必要的驗證資訊，已封鎖安裝。",
+      "checksumMismatch": "下載的安裝套件未通過驗證，已封鎖安裝。",
+      "packageParseFailed": "無法讀取安裝套件內容，已封鎖安裝。",
+      "packageIdentityMismatch": "安裝套件身分不符合預期，已封鎖安裝。",
+      "packageArchitectureMismatch": "安裝套件架構與目前裝置不符，已封鎖安裝。",
+      "packageSignatureInvalid": "安裝套件簽章無效，已封鎖安裝。",
+      "windowsUacCancelled": "你已取消 Windows 權限確認。",
+      "windowsElevationFailed": "無法完成 Windows 權限確認。",
+      "windowsPackageInUse": "請儲存工作並關閉 ChatGPT/Codex，然後重試更新。",
+      "windowsDeploymentBlocked": "Windows 已封鎖此安裝，請聯絡系統管理員。",
+      "windowsDependencyMissing": "Windows 缺少安裝所需元件，請聯絡系統管理員。",
+      "windowsAllUsersUnsupported": "此安裝方式不支援所有使用者範圍。",
+      "windowsDeploymentFailed": "Windows 安裝失敗，請重試。",
+      "macDmgMountFailed": "無法掛載 macOS 安裝映像，請重試。",
+      "macAppNotFound": "安裝映像中找不到預期的應用程式。",
+      "macBundleIdMismatch": "應用程式識別碼不符合預期，已封鎖安裝。",
+      "macTeamIdMismatch": "應用程式簽署團隊不符合預期，已封鎖安裝。",
+      "macGatekeeperRejected": "macOS Gatekeeper 拒絕此應用程式。",
+      "macAppRunning": "請關閉 ChatGPT/Codex 後重試。",
+      "macMultipleInstallations": "偵測到多個 Codex 桌面應用程式安裝，請先手動處理。",
+      "macTargetPathConflict": "目標安裝位置發生衝突，請先手動處理。",
+      "macCopyFailed": "複製 macOS 應用程式失敗，請重試。",
+      "macDmgDetachFailed": "安裝完成後無法卸載磁碟映像，請稍後再試。",
+      "installationVerifyFailed": "安裝後驗證失敗，應用程式未被標記為已安裝。",
+      "launchFailed": "無法啟動已驗證的 Codex 桌面應用程式。",
+      "jobAlreadyRunning": "已有 Codex 桌面應用程式安裝工作正在進行。",
+      "jobNotFound": "找不到對應的安裝工作。",
+      "internalError": "發生內部錯誤，請開啟記錄後重試。"
+    },
+    "toast": {
+      "installed": "Codex 桌面應用程式已安裝成功。系統中可能顯示為「ChatGPT」。",
+      "copied": "已複製錯誤詳細資料",
+      "copyFailed": "無法複製錯誤詳細資料"
     }
   },
   "grokBuild": {
@@ -2544,6 +2695,13 @@
     "configUrl": "設定檔 URL",
     "configMergeError": "合併設定檔失敗",
     "primaryEndpoint": "主",
+    "providerActivation": "匯入後的操作",
+    "providerActivationEnabled": "將立即切換至此供應商並寫入目前應用程式設定",
+    "providerActivationPending": "僅會匯入此供應商；需由你明確同意後才會啟用",
+    "providerActivationDisabled": "僅匯入，不會自動切換至此供應商",
+    "providerActivationWarning": "此連結要求取代目前供應商設定。請僅在確認來源可信後繼續。",
+    "providerActivationApproval": "我同意將此供應商設為目前供應商，並向目標應用程式寫入其設定。",
+    "importAndActivate": "匯入並設為目前供應商",
     "mcp": {
       "title": "批次匯入 MCP Servers",
       "targetApps": "目標應用程式",
@@ -2559,7 +2717,7 @@
       "app": "應用程式",
       "name": "名稱",
       "description": "描述",
-      "contentPreview": "內容預覽",
+      "contentPreview": "將匯入的完整內容",
       "enabledWarning": "匯入後將立即啟用此提示詞，其他提示詞將被停用"
     },
     "skill": {

@@ -780,6 +780,8 @@
     "resetDefault": "デフォルトに戻す（保存後に反映）",
     "aboutHint": "FyAgent のバージョン情報とローカルツールの状態を表示します。",
     "portableMode": "ポータブルモードが有効です。",
+    "runtimePrivilegeAdministrator": "実行権限：管理者",
+    "runtimePrivilegeStandardUser": "実行権限：標準ユーザー",
     "manualInstallCommands": "手動インストールコマンド",
     "oneClickInstallHint": "Claude Code / Gemini CLI / Grok Build / OpenCode / OpenClaw / Hermes をインストールまたは更新",
     "localEnvCheck": "ローカル環境チェック",
@@ -885,7 +887,24 @@
       "existsYes": "存在します",
       "existsNo": "まだ作成されていません",
       "modelCount": "設定済みモデル数",
-      "unavailable": "現在、設定の状態を読み取れません。"
+      "backup": "バックアップ ファイル",
+      "backupYes": "存在します",
+      "backupNo": "未作成",
+      "unavailable": "現在、設定の状態を読み取れません。",
+      "download": "WorkBuddy をダウンロード",
+      "downloadHint": "既定のブラウザーで WorkBuddy の Web サイトを開きます",
+      "downloadFailed": "WorkBuddy の Web サイトを開けませんでした。既定のブラウザー設定を確認してください。"
+    },
+    "existingModels": {
+      "title": "既存のモデル（{{count}}）",
+      "loading": "既存のモデルを読み込み中...",
+      "refresh": "更新",
+      "searchPlaceholder": "既存のモデル ID を検索",
+      "clearSearch": "既存モデルの検索をクリア",
+      "list": "既存のモデル ID",
+      "empty": "設定済みのモデルはありません。",
+      "noMatch": "一致するモデル ID はありません。",
+      "readFailed": "既存のモデル設定を読み取れませんでした。models.json を確認してください。"
     },
     "connection": { "title": "接続設定" },
     "baseUrl": "ベース URL",
@@ -919,16 +938,26 @@
       "manualPlaceholder": "1 行に 1 つのモデル ID",
       "manualHint": "1 行に 1 つのモデル ID を入力します。空行は無視されます。"
     },
+    "remoteModels": {
+      "title": "リモートモデル",
+      "selectionSummary": "選択済み {{selected}} / 現在の結果 {{total}}",
+      "searchPlaceholder": "モデル ID、名前、ベンダーを検索",
+      "clearSearch": "リモートモデルの検索をクリア",
+      "selectCurrent": "現在の結果をすべて選択",
+      "deselectCurrent": "現在の結果の選択を解除",
+      "noMatch": "一致するリモートモデルはありません。",
+      "existing": "既存"
+    },
     "validation": {
       "apiKeyRequired": "「API キーなしを許可」が有効でない限り、API キーは必須です。",
       "modelRequired": "保存する前に少なくとも 1 つのモデルを選択または入力してください。"
     },
     "duplicateDialog": {
-      "title": "重複したモデル ID が見つかりました",
-      "description": "選択したモデル ID の一部が既存ファイル内に複数回出現しています。",
+      "title": "既存モデルを上書きしますか？",
+      "description": "以下のモデルはすでに存在します。続行すると、接続先と API キーが更新されます。",
       "occurrences": "{{count}} 件",
-      "keepDuplicates": "上書きではすべての重複エントリの管理対象フィールドを更新します。重複は削除も統合もされません。",
-      "confirm": "重複エントリを上書き"
+      "keepDuplicates": "同じ ID のすべての設定エントリが更新されます。エントリは削除も統合もされません。",
+      "confirm": "保存を続行"
     },
     "error": {
       "invalidUrl": "有効な HTTP または HTTPS URL を入力してください。",
@@ -941,10 +970,14 @@
       "configReadFailed": "既存の WorkBuddy 設定を安全に読み取れませんでした。",
       "configInvalidJson": "既存の WorkBuddy 設定は有効な JSON ではありません。",
       "configRootNotArray": "既存の WorkBuddy 設定のルートは JSON 配列である必要があります。",
+      "configUnsupportedRoot": "WorkBuddy 設定の構造を認識できません。models.json を確認してください。",
+      "configModelsNotArray": "WorkBuddy 設定の構造を認識できません。models.json を確認してください。",
       "configInvalidEntry": "既存の WorkBuddy 設定に無効なモデルエントリがあります。",
       "configNoTargetModels": "保存する前に少なくとも 1 つのモデルを選択または入力してください。",
       "configConcurrentModification": "WorkBuddy 設定が FyAgent の外部で変更されました。更新して再試行してください。",
       "configDuplicateTarget": "重複した対象モデル ID には確認が必要です。",
+      "overwriteTokenInvalid": "上書き確認は無効になりました。更新してから再度保存してください。",
+      "overwriteTokenExpired": "上書き確認の有効期限が切れました。更新してから再度保存してください。",
       "configBackupFailed": "バックアップを作成できなかったため、設定は変更されませんでした。",
       "configWriteFailed": "設定を安全に書き込めませんでした。",
       "httpStatus": "HTTP ステータス: {{status}}",
@@ -989,6 +1022,25 @@
     }
   },
   "codexRestart": {
+    "confirm": {
+      "title": "Codex を再起動する必要があります",
+      "saved": "設定を保存しました。",
+      "uniqueRuntime": "Codex は実行中です。",
+      "multipleInstances": "複数の Codex が実行中です。",
+      "multipleInstallations": "複数の Codex インストールが利用可能です。",
+      "identityAmbiguous": "Codex インスタンスを一意に確認できません。",
+      "risk": "続行すると、条件に一致するすべての Codex を強制終了します。保存していない作業が失われる可能性があり、その後は 1 つのインスタンスだけを起動します。",
+      "manual": "後で手動で再起動",
+      "force": "強制終了して再起動"
+    },
+    "progress": "Codex を再起動しています…",
+    "progressDescription": "しばらくお待ちください。",
+    "incomplete": {
+      "title": "Codex の再起動が完了しませんでした",
+      "body": "設定は保存されましたが、Codex の再起動は完了しませんでした。",
+      "manual": "手動で再起動します",
+      "retry": "もう一度再起動を試す"
+    },
     "title": "設定を更新しました",
     "description": "Codex は現在実行中です。再起動すると、保存した新しい設定が読み込まれます。",
     "restartAction": "Codex を再起動",
@@ -1009,6 +1061,106 @@
       "forceQuit": "検証済みの Codex インスタンスを強制終了できませんでした。",
       "launch": "信頼済みのインストールから Codex を起動できませんでした。",
       "verify": "Codex は起動しましたが、新しい信頼済みインスタンスを確認できませんでした。"
+    }
+  },
+  "codexDesktop": {
+    "title": "Codex デスクトップアプリ",
+    "description": "中国本土向けミラーを通じて、Codex を含む最新版の OpenAI 公式 ChatGPT デスクトップアプリをダウンロードしてインストールします。",
+    "source": "OpenAI 公式パッケージ · 中国本土向けミラー",
+    "actions": {
+      "install": "Codex をインストール",
+      "update": "Codex を更新",
+      "launch": "Codex を起動",
+      "cancel": "キャンセル",
+      "retry": "再試行",
+      "refresh": "更新",
+      "copyErrorDetails": "エラー詳細をコピー",
+      "openLogDirectory": "ログフォルダーを開く"
+    },
+    "details": {
+      "localVersion": "ローカル バージョン",
+      "latestVersion": "最新バージョン",
+      "unavailable": "利用できません",
+      "progress": "インストールの進行状況"
+    },
+    "version": {
+      "localLoading": "ローカル バージョンを確認中",
+      "localError": "ローカル バージョンを確認できません",
+      "remoteLoading": "最新バージョンを取得中",
+      "refreshing": "最新バージョンを更新中",
+      "refreshNetworkFailed": "最新バージョンの取得に失敗しました。ネットワーク接続を確認してください",
+      "fetchFailed": "取得に失敗しました",
+      "platformUnavailable": "このプラットフォームで利用可能なバージョンはありません",
+      "metadataInvalid": "バージョン情報に問題があります"
+    },
+    "state": {
+      "hidden": "このプラットフォームではこの機能を利用できません",
+      "checking": "デスクトップアプリの状態を確認中",
+      "preflight": "インストール前の確認を実行中",
+      "unsupportedArchitecture": "Intel Mac はまだサポートされていません",
+      "ambiguous": "複数の Codex デスクトップアプリのインストールが検出されました。続行する前に解決してください。",
+      "readyInstall": "バージョン {{version}} をインストールできます",
+      "updateAvailable": "バージョン {{version}} に更新できます",
+      "upToDate": "最新の状態です",
+      "localNewer": "より新しいバージョンがインストールされています。ダウングレードはできません",
+      "remoteUnavailable": "最新バージョンを取得できません。ネットワークまたはグローバルプロキシを確認して再試行してください。",
+      "remoteUnavailableInstalled": "現在は更新を確認できませんが、インストール済みアプリは起動できます。",
+      "downloading": "公式パッケージをダウンロード中",
+      "verifyingDownload": "公式パッケージを検証中",
+      "installing": "インストール中",
+      "verifyingInstallation": "インストール結果を確認中",
+      "succeeded": "インストール済み",
+      "failed": "インストールが完了しませんでした",
+      "cancelled": "キャンセルしました"
+    },
+    "error": {
+      "title": "Codex デスクトップアプリの操作に失敗しました",
+      "details": "エラー詳細",
+      "platformUnsupported": "このプラットフォームでは Codex デスクトップアプリのインストールに対応していません。",
+      "osVersionUnsupported": "現在のオペレーティングシステムのバージョンはインストール要件を満たしていません。",
+      "architectureUnsupported": "現在のプロセッサアーキテクチャはサポートされていません。",
+      "sourceUnavailable": "最新バージョンを取得できません。ネットワークまたはグローバルプロキシを確認して再試行してください。",
+      "releaseMetadataInvalid": "最新バージョンのリリース情報が無効なため、インストールをブロックしました。",
+      "releaseNotAvailable": "このプラットフォーム向けのインストール可能なパッケージは現在ありません。",
+      "metadataChanged": "リリース情報が変更されました。更新して再試行してください。",
+      "redirectRejected": "ダウンロードのリダイレクトがセキュリティ要件を満たさないため、ダウンロードをブロックしました。",
+      "downloadFailed": "公式パッケージのダウンロードに失敗しました。再試行してください。",
+      "downloadTimeout": "ダウンロードがタイムアウトしました。ネットワークを確認して再試行してください。",
+      "downloadCancelled": "ダウンロードをキャンセルしました。",
+      "insufficientDiskSpace": "空きディスク容量が不足しています。空き容量を確保して再試行してください。",
+      "checksumMissing": "パッケージに必要な検証情報がないため、インストールをブロックしました。",
+      "checksumMismatch": "ダウンロードしたパッケージは検証に合格しなかったため、インストールをブロックしました。",
+      "packageParseFailed": "パッケージ内容を読み取れないため、インストールをブロックしました。",
+      "packageIdentityMismatch": "パッケージの識別情報が期待値と一致しないため、インストールをブロックしました。",
+      "packageArchitectureMismatch": "パッケージのアーキテクチャがこのデバイスと一致しないため、インストールをブロックしました。",
+      "packageSignatureInvalid": "パッケージの署名が無効なため、インストールをブロックしました。",
+      "windowsUacCancelled": "Windows の権限確認をキャンセルしました。",
+      "windowsElevationFailed": "Windows の権限確認を完了できませんでした。",
+      "windowsPackageInUse": "作業を保存し、ChatGPT または Codex を閉じてから更新を再試行してください。",
+      "windowsDeploymentBlocked": "Windows によりこのインストールはブロックされました。システム管理者に連絡してください。",
+      "windowsDependencyMissing": "Windows に必要なインストールコンポーネントがありません。システム管理者に連絡してください。",
+      "windowsAllUsersUnsupported": "このインストール方法はすべてのユーザー範囲に対応していません。",
+      "windowsDeploymentFailed": "Windows でのインストールに失敗しました。再試行してください。",
+      "macDmgMountFailed": "macOS ディスクイメージをマウントできませんでした。再試行してください。",
+      "macAppNotFound": "ディスクイメージ内に想定したアプリが見つかりませんでした。",
+      "macBundleIdMismatch": "アプリ識別子が期待値と一致しないため、インストールをブロックしました。",
+      "macTeamIdMismatch": "アプリ署名チームが期待値と一致しないため、インストールをブロックしました。",
+      "macGatekeeperRejected": "macOS Gatekeeper がこのアプリを拒否しました。",
+      "macAppRunning": "ChatGPT または Codex を閉じてから再試行してください。",
+      "macMultipleInstallations": "複数の Codex デスクトップアプリのインストールが検出されました。続行する前に解決してください。",
+      "macTargetPathConflict": "対象のインストール先パスが競合しています。続行する前に解決してください。",
+      "macCopyFailed": "macOS アプリのコピーに失敗しました。再試行してください。",
+      "macDmgDetachFailed": "インストール後にディスクイメージを取り外せませんでした。後でもう一度試してください。",
+      "installationVerifyFailed": "インストール後の検証に失敗したため、アプリはインストール済みとして扱われません。",
+      "launchFailed": "検証済みの Codex デスクトップアプリを起動できませんでした。",
+      "jobAlreadyRunning": "Codex デスクトップアプリのインストールはすでに実行中です。",
+      "jobNotFound": "指定されたインストールタスクが見つかりませんでした。",
+      "internalError": "内部エラーが発生しました。ログを開いて再試行してください。"
+    },
+    "toast": {
+      "installed": "Codex デスクトップアプリのインストールに成功しました。システム上では「ChatGPT」と表示される場合があります。",
+      "copied": "エラー詳細をコピーしました",
+      "copyFailed": "エラー詳細をコピーできませんでした"
     }
   },
   "grokBuild": {
@@ -2543,6 +2695,13 @@
     "configUrl": "設定ファイル URL",
     "configMergeError": "設定ファイルのマージに失敗しました",
     "primaryEndpoint": "メイン",
+    "providerActivation": "インポート後の操作",
+    "providerActivationEnabled": "このプロバイダーを現在のプロバイダーに切り替え、設定を直ちに適用します",
+    "providerActivationPending": "明示的に有効化を承認するまで、このプロバイダーはインポートのみされます",
+    "providerActivationDisabled": "このプロバイダーへ自動的に切り替えません",
+    "providerActivationWarning": "このリンクは現在のプロバイダー設定の置き換えを要求しています。信頼できる提供元の場合のみ続行してください。",
+    "providerActivationApproval": "このプロバイダーを現在のプロバイダーに設定し、対象アプリへ設定を書き込むことを承認します。",
+    "importAndActivate": "インポートして現在のプロバイダーに設定",
     "mcp": {
       "title": "MCP サーバーを一括インポート",
       "targetApps": "ターゲットアプリ",
@@ -2558,7 +2717,7 @@
       "app": "アプリ",
       "name": "名前",
       "description": "説明",
-      "contentPreview": "内容プレビュー",
+      "contentPreview": "インポートする完全な内容",
       "enabledWarning": "インポート後すぐにこのプロンプトが有効になり、他は無効になります"
     },
     "skill": {
