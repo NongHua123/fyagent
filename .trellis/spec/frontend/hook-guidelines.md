@@ -2,10 +2,12 @@
 
 ## Location and Naming
 
-Custom hooks are exported functions whose names start with `use`. General hooks
-live in `src/hooks/`; hooks private to a feature may be co-located beneath that
-feature and re-exported from a local barrel. Do not move a feature-private hook
-to `src/hooks/` unless a second feature needs it.
+Custom hooks are exported functions whose names start with `use`. Cross-feature
+generic hooks normally live in `src/hooks/`; a hook that belongs to a cohesive
+policy/module may remain beside that module, such as
+`src/lib/layout/useWindowLayoutMode.ts`. Hooks private to a feature may be
+co-located beneath that feature and re-exported from a local barrel. Do not move
+a feature-private hook to `src/hooks/` unless a second feature needs it.
 
 ```tsx
 // src/hooks/useDebouncedValue.ts
@@ -29,6 +31,12 @@ Hooks that create timers, observers, or native listeners return the cleanup
 from their effect. The Tauri event wrapper also guards an asynchronously
 created unsubscribe function so it is released even when unmount happens
 before `listen()` resolves.
+
+`useWindowLayoutMode` uses renderer width as a browser-preview/fake-test
+fallback, but accepts only a validated native `layout-mode-changed` work-area
+event when the desktop host provides one. Keep its resize debounce, event
+validation, and cleanup with the layout policy rather than duplicating the
+normal/constrained decision in a component.
 
 ```tsx
 // Pattern from src/hooks/useTauriEvent.ts
@@ -64,3 +72,5 @@ and shared keys together instead of scattering key literals across components.
 - [src/components/providers/forms/hooks/useApiKeyState.ts](../../../src/components/providers/forms/hooks/useApiKeyState.ts)
   demonstrates a co-located form-state hook with typed inputs and a named
   return object.
+- [src/lib/layout/useWindowLayoutMode.ts](../../../src/lib/layout/useWindowLayoutMode.ts)
+  shows a policy-adjacent hook with native-event authority and a safe fallback.

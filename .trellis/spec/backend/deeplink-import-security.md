@@ -90,16 +90,16 @@ resource, and is meaningful only together with `enabled == Some(true)`.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
+| Condition                                                                                                                             | Required result                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | URL has a wrong scheme/version/action, duplicate parameter, control character, second percent encoding, or exceeds a documented bound | Parse is rejected with a generic parse error; no credential or URL is returned/logged to the renderer. |
-| Renderer IPC sends an oversized or otherwise invalid DTO | `merge_deeplink_config` and import commands reject it with the generic operation error. |
-| `activationApproved` is present for `prompt`, `mcp`, or `skill` | Reject the request. |
-| `activationApproved=true` but `enabled` is absent or false | Reject the request. |
-| Provider link requests `enabled=true`, but the checkbox remains unchecked | Store only a draft; leave current provider and live configuration unchanged. |
-| Provider link requests `enabled=true`, and the user explicitly checks approval | Store the draft and then switch to that exact imported provider. |
-| Older config-merge/import promise completes after a newer link is shown | Ignore its UI state transition. |
-| Deep-link error event includes a URL or credentials in an older host payload | Show only the translated generic error; do not inspect, log, or interpolate payload fields. |
+| Renderer IPC sends an oversized or otherwise invalid DTO                                                                              | `merge_deeplink_config` and import commands reject it with the generic operation error.                |
+| `activationApproved` is present for `prompt`, `mcp`, or `skill`                                                                       | Reject the request.                                                                                    |
+| `activationApproved=true` but `enabled` is absent or false                                                                            | Reject the request.                                                                                    |
+| Provider link requests `enabled=true`, but the checkbox remains unchecked                                                             | Store only a draft; leave current provider and live configuration unchanged.                           |
+| Provider link requests `enabled=true`, and the user explicitly checks approval                                                        | Store the draft and then switch to that exact imported provider.                                       |
+| Older config-merge/import promise completes after a newer link is shown                                                               | Ignore its UI state transition.                                                                        |
+| Deep-link error event includes a URL or credentials in an older host payload                                                          | Show only the translated generic error; do not inspect, log, or interpolate payload fields.            |
 
 ## 5. Good / Base / Bad Cases
 

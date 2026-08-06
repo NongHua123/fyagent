@@ -76,6 +76,7 @@ FyAgent-X.Y.Z-Linux-arm64.rpm
 The branch-only macOS developer artifact uses the frozen application version:
 
 ```text
+FyAgent-X.Y.Z-macOS-unsigned.zip
 FyAgent-X.Y.Z-macOS-unsigned.dmg
 ```
 
@@ -118,12 +119,13 @@ FyAgent-X.Y.Z-macOS-unsigned.dmg
 - Ordinary branch pushes must not trigger this workflow. A branch artifact is
   produced only when a maintainer starts workflow_dispatch on that branch.
 - The branch job is macos-14 only, creates an unsigned universal app with
-  bundles app, then makes a UDZO DMG. Its filename uses APP_VERSION and must
-  contain unsigned.
-- Before branch artifact upload, hdiutil verify, read-only attachment, a
-  top-level FyAgent.app check, deterministic detach, and cleanup are required.
-  Upload uses if-no-files-found: error. The branch path never creates or updates
-  a GitHub Release.
+  bundles app, then makes both an unsigned ZIP from that same `.app` and a UDZO
+  DMG. Both filenames use APP_VERSION and contain `unsigned`; neither is a
+  signing, notarization, or Gatekeeper-trust claim.
+- Before branch artifact upload, the DMG must pass hdiutil verify, read-only
+  attachment, a top-level FyAgent.app check, deterministic detach, and cleanup.
+  Upload includes the ZIP and DMG with `if-no-files-found: error`. The branch
+  path never creates or updates a GitHub Release.
 - A manual tag dispatch skips both release and publish-release; it is not a
   substitute for the signed tag-push release path.
 - A tag push requires the existing Apple signing/notarization inputs and fails
@@ -149,6 +151,7 @@ FyAgent-X.Y.Z-macOS-unsigned.dmg
 | Platform metadata or formal asset name differs from APP_VERSION                                 | The relevant platform verification fails before artifact upload/publish.               |
 | Asset has a v-prefixed app version or fails the recognized filename rules                       | Download-manifest generation fails; do not publish it.                                 |
 | Manifest tag/source SHA does not match the frozen inputs                                        | Manifest generation fails before GitHub Release upload.                                |
+| Branch ZIP is not created from the unsigned FyAgent.app                                         | Fail the workflow step; do not upload a partial branch artifact.                       |
 | Branch DMG cannot verify, mount read-only, contain FyAgent.app, detach, or clean up             | Fail the workflow step; do not upload.                                                 |
 | Apple inputs are absent on a branch dispatch                                                    | Continue only because no branch step executes a signing/notarization secret reference. |
 | Apple secrets/signature/notarization are absent or invalid on a qualifying tag push             | Fail the signed release path.                                                          |
@@ -162,7 +165,9 @@ FyAgent-X.Y.Z-macOS-unsigned.dmg
   publish the GitHub prerelease assets named with 0.2.1 after their own gates
   succeed.
 - Good: A maintainer manually dispatches feature/fyagent-v1 and receives only
-  FyAgent-0.2.1-macOS-unsigned.dmg as a verified workflow artifact.
+  FyAgent-0.2.1-macOS-unsigned.zip and
+  FyAgent-0.2.1-macOS-unsigned.dmg as unsigned workflow artifacts; the DMG
+  additionally completes its hdiutil lifecycle checks.
 - Base: A maintainer manually dispatches an exact tag. version-contract validates
   the tag, while release and publish-release remain skipped; no signing or
   GitHub Release side effect occurs.
@@ -182,8 +187,9 @@ FyAgent-X.Y.Z-macOS-unsigned.dmg
 - tests/releaseWorkflow.test.ts currently covers workflow triggers/matrices,
   frozen version outputs, helper/MSI structure gates, and the ordering of
   target-executable manifest checks. Before this workflow contract is called
-  fully test-enforced, extend it to assert the APP_VERSION unsigned branch-DMG
-  name and hdiutil lifecycle, GitHub prerelease=true, and the explicit
+  fully test-enforced, extend it to assert the APP_VERSION unsigned branch-ZIP
+  and branch-DMG names, the DMG hdiutil lifecycle, GitHub prerelease=true, and
+  the explicit
   distinction between the post-bundle target EXE check and final MSI-payload
   verification.
 - tests/downloadManifest.test.ts must prove the explicit version/tag/source-SHA

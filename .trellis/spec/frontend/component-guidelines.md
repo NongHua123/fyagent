@@ -60,6 +60,19 @@ interface ProviderEmptyStateProps {
   composition when extending this form instead of duplicating its field/error
   plumbing.
 
+## Responsive Top-Level Chrome
+
+`TopLevelHeader` owns the stable shell order. Its app-switcher capacity slot is
+the only flexible region and sits immediately before the fixed 40px trailing
+primary-action slot. A top-level surface without a primary action passes
+`trailingPrimaryActionEmpty` so an inert, `aria-hidden` placeholder preserves
+geometry without creating a disabled or focusable control.
+
+Context/P2 actions use `HeaderActionsOverflow` with a translated accessible
+label. In constrained layout, retain the active app as a direct switcher control
+and move other apps into More; compact icon-only controls still need an
+accessible name.
+
 ## Text and Accessibility Patterns
 
 - User-visible renderer text is obtained through `useTranslation()` and
@@ -84,3 +97,7 @@ interface ProviderEmptyStateProps {
   component.
 - [src/components/ui/form.tsx](../../../src/components/ui/form.tsx) implements
   the shared React Hook Form composition and ARIA linkage.
+- [src/components/topbar/TopLevelHeader.tsx](../../../src/components/topbar/TopLevelHeader.tsx)
+  owns the sole flex-capacity slot and stable top-level order.
+- [src/components/topbar/TrailingPrimaryActionSlot.tsx](../../../src/components/topbar/TrailingPrimaryActionSlot.tsx)
+  preserves geometry without adding a keyboard stop.

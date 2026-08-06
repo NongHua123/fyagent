@@ -66,7 +66,7 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
 | A generated PNG, ICO, or ICNS container cannot be decoded                         | Reject the output                                                                   |
 | About icon differs from generated `32x32.png`                                     | Reject the renderer asset                                                           |
 | Tray template has the wrong size, non-black visible RGB, or no partial alpha      | Reject the template                                                                 |
-| Third-party provider, screenshot, or DMG background appears in the diff            | Remove it from the icon change                                                      |
+| Third-party provider, screenshot, or DMG background appears in the diff           | Remove it from the icon change                                                      |
 | Static/build checks pass but native shell or Dock appearance is unobserved        | Keep native visual acceptance pending                                               |
 | A regenerated ICNS container differs byte-for-byte but decoded sizes/pixels match | Accept only with decoded-image evidence; container bytes are not a stable assertion |
 

@@ -1,8 +1,9 @@
 # Quality Guidelines
 
-## Reproducible Frontend Checks
+## Reproducible Core Frontend Checks
 
-The currently runnable frontend checks declared by `package.json` are:
+For an ordinary renderer change, start with these core checks declared by
+`package.json`:
 
 ```bash
 mise exec -- pnpm typecheck
@@ -14,6 +15,21 @@ Run local checks through the repository's
 [mise environment](../backend/development-environment.md). Do not report a
 frontend command as a successful project check unless `package.json` declares
 it.
+
+### Desktop Shell and Acceptance Contract
+
+For desktop-shell, responsive-header, window-layout, or desktop-acceptance
+changes, also run:
+
+```bash
+mise exec -- pnpm test:desktop:mock
+mise exec -- pnpm test:desktop:visual:preflight
+```
+
+`test:desktop:mock` is mock-only and must not be reported as a real desktop,
+installer, or platform run. Visual-baseline capture/update is candidate-only,
+requires reviewed evidence, and does not replace ordinary local checks;
+`test:desktop:visual:update` is not an unattended baseline-writing command.
 
 ## Test Setup and Patterns
 
@@ -61,8 +77,9 @@ same leaf-key set. When adding, renaming, or deleting user-visible text:
 
 - change all four locale files in the same patch;
 - keep nested keys as objects and translation leaves as strings; and
-- run `mise exec -- pnpm test:unit -- tests/config/localeKeyParity.test.ts`
-  before relying on fallback text.
+- run `mise exec -- pnpm test:i18n` (or the focused
+  `mise exec -- pnpm test:unit -- tests/config/localeKeyParity.test.ts`) before
+  relying on fallback text.
 
 Do not add a locale-specific key merely to silence a rendering issue. Fix the
 shared key shape so a missing translation cannot become a production fallback.
@@ -70,7 +87,7 @@ shared key shape so a missing translation cannot become a production fallback.
 ## Evidence
 
 - [package.json](../../../package.json) defines the runnable type-check,
-  formatting, and unit-test scripts.
+  formatting, unit-test, locale, and desktop-acceptance scripts.
 - [vitest.config.ts](../../../vitest.config.ts) configures the `jsdom`
   environment and shared setup files.
 - [tests/setupTests.ts](../../../tests/setupTests.ts) manages Testing Library,
@@ -79,3 +96,5 @@ shared key shape so a missing translation cannot become a production fallback.
   enforces the registered locale key schema.
 - [Development Environment](../backend/development-environment.md) owns local
   runtime versions and command execution.
+- [tests/e2e/visual-baselines/README.md](../../../tests/e2e/visual-baselines/README.md)
+  records the candidate-only visual-baseline review boundary.

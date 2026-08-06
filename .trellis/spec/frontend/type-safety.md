@@ -15,8 +15,9 @@ maps `@/*` to `src/*`. Type-check renderer and test code with
 - Most feature-level API facades in `src/lib/api/` expose explicit parameter
   and `Promise` return types around Tauri `invoke` calls. Prefer the relevant
   facade when extending a facade-driven feature, but follow the nearest
-  established boundary: `src/main.tsx` and `src/hooks/useProxyStatus.ts` are
-  existing direct-`invoke` paths, not a blanket pattern for unrelated features.
+  established boundary: `src/main.tsx`, `src/components/theme-provider.tsx`,
+  and `src/components/DatabaseUpgrade.tsx` are narrow direct-`invoke` paths,
+  not a blanket pattern for unrelated features.
 - Forms use Zod schemas in `src/lib/schemas/` and infer their form data from
   the schema rather than maintaining a parallel form-only interface.
 
@@ -58,5 +59,5 @@ pub settings_config: Value,
   `ProviderFormData` from the runtime Zod schema.
 - [src-tauri/src/provider.rs](../../../src-tauri/src/provider.rs) shows the
   serialized Rust companion for frontend provider data.
-- [src/hooks/useProxyStatus.ts](../../../src/hooks/useProxyStatus.ts) shows an
-  established direct-`invoke` boundary alongside the facade-based paths.
+- [src/components/theme-provider.tsx](../../../src/components/theme-provider.tsx)
+  shows a narrow direct-`invoke` boundary alongside the facade-based paths.

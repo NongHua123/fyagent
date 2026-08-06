@@ -51,12 +51,16 @@ patch_codex_provider_features(app: "codex", provider, intent, isNew?)
 get_codex_desktop_runtime_status()
 request_codex_desktop_restart()
 continue_codex_desktop_restart_with_force(token)
+cancel_codex_desktop_restart_with_force(token) -> ()
 ```
 
 The feature commands reject every `app` other than Codex. The restart commands
 accept no PID, process name, executable path, or user-supplied launch command.
 The force token is opaque, short lived, one-time, and bound server-side to the
-already verified installation and process instance.
+already verified installation and process instance. Cancellation is a
+best-effort discard of a pending continuation capability only: it never closes,
+terminates, or launches a process, and its no-result response does not reveal
+whether a token, process, or installation exists.
 
 ### WorkBuddy IPC
 
@@ -65,14 +69,18 @@ get_workbuddy_status() -> WorkBuddyStatus
 fetch_workbuddy_models(FetchWorkBuddyModelsRequest)
   -> { models: string[], truncated: boolean }
 save_workbuddy_models(SaveWorkBuddyModelsRequest)
-  -> { revision, modelCount, createdEntries, updatedEntries, duplicateIds }
+  -> { state: "saved", revision, modelCount, createdEntries, updatedEntries }
+   | { state: "overwrite_confirmation_required", token, existingIds }
+   | { state: "concurrent_modification" }
 ```
 
 `FetchWorkBuddyModelsRequest` is `{ baseUrl, apiKey, allowNoApiKey }`.
 `SaveWorkBuddyModelsRequest` additionally carries selected/manual IDs,
 `clearExistingApiKeys`, an opaque `expectedRevision`, and optional
-`duplicatePolicy: "reject" | "updateAll"`. These dedicated commands do not
-accept `AppType`, Provider IDs, or renderer-controlled filesystem paths.
+`overwriteToken`. The backend issues `overwriteToken` only after detecting an
+existing target and binds it to the normalized, otherwise unchanged save
+request and expected revision. These dedicated commands do not accept `AppType`,
+Provider IDs, or renderer-controlled filesystem paths.
 
 ## 3. Contracts
 
@@ -193,17 +201,23 @@ accept `AppType`, Provider IDs, or renderer-controlled filesystem paths.
   truncation cannot mask a malformed element.
 - A save takes the in-process write lock, rereads the current bytes, checks the
   opaque revision, validates every existing array object/ID, detects duplicate
-  target IDs, and only then writes. `reject` returns duplicate IDs/counts with
-  no backup and no main-file write; the UI freezes the exact request and retries
-  only it with `updateAll`. The backend must validate revision again.
+  target IDs, and only then writes. Existing targets without a valid matching
+  confirmation capability return `overwrite_confirmation_required` with one
+  opaque token and unique `existingIds`, with no backup or main-file write. The
+  UI freezes the exact preflight request and retries only it with that token.
+  The backend consumes the token before rereading, validates its request and
+  revision binding, and validates the revision again after the reread; reused,
+  malformed, mismatched, or expired tokens never authorize a write.
 - The externally returned revision is a process-local-key HMAC of the complete
   current file bytes, not a bare digest. It therefore detects even an external
   API Key-only change without letting the renderer validate Key guesses against
   a public file hash. Never persist or serialize the HMAC key; after a host
   restart an old token must fail safely and the renderer refreshes status.
 - Preserve non-target entries, array order, target positions, unknown fields,
-  and unknown `reasoning` fields. Update only documented managed fields and
-  remove `onlyReasoning`. Write backup then primary by flush/sync plus
+  existing `onlyReasoning`, and unknown `reasoning` fields. Update only the
+  documented connection fields (`url` and the policy-controlled `apiKey`);
+  never rebuild or normalize the existing entry. Write backup then primary by
+  flush/sync plus
   same-directory atomic replacement; Windows must use replacement semantics
   without a delete-before-rename path, Unix files must remain `0600`.
 - API keys may enter only component memory and a Tauri request, never
@@ -233,11 +247,14 @@ queries. Its API key clears on unmount and is never refilled from disk.
 | DB/provider action succeeds but live Codex bytes are unchanged                                                     | Return `liveConfigChanged: false`; do not ask to restart.                                                                                                   |
 | Several/non-identical trusted installations or running instances exist                                             | Return ambiguous/unavailable; do not close or launch any process.                                                                                           |
 | Graceful exit exceeds 8 seconds                                                                                    | Require the opaque second-confirmation token; no automatic force kill.                                                                                      |
+| User cancels a pending Codex force-restart continuation                                                            | Best-effort discard that capability only; do not close, terminate, launch, or disclose any process/installation/token existence.                            |
 | New process is absent at 15 seconds or installation drifts                                                         | Return restart failure; retain saved configuration and direct user to manual restart.                                                                       |
 | WorkBuddy URL is non-HTTP(S), has credentials/query/fragment, or redirect leaves origin                            | Return `WORKBUDDY_INVALID_URL` or `WORKBUDDY_FETCH_REDIRECT_REJECTED`; do not send credentials onward.                                                      |
 | WorkBuddy response exceeds 2 MiB, times out, or has malformed `data[]`                                             | Return bounded fetch error; retain no model IDs from that response.                                                                                         |
 | Existing models JSON is invalid/not-array/contains an invalid entry                                                | Return safe config error with only an index when applicable; do not repair or overwrite it.                                                                 |
-| Revision changes or target IDs are duplicated under `reject`                                                       | Return conflict; create no backup and write no primary.                                                                                                     |
+| Revision changes before a WorkBuddy save or confirmed overwrite                                                    | Return `concurrent_modification`; create no backup and write no primary.                                                                                    |
+| Existing WorkBuddy target IDs arrive without a valid matching overwrite token                                      | Return `overwrite_confirmation_required` with a fresh opaque token and unique `existingIds`; create no backup and write no primary.                         |
+| WorkBuddy overwrite token is malformed, mismatched, expired, or reused                                             | Return the structured token error; consume it once and create no backup or primary write.                                                                   |
 | WorkBuddy UI receives a truncated result                                                                           | Keep the truncation warning visible until a subsequent successful non-truncated fetch replaces it.                                                          |
 
 ## 5. Good / Base / Bad Cases
@@ -264,8 +281,9 @@ queries. Its API key clears on unmount and is never refilled from disk.
   a restart command; a process-name scan kills `codex.exe`; the backend accepts
   any such control.
 - Good: WorkBuddy fetches an ordered model response, returns the first 1,000
-  unique IDs plus `truncated: true`, and a user confirms duplicate update-all
-  against the same revision. Non-target JSON and extra `reasoning` keys remain.
+  unique IDs plus `truncated: true`, and a user resubmits the frozen duplicate
+  request with the backend-issued one-time overwrite token against the same
+  revision. Non-target JSON, `onlyReasoning`, and extra `reasoning` keys remain.
 - Base: The user explicitly allows an empty key; fetch/save sends no
   Authorization and existing per-model keys remain unless clear-existing is
   selected.
@@ -289,14 +307,15 @@ queries. Its API key clears on unmount and is never refilled from disk.
   capability grant, GPT/non-GPT/mixed/empty warning matrices, normal/official
   proxy projection and restore, live-byte change truth table, command app guard,
   and fake-platform trusted restart state machine including graceful timeout,
-  force confirmation, original-installation drift, and 15-second verification
-  failure.
+  force confirmation/cancellation, original-installation drift, and 15-second
+  verification failure.
 - Rust WorkBuddy: URL normalization/rejection, redirection and Authorization
   policy, timeout/2 MiB bounds, malformed entries after cap, exact order and
   case-sensitive de-duplication, no-key behavior, HMAC revision opacity and
-  API-Key-only revision conflict, duplicate reject/update-all, unknown-field
-  preservation, backup/primary failure paths, and test-home isolation. Tests
-  must not access the real profile.
+  API-Key-only revision conflict, overwrite-token request/revision binding,
+  expiry and single consumption, unknown-field/`onlyReasoning` preservation,
+  backup/primary failure paths, and test-home isolation. Tests must not access
+  the real profile.
 - Local gates when dependencies permit:
   - `mise exec -- pnpm typecheck`
   - `mise exec -- pnpm format:check`

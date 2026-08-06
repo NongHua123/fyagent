@@ -13,12 +13,14 @@ src/
 |- App.tsx                  # application shell and top-level view selection
 |- components/
 |  |- ui/                   # reusable Radix/Tailwind primitives
+|  |- theme-provider.tsx    # renderer-wide Theme Context provider
+|  |- topbar/               # stable responsive application chrome
 |  |- providers/            # provider panels, dialogs, and local helpers
 |  `- mcp/                  # MCP feature UI and co-located hooks
 |- hooks/                   # cross-feature React hooks
-|- contexts/                # small shared React Context providers
 |- lib/
 |  |- api/                  # typed Tauri command facades
+|  |- layout/               # pure window-layout policy and host-sync hook
 |  |- query/                # TanStack Query client and resource hooks
 |  `- schemas/              # Zod form schemas
 |- config/                  # static application and provider presets
@@ -37,11 +39,12 @@ src/
 - Keep a hook in `src/hooks/` when it is reused outside one feature. A hook
   used only by a feature may sit with that feature, as
   `src/components/providers/forms/hooks/useApiKeyState.ts` does.
-- Feature-level Tauri calls are often grouped in `src/lib/api/`; existing
-  bootstrap and proxy paths also call `invoke` directly in `src/main.tsx` and
-  `src/hooks/useProxyStatus.ts`. Match the nearby ownership boundary rather
-  than treating either pattern as application-wide. Keep query/cache behavior
-  in `src/lib/query/` and runtime form validation in `src/lib/schemas/`.
+- Feature-level Tauri calls are generally grouped in `src/lib/api/`. Keep direct
+  `invoke` narrowly scoped to renderer bootstrap or native-only UI utilities,
+  such as `src/main.tsx`, `src/components/theme-provider.tsx`, and
+  `src/components/DatabaseUpgrade.tsx`; do not treat those exceptions as a
+  general feature-call pattern. Keep query/cache behavior in `src/lib/query/`
+  and runtime form validation in `src/lib/schemas/`.
 - Follow the nearby naming family rather than imposing one global filename
   rule: domain components commonly use PascalCase (`ProviderCard.tsx`), while
   hooks use `use`-prefixed camelCase filenames (`useTauriEvent.ts`).
@@ -53,6 +56,11 @@ Most renderer tests mirror their subject under `tests/` (`tests/components/`,
 pure utilities have adjacent `*.test.ts` files under `src/utils/`. Match the
 nearest existing test family for the code being changed.
 
+`tests/desktop-acceptance/` owns mock-only desktop acceptance contracts and
+fixtures. `tests/e2e/visual-baselines/` owns the candidate-only visual-baseline
+manifest and LFS-backed assets; it is not a locally runnable real-desktop E2E
+runner.
+
 ## Evidence
 
 - [src/main.tsx](../../../src/main.tsx) composes renderer-wide providers before
@@ -62,5 +70,7 @@ nearest existing test family for the code being changed.
   subtree.
 - [src/lib/api/providers.ts](../../../src/lib/api/providers.ts) is the typed
   Tauri facade used by renderer hooks and components.
-- [src/hooks/useProxyStatus.ts](../../../src/hooks/useProxyStatus.ts) is an
-  existing feature-local direct-`invoke` path.
+- [src/lib/api/proxy.ts](../../../src/lib/api/proxy.ts) is the typed proxy
+  facade consumed by `useProxyStatus`.
+- [src/components/theme-provider.tsx](../../../src/components/theme-provider.tsx)
+  shows a narrow native-only direct-`invoke` boundary.

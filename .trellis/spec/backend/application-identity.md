@@ -23,22 +23,22 @@ or attribution to make text look uniform.
 
 The active application identity is:
 
-| Surface | Required value |
-| --- | --- |
-| Product display name and autostart entry | `FyAgent` |
-| npm package, Cargo package, executable, portable binary | `fyagent` / `fyagent.exe` |
-| Rust library target and call site | `fyagent_lib` / `fyagent_lib::run()` |
-| Tauri, macOS, and Flatpak identifier | `com.fyagent.desktop` |
-| Deep-link scheme | `fyagent://` |
-| Application state root | `~/.fyagent` |
-| Database and application log | `fyagent.db` / `logs/fyagent.log` |
-| Application-owned environment variables | `FYAGENT_*` |
-| Default WebDAV/S3 root | `fyagent-sync` |
-| Skill storage serialized value | `fyagent` |
-| Renderer-owned storage namespaces | `fyagent-*`, `fyagent.*`, or `fyagent:*` |
-| Codex official-proxy marker | `fyagent-official` |
-| Codex generated catalog | `fyagent-model-catalog.json` |
-| Flatpak manifest, desktop, and metainfo stem | `com.fyagent.desktop` |
+| Surface                                                 | Required value                           |
+| ------------------------------------------------------- | ---------------------------------------- |
+| Product display name and autostart entry                | `FyAgent`                                |
+| npm package, Cargo package, executable, portable binary | `fyagent` / `fyagent.exe`                |
+| Rust library target and call site                       | `fyagent_lib` / `fyagent_lib::run()`     |
+| Tauri, macOS, and Flatpak identifier                    | `com.fyagent.desktop`                    |
+| Deep-link scheme                                        | `fyagent://`                             |
+| Application state root                                  | `~/.fyagent`                             |
+| Database and application log                            | `fyagent.db` / `logs/fyagent.log`        |
+| Application-owned environment variables                 | `FYAGENT_*`                              |
+| Default WebDAV/S3 root                                  | `fyagent-sync`                           |
+| Skill storage serialized value                          | `fyagent`                                |
+| Renderer-owned storage namespaces                       | `fyagent-*`, `fyagent.*`, or `fyagent:*` |
+| Codex official-proxy marker                             | `fyagent-official`                       |
+| Codex generated catalog                                 | `fyagent-model-catalog.json`             |
+| Flatpak manifest, desktop, and metainfo stem            | `com.fyagent.desktop`                    |
 
 The source repository and public source/release links remain:
 
@@ -95,17 +95,17 @@ releases:   https://github.com/NongHua123/cc-switch/releases
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Former app identifier, scheme, data root, database name, executable, or owned serialization marker appears in active runtime/configuration | Reject the change or classify and remove the active dependency. |
-| A former installation or data directory exists | FyAgent ignores it and starts with independent state; no automatic migration or cleanup. |
-| A former deep link is opened | It is not registered or accepted as a FyAgent import. |
-| A current release workflow expects the former executable or bundle ID | Static release tests or CI fail before publication. |
-| A real repository URL, LICENSE line, historical record, or upstream reference contains the former name | Preserve it and record it as an evidence-backed exception; do not cosmetically rewrite it. |
-| Runtime configuration, public documentation, or release history contains commercial campaign material | Remove it; it does not establish an identity or provenance exception. |
-| Public text points to an unverified FyAgent domain, repository, package manager entry, signature, or notarization claim | Remove the claim and link to the verified repository/release surface instead. |
-| The identity changes on only one layer | Reject as incomplete; verify package, Rust, Tauri, OS integration, storage, UI, tests, docs, and release workflow together. |
-| Static checks pass but native installation/launch was not exercised | Report native acceptance as pending; do not claim installation, signing, or upgrade compatibility. |
+| Condition                                                                                                                                  | Required result                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| Former app identifier, scheme, data root, database name, executable, or owned serialization marker appears in active runtime/configuration | Reject the change or classify and remove the active dependency.                                                             |
+| A former installation or data directory exists                                                                                             | FyAgent ignores it and starts with independent state; no automatic migration or cleanup.                                    |
+| A former deep link is opened                                                                                                               | It is not registered or accepted as a FyAgent import.                                                                       |
+| A current release workflow expects the former executable or bundle ID                                                                      | Static release tests or CI fail before publication.                                                                         |
+| A real repository URL, LICENSE line, historical record, or upstream reference contains the former name                                     | Preserve it and record it as an evidence-backed exception; do not cosmetically rewrite it.                                  |
+| Runtime configuration, public documentation, or release history contains commercial campaign material                                      | Remove it; it does not establish an identity or provenance exception.                                                       |
+| Public text points to an unverified FyAgent domain, repository, package manager entry, signature, or notarization claim                    | Remove the claim and link to the verified repository/release surface instead.                                               |
+| The identity changes on only one layer                                                                                                     | Reject as incomplete; verify package, Rust, Tauri, OS integration, storage, UI, tests, docs, and release workflow together. |
+| Static checks pass but native installation/launch was not exercised                                                                        | Report native acceptance as pending; do not claim installation, signing, or upgrade compatibility.                          |
 
 ## 5. Good / Base / Bad Cases
 

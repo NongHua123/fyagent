@@ -18,6 +18,15 @@ is no Zustand or Jotai dependency in `package.json`.
   feature query and mutation hooks live under both `src/lib/query/` and
   `src/hooks/`.
 
+## Host-Synchronized UI State
+
+`src/lib/layout/useWindowLayoutMode.ts` keeps a renderer state value for
+rendering, but accepts the validated native `layout-mode-changed` work-area mode
+when available. The normal/constrained policy remains pure and testable in
+`src/lib/layout/`; browser previews and fake tests fall back to renderer width.
+Do not put this host-synchronized state in the Query cache or persist it as an
+application preference.
+
 ## Query Key and Invalidation Pattern
 
 When several hooks share a resource family, centralize their query keys in the
@@ -70,3 +79,5 @@ not mutate the database.
   defines the shared TanStack Query defaults.
 - [src/hooks/useOpenClaw.ts](../../../src/hooks/useOpenClaw.ts) centralizes
   one resource family's keys, query hooks, mutations, and invalidation.
+- [src/lib/layout/useWindowLayoutMode.ts](../../../src/lib/layout/useWindowLayoutMode.ts)
+  accepts a validated native layout mode while retaining a renderer fallback.

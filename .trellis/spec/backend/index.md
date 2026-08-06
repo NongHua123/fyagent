@@ -11,6 +11,26 @@ initial-design record. When a code contract changes, update its relevant
 code-spec and enforcing test; update a product document only when that document
 is owned by the change.
 
+## Pre-Development Checklist
+
+Before changing Rust/Tauri host code:
+
+1. Locate the owning contract below; do not add a second rule where an existing
+   installer, version, security, release, or platform contract already owns it.
+2. For a Tauri command, serialized DTO, event, or persisted-data change, also
+   read the [Frontend Development Guidelines](../frontend/index.md) and its
+   [Type Safety](../frontend/type-safety.md) boundary before changing either
+   side.
+3. For user files, credentials, deep links, process control, installers, or
+   release artifacts, identify the validation/error case and the test that will
+   prove it before editing implementation code.
+4. Run local commands through the shared
+   [Development Environment Contract](./development-environment.md); do not
+   substitute a machine-global Node, Rust, or pnpm toolchain.
+5. Keep versioned product documents in their documented ownership boundary;
+   record checkout-specific implementation contracts here rather than
+   mechanically rewriting historical/reference packages.
+
 ## Guidelines
 
 | Guide                                                                          | Use it for                                                                                                                     |
@@ -25,3 +45,20 @@ is owned by the change.
 | [Deep-Link Import Security](./deeplink-import-security.md)                     | Untrusted `fyagent://` request validation, explicit provider activation approval, and credential-safe confirmation behavior.   |
 | [FyAgent v1-0.1 Configuration Domains](./fyagent-v1-0-1-config-domains.md)     | Codex capability/restart contracts and WorkBuddy's isolated secure configuration domain; versioning lives in its own contract. |
 | [Windows Formal Release and Runtime Activation](./windows-release-boundary.md) | Explicit elevated-release manifest selection, protected activation forwarding, and pre-CLI privilege gates.                    |
+
+## Quality Check
+
+Run the **Tests Required** section of every contract affected by the change.
+For ordinary Rust/Tauri changes, the baseline local checks are:
+
+```bash
+mise exec -- cargo fmt --all --check --manifest-path src-tauri/Cargo.toml
+mise exec -- cargo clippy --workspace --all-targets --manifest-path src-tauri/Cargo.toml -- -D warnings
+mise exec -- cargo test --workspace --manifest-path src-tauri/Cargo.toml
+```
+
+Add the applicable renderer, version, cross-build, Windows, macOS, or release
+contract checks rather than reporting an unrelated local command as platform or
+release evidence. A code-spec update that changes a contract must name its
+enforcing test; successful local static checks never prove a signed, notarized,
+or remotely published artifact.
