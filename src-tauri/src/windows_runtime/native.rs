@@ -46,9 +46,9 @@ use windows::{
             FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO,
             FILE_DISPOSITION_INFO, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
             FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_READ_ATTRIBUTES, FILE_READ_DATA,
-            FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_ALWAYS, OPEN_EXISTING,
-            PIPE_ACCESS_DUPLEX, READ_CONTROL, SECURITY_EFFECTIVE_ONLY, SECURITY_IDENTIFICATION,
-            SECURITY_SQOS_PRESENT,
+            FILE_SHARE_DELETE, FILE_SHARE_MODE, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_ALWAYS,
+            OPEN_EXISTING, PIPE_ACCESS_DUPLEX, READ_CONTROL, SECURITY_EFFECTIVE_ONLY,
+            SECURITY_IDENTIFICATION, SECURITY_SQOS_PRESENT,
         },
         System::{
             Com::CoTaskMemFree,
@@ -548,9 +548,11 @@ fn start_or_recover_instance(
             }
             start_first_instance(paths, probe, lease)
         }
-        DescriptorStartupDecision::ForwardExisting
-        | DescriptorStartupDecision::RetryReadOnly
-        | DescriptorStartupDecision::Block => {
+        DescriptorStartupDecision::Block => {
+            WindowsStartupDisposition::Blocked(WindowsStartupErrorCode::InstanceGuardUnavailable)
+        }
+        #[cfg(test)]
+        DescriptorStartupDecision::ForwardExisting | DescriptorStartupDecision::RetryReadOnly => {
             WindowsStartupDisposition::Blocked(WindowsStartupErrorCode::InstanceGuardUnavailable)
         }
     }
@@ -757,7 +759,7 @@ fn publish_state(
         CreateFileW(
             PCWSTR(path.as_ptr()),
             FILE_GENERIC_WRITE.0,
-            0,
+            FILE_SHARE_MODE(0),
             Some(&attributes),
             CREATE_NEW,
             FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT,
@@ -792,7 +794,7 @@ fn remove_exact_state(paths: &RuntimePaths, expected: &InstanceState) -> bool {
         CreateFileW(
             PCWSTR(path.as_ptr()),
             (DELETE | FILE_READ_DATA | READ_CONTROL).0,
-            0,
+            FILE_SHARE_MODE(0),
             None,
             OPEN_EXISTING,
             FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT,
@@ -1029,7 +1031,7 @@ fn open_activation_client(pipe_name: &str) -> Result<OwnedHandle, ()> {
             CreateFileW(
                 PCWSTR(pipe_name.as_ptr()),
                 (FILE_GENERIC_READ | FILE_GENERIC_WRITE).0,
-                0,
+                FILE_SHARE_MODE(0),
                 None,
                 OPEN_EXISTING,
                 FILE_ATTRIBUTE_NORMAL
@@ -1043,7 +1045,7 @@ fn open_activation_client(pipe_name: &str) -> Result<OwnedHandle, ()> {
             Err(_) if Instant::now() < deadline => {
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 let timeout = remaining.as_millis().min(u32::MAX as u128) as u32;
-                if unsafe { WaitNamedPipeW(PCWSTR(pipe_name.as_ptr()), timeout) }.is_err()
+                if !unsafe { WaitNamedPipeW(PCWSTR(pipe_name.as_ptr()), timeout) }.as_bool()
                     && unsafe { GetLastError() } != ERROR_PIPE_BUSY
                 {
                     return Err(());
@@ -1153,7 +1155,7 @@ fn new_instance_state(
 ) -> Result<InstanceState, WindowsStartupErrorCode> {
     let pipe_nonce = random_array::<PIPE_NONCE_BYTES>()
         .ok_or(WindowsStartupErrorCode::InstanceGuardUnavailable)?;
-    let capability = random_array::<super::ACTIVATION_CAPABILITY_BYTES>()
+    let capability = random_array::<{ super::ACTIVATION_CAPABILITY_BYTES }>()
         .ok_or(WindowsStartupErrorCode::InstanceGuardUnavailable)?;
     InstanceState::new(owner_pid, owner_creation_time, pipe_nonce, capability)
         .map_err(|()| WindowsStartupErrorCode::InstanceGuardUnavailable)

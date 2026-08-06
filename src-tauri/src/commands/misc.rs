@@ -104,6 +104,7 @@ const CODEX_CLI_LIFECYCLE_DISABLED_MESSAGE: &str =
 const ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE: &str =
     "CLI inspection and lifecycle actions are unavailable in the elevated Windows release.";
 
+#[cfg(any(target_os = "windows", test))]
 const fn elevated_windows_cli_boundary_active_for(formal_windows_build: bool) -> bool {
     formal_windows_build
 }

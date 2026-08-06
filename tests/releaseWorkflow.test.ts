@@ -230,6 +230,7 @@ describe("FyAgent Windows elevation and installer boundary", () => {
   const autoLaunch = fs.readFileSync(AUTO_LAUNCH, "utf8");
   const libRs = fs.readFileSync(LIB_RS, "utf8");
   const ciWorkflow = fs.readFileSync(CI_WORKFLOW, "utf8");
+  const windowsCrossBuild = fs.readFileSync(WINDOWS_CROSS_BUILD, "utf8");
 
   it("selects normal-privilege test and elevated release manifests", () => {
     expect(testManifest).toContain(
@@ -251,14 +252,24 @@ describe("FyAgent Windows elevation and installer boundary", () => {
     );
     expect(buildRs).toContain("cargo:rustc-cfg=fyagent_windows_release");
     expect(buildRs).toContain("WindowsManifest::Release");
-    expect(buildRs).toContain("cargo:rustc-link-arg=/MANIFEST:EMBED");
-    expect(buildRs).toContain("cargo:rustc-link-arg-bins=/MANIFEST:NO");
+    expect(buildRs).toContain("cargo:rustc-link-arg-tests=/MANIFEST:EMBED");
+    expect(buildRs).toContain("cargo:rustc-link-arg-tests=/MANIFESTINPUT:{}");
+    expect(buildRs).not.toContain("cargo:rustc-link-arg=/MANIFEST:EMBED");
+    expect(buildRs).not.toContain("cargo:rustc-link-arg=/MANIFESTINPUT:");
+    expect(buildRs).not.toContain("cargo:rustc-link-arg-bins=/MANIFEST:NO");
     expect(buildRs).toContain("windows/fyagent-test.manifest");
     expect(buildRs).toContain('PROFILE").as_deref() == Ok("release")');
     expect(buildRs).toContain(
       "FYAGENT_WINDOWS_MANIFEST must be explicitly set to release",
     );
     expect(ciWorkflow).toContain("FYAGENT_WINDOWS_MANIFEST: test");
+    expect(windowsCrossBuild).toContain(
+      [
+        "    export CI=true",
+        "    export FYAGENT_WINDOWS_MANIFEST=release",
+        "    export CARGO_NET_OFFLINE=true",
+      ].join("\n"),
+    );
     expect(
       fs.existsSync(
         path.resolve(__dirname, "..", "src-tauri", "common-controls.manifest"),
@@ -349,17 +360,28 @@ describe("FyAgent Windows elevation and installer boundary", () => {
     expect(autoLaunch).toContain("clear_windows_auto_launch_entry");
     expect(autoLaunch).toContain("enforce_platform_auto_launch_policy");
     expect(autoLaunch).toContain("Windows 版本已禁用开机自启");
-    expect(autoLaunch).toContain("return Ok(false);");
+    expect(autoLaunch).toContain(
+      [
+        "pub fn is_auto_launch_enabled() -> Result<bool, AppError> {",
+        '    #[cfg(target_os = "windows")]',
+        "    {",
+        "        clear_windows_auto_launch_entry()?;",
+        "        Ok(false)",
+        "    }",
+      ].join("\n"),
+    );
     expect(autoLaunch).not.toContain(
       'WINDOWS_AUTO_LAUNCH_VALUE: &str = "CC Switch"',
     );
     const cleanupIndex = libRs.indexOf(
       "auto_launch::enforce_platform_auto_launch_policy()",
     );
-    expect(cleanupIndex).toBeGreaterThan(-1);
-    expect(cleanupIndex).toBeLessThan(
-      libRs.indexOf("let mut builder = tauri::Builder::default();"),
+    const builderIndex = libRs.indexOf(
+      "let builder = tauri::Builder::default();",
     );
+    expect(cleanupIndex).toBeGreaterThan(-1);
+    expect(builderIndex).toBeGreaterThan(-1);
+    expect(cleanupIndex).toBeLessThan(builderIndex);
   });
 
   it("does not produce an unused cdylib for the desktop-only Windows MSI", () => {

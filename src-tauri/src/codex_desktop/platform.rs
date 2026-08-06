@@ -157,6 +157,9 @@ impl TrustedRuntimeInstance {
 pub(crate) enum RuntimeInspection {
     NotRunning,
     Running(Vec<TrustedRuntimeInstance>),
+    // Exact PFN inspection on Windows reports only running/not-running. macOS
+    // and platform-neutral tests retain the explicit ambiguity state.
+    #[cfg_attr(all(target_os = "windows", not(test)), allow(dead_code))]
     Ambiguous,
 }
 
@@ -172,6 +175,9 @@ pub(crate) enum RuntimeInspection {
     )
 )]
 pub(crate) enum RestartInstallationScope {
+    // The comparator retains system scope as an explicit ordering input even
+    // though current platform adapters report current-user installations.
+    #[cfg_attr(all(target_os = "windows", not(test)), allow(dead_code))]
     System,
     CurrentUser,
 }

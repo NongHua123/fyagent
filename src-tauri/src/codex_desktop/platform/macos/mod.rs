@@ -806,9 +806,8 @@ pub(super) mod test_support {
     };
 
     use super::{
-        CommandInvocation, CommandOutput, CommandRunner, CommandRunnerError,
-        CommandRunnerErrorKind, MacosFileKind, MacosFilesystem, MacosFilesystemError,
-        MacosFilesystemErrorKind,
+        CommandInvocation, CommandOutput, CommandRunner, CommandRunnerError, MacosFileKind,
+        MacosFilesystem, MacosFilesystemError, MacosFilesystemErrorKind,
     };
 
     #[derive(Clone)]
@@ -821,7 +820,6 @@ pub(super) mod test_support {
     struct FakeFilesystemState {
         entries: BTreeMap<PathBuf, FakeEntry>,
         create_dir_failures: HashMap<PathBuf, MacosFilesystemErrorKind>,
-        rename_failures: HashMap<(PathBuf, PathBuf), MacosFilesystemErrorKind>,
     }
 
     /// An in-memory filesystem with component-aware directory moves. Tests
@@ -883,21 +881,6 @@ pub(super) mod test_support {
             self.lock()
                 .create_dir_failures
                 .insert(path.as_ref().to_path_buf(), kind);
-        }
-
-        pub fn fail_rename(
-            &self,
-            source: impl AsRef<Path>,
-            destination: impl AsRef<Path>,
-            kind: MacosFilesystemErrorKind,
-        ) {
-            self.lock().rename_failures.insert(
-                (
-                    source.as_ref().to_path_buf(),
-                    destination.as_ref().to_path_buf(),
-                ),
-                kind,
-            );
         }
 
         /// Model a successful `ditto` without involving the host filesystem.
@@ -969,13 +952,6 @@ pub(super) mod test_support {
 
         fn rename(&self, source: &Path, destination: &Path) -> Result<(), MacosFilesystemError> {
             let mut state = self.lock();
-            if let Some(kind) = state
-                .rename_failures
-                .get(&(source.to_path_buf(), destination.to_path_buf()))
-                .copied()
-            {
-                return Err(filesystem_error(kind));
-            }
             move_tree(&mut state.entries, source, destination)
         }
 
@@ -1087,15 +1063,9 @@ pub(super) mod test_support {
     }
 
     #[derive(Clone)]
-    enum QueuedCommandResult {
-        Output(CommandOutput),
-        Error(CommandRunnerError),
-    }
-
-    #[derive(Clone)]
     struct QueuedCommand {
         program: &'static str,
-        result: QueuedCommandResult,
+        result: CommandOutput,
     }
 
     type CommandHook = Arc<dyn Fn(&CommandInvocation) + Send + Sync>;
@@ -1115,10 +1085,7 @@ pub(super) mod test_support {
         }
 
         pub fn queue_success(&self, program: &'static str, stdout: impl Into<Vec<u8>>) {
-            self.queue(
-                program,
-                QueuedCommandResult::Output(CommandOutput::success(stdout)),
-            );
+            self.queue(program, CommandOutput::success(stdout));
         }
 
         pub fn queue_failure(
@@ -1127,17 +1094,7 @@ pub(super) mod test_support {
             status_code: Option<i32>,
             stderr: impl Into<Vec<u8>>,
         ) {
-            self.queue(
-                program,
-                QueuedCommandResult::Output(CommandOutput::failure(status_code, stderr)),
-            );
-        }
-
-        pub fn queue_error(&self, program: &'static str, kind: CommandRunnerErrorKind) {
-            self.queue(
-                program,
-                QueuedCommandResult::Error(CommandRunnerError { kind }),
-            );
+            self.queue(program, CommandOutput::failure(status_code, stderr));
         }
 
         pub fn set_hook(&self, hook: CommandHook) {
@@ -1162,7 +1119,7 @@ pub(super) mod test_support {
             assert!(queued.is_empty(), "unused fake command responses remain");
         }
 
-        fn queue(&self, program: &'static str, result: QueuedCommandResult) {
+        fn queue(&self, program: &'static str, result: CommandOutput) {
             self.queued
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -1191,10 +1148,7 @@ pub(super) mod test_support {
             {
                 hook(invocation);
             }
-            match queued.result {
-                QueuedCommandResult::Output(output) => Ok(output),
-                QueuedCommandResult::Error(error) => Err(error),
-            }
+            Ok(queued.result)
         }
     }
 }

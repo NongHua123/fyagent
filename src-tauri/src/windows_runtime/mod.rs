@@ -4,6 +4,11 @@
 //! unit-tested without touching a Windows token, named pipe, process, or
 //! registry. Native Win32 calls are isolated in `native.rs`.
 
+// Protocol internals are consumed by the native Windows adapter and by the
+// platform-neutral unit tests. Keep dead-code linting active in both of those
+// configurations while avoiding false positives in a non-Windows library build.
+#![cfg_attr(not(any(target_os = "windows", test)), allow(dead_code))]
+
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -77,6 +82,7 @@ pub enum InteractiveUserMatch {
 }
 
 impl RuntimePrivilegeStatus {
+    #[cfg(not(target_os = "windows"))]
     const fn unsupported() -> Self {
         Self {
             platform: RuntimePrivilegePlatform::Other,
@@ -615,6 +621,9 @@ fn verify_hmac(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DescriptorLockState {
     Held,
+    // Native contended leases route directly to descriptor forwarding; the
+    // platform-neutral decision-table tests still exercise this state.
+    #[cfg(test)]
     Contended,
 }
 
@@ -637,7 +646,9 @@ pub(crate) enum OwnerLiveness {
 pub(crate) enum DescriptorStartupDecision {
     CreateNew,
     RemoveStaleThenCreate,
+    #[cfg(test)]
     ForwardExisting,
+    #[cfg(test)]
     RetryReadOnly,
     Block,
 }
@@ -660,9 +671,11 @@ pub(crate) fn decide_descriptor_startup(
             DescriptorReadState::Valid,
             Some(OwnerLiveness::Missing | OwnerLiveness::Reused),
         ) => DescriptorStartupDecision::RemoveStaleThenCreate,
+        #[cfg(test)]
         (DescriptorLockState::Contended, DescriptorReadState::Valid, _) => {
             DescriptorStartupDecision::ForwardExisting
         }
+        #[cfg(test)]
         (
             DescriptorLockState::Contended,
             DescriptorReadState::Missing | DescriptorReadState::Malformed,

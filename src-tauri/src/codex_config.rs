@@ -3051,9 +3051,11 @@ mod tests {
             }),
             None,
         );
-        let mut meta = ProviderMeta::default();
-        meta.api_format = api_format.map(str::to_owned);
-        meta.image_extension_configured = image_extension_configured;
+        let meta = ProviderMeta {
+            api_format: api_format.map(str::to_owned),
+            image_extension_configured,
+            ..ProviderMeta::default()
+        };
         provider.meta = Some(meta);
         provider
     }

@@ -43,22 +43,20 @@ fn main() {
     embed_test_manifest();
 }
 
-/// `tauri-build` embeds its resource only into application binaries.  Link the
-/// ordinary-privilege manifest into all test artifacts, including unit-test
-/// harnesses.  The bin-scoped opt-out leaves the final application binary with
-/// the manifest resource produced by `tauri-build` above.
+/// `tauri-build` embeds the selected resource into the application binary.
+/// Scope the ordinary-privilege manifest arguments to test targets so a formal
+/// application binary receives only the release resource produced above.
 fn embed_test_manifest() {
     let manifest_path = std::path::PathBuf::from(
         std::env::var("CARGO_MANIFEST_DIR").expect("missing CARGO_MANIFEST_DIR"),
     )
     .join("windows/fyagent-test.manifest");
 
-    println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+    println!("cargo:rustc-link-arg-tests=/MANIFEST:EMBED");
     println!(
-        "cargo:rustc-link-arg=/MANIFESTINPUT:{}",
+        "cargo:rustc-link-arg-tests=/MANIFESTINPUT:{}",
         manifest_path.display()
     );
-    println!("cargo:rustc-link-arg-bins=/MANIFEST:NO");
 }
 
 fn select_windows_manifest() -> WindowsManifest {

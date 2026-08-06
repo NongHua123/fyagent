@@ -795,6 +795,7 @@ build_architecture() {
   log "building $arch MSI for $target"
   if ! (
     export CI=true
+    export FYAGENT_WINDOWS_MANIFEST=release
     export CARGO_NET_OFFLINE=true
     export CARGO_TARGET_DIR="$CARGO_TARGET_ROOT"
     export XWIN_CACHE_DIR="$XWIN_CACHE_DIR_RESOLVED"

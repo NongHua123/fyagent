@@ -95,9 +95,9 @@ pub fn enable_auto_launch() -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
         clear_windows_auto_launch_entry()?;
-        return Err(AppError::Message(
+        Err(AppError::Message(
             "Windows 版本已禁用开机自启；已清理 FyAgent 的旧启动项".to_owned(),
-        ));
+        ))
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -117,7 +117,7 @@ pub fn disable_auto_launch() -> Result<(), AppError> {
     {
         clear_windows_auto_launch_entry()?;
         log::info!("Windows 已禁用并清理 FyAgent 开机自启");
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -136,7 +136,7 @@ pub fn is_auto_launch_enabled() -> Result<bool, AppError> {
     #[cfg(target_os = "windows")]
     {
         clear_windows_auto_launch_entry()?;
-        return Ok(false);
+        Ok(false)
     }
 
     #[cfg(not(target_os = "windows"))]

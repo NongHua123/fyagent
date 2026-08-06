@@ -89,6 +89,12 @@ impl RecoveringTestMutex {
     }
 }
 
+impl Default for RecoveringTestMutex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn test_mutex() -> &'static RecoveringTestMutex {
     static MUTEX: OnceLock<RecoveringTestMutex> = OnceLock::new();
     MUTEX.get_or_init(RecoveringTestMutex::new)

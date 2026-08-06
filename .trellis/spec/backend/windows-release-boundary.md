@@ -8,6 +8,10 @@ commands that could probe or invoke user CLI tools. It is mandatory because a
 manifest selection, elevation decision, named-pipe endpoint, and pre-Tauri
 startup path form one cross-layer privilege boundary.
 
+It also applies when `scripts/windows-cross/build-windows-msi.sh` produces a
+Linux-built Windows MSI candidate. Cross-compilation changes the host tools,
+not the formal-release manifest or runtime privilege boundary.
+
 It distinguishes a distributable formal release from development and test
 artifacts. A release-profile test harness must remain test-manifest based;
 being compiled with the `release` profile alone is not evidence that a binary
@@ -17,6 +21,15 @@ may require elevation.
 
 ```text
 FYAGENT_WINDOWS_MANIFEST = release | test | dev
+```
+
+```text
+./scripts/windows-cross/build-windows-msi.sh [--arch all|x64|arm64]
+```
+
+```text
+cargo:rustc-link-arg-tests=/MANIFEST:EMBED
+cargo:rustc-link-arg-tests=/MANIFESTINPUT:<fyagent-test.manifest>
 ```
 
 ```rust
@@ -48,6 +61,16 @@ or an unbounded argv payload.
   `FYAGENT_WINDOWS_MANIFEST`. `release` is the only choice that enables
   `fyagent_windows_release`; `test` and `dev` use the ordinary-user manifest.
   An unset value in a release profile fails the build rather than guessing.
+- The Linux-to-Windows MSI entrypoint exports
+  `FYAGENT_WINDOWS_MANIFEST=release` inside each architecture's actual Tauri
+  build subshell. Preflight success alone is not sufficient, and the variable
+  must not be left unset or changed to `test` for a distributable candidate.
+- `fyagent-test.manifest` linker arguments use only
+  `cargo:rustc-link-arg-tests`. Do not use the all-target
+  `cargo:rustc-link-arg` form and do not try to cancel it for application
+  binaries with `/MANIFEST:NO`; either pattern leaks test-manifest linker state
+  into the formal binary and can disable or conflict with the resource emitted
+  by `tauri-build`.
 - The release manifest is `requireAdministrator`; the test manifest is
   `asInvoker`. The signed release workflow explicitly selects `release` and
   verifies the embedded application manifest before signing, after signing,
@@ -83,31 +106,36 @@ or an unbounded argv payload.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| `FYAGENT_WINDOWS_MANIFEST` is invalid | Build fails with the accepted values. |
-| Formal release uses release profile without an explicit manifest selection | Build fails; it never silently chooses elevated or test behavior. |
-| Formal release process is non-elevated, not a local administrator, lacks a privilege status, or does not match the interactive user | `early_windows_startup_gate` returns `Blocked` with the appropriate safe code before Tauri construction. |
-| Development/test process is non-elevated | It may continue under the `asInvoker` test manifest. |
-| Runtime root/state/lease has unexpected owner, DACL, object type, path, or reparse point | Treat it as unavailable/untrusted; do not read, delete, or use it for activation. |
-| Descriptor references a running owner but pipe open/handshake/proof fails | Do not send argv; return the activation-forward failure outcome. |
-| Authentication HMAC, frame shape, client identity, or bounds check fails | Reject the connection without invoking the activation handler. |
-| Formal release reaches a user CLI command | Return the elevated-boundary message before probing or running the CLI. |
-| Manifest inspection/signing validation fails in release workflow | Fail the workflow before publishing the artifact. |
+| Condition                                                                                                                           | Required result                                                                                                                 |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `FYAGENT_WINDOWS_MANIFEST` is invalid                                                                                               | Build fails with the accepted values.                                                                                           |
+| Formal release uses release profile without an explicit manifest selection                                                          | Build fails; it never silently chooses elevated or test behavior.                                                               |
+| Linux-to-Windows MSI build omits `FYAGENT_WINDOWS_MANIFEST=release` from the architecture build subshell                            | `build.rs` fails before linking; do not weaken the fail-closed selection.                                                       |
+| Test manifest uses all-target linker arguments or the application binary receives `/MANIFEST:NO`                                    | Reject the change; test linker arguments must be test-target-only and the formal binary must retain the `tauri-build` resource. |
+| Formal release process is non-elevated, not a local administrator, lacks a privilege status, or does not match the interactive user | `early_windows_startup_gate` returns `Blocked` with the appropriate safe code before Tauri construction.                        |
+| Development/test process is non-elevated                                                                                            | It may continue under the `asInvoker` test manifest.                                                                            |
+| Runtime root/state/lease has unexpected owner, DACL, object type, path, or reparse point                                            | Treat it as unavailable/untrusted; do not read, delete, or use it for activation.                                               |
+| Descriptor references a running owner but pipe open/handshake/proof fails                                                           | Do not send argv; return the activation-forward failure outcome.                                                                |
+| Authentication HMAC, frame shape, client identity, or bounds check fails                                                            | Reject the connection without invoking the activation handler.                                                                  |
+| Formal release reaches a user CLI command                                                                                           | Return the elevated-boundary message before probing or running the CLI.                                                         |
+| Manifest inspection/signing validation fails in release workflow                                                                    | Fail the workflow before publishing the artifact.                                                                               |
 
 ## 5. Good / Base / Bad Cases
 
-- Good: The signed release workflow explicitly builds with
-  `FYAGENT_WINDOWS_MANIFEST=release`; startup proves the elevated process is
-  the interactive local administrator; a second invocation proves the server
+- Good: The signed release workflow and Linux-to-Windows MSI candidate build
+  explicitly use `FYAGENT_WINDOWS_MANIFEST=release`; test targets alone receive
+  the `asInvoker` linker input; startup proves the elevated process is the
+  interactive local administrator; a second invocation proves the server
   endpoint before it forwards a bounded deep-link argv.
 - Base: A normal developer build or test harness uses
   `FYAGENT_WINDOWS_MANIFEST=test` (or `dev`) and retains ordinary-user startup
   semantics with fake/platform-neutral tests.
-- Bad: Tying `requireAdministrator` to every release-profile binary, accepting
-  a state file by path alone, exposing a fixed well-known pipe, sending argv
-  before endpoint proof, or allowing a formal elevated build to shell out to
-  an arbitrary user CLI.
+- Bad: Leaving the cross-build manifest unset, sending the test manifest to all
+  linker targets, cancelling application manifests with `/MANIFEST:NO`, tying
+  `requireAdministrator` to every release-profile binary, accepting a state
+  file by path alone, exposing a fixed well-known pipe, sending argv before
+  endpoint proof, or allowing a formal elevated build to shell out to an
+  arbitrary user CLI.
 
 ## 6. Tests Required
 
@@ -120,6 +148,14 @@ or an unbounded argv payload.
   visual-baseline LFS policy, and pre-probe formal-release CLI guard.
 - `tests/releaseWorkflow.test.ts` must assert explicit release manifest
   selection and manifest/signing verification steps in the release workflow.
+  It must also bind the Linux cross-build export to the actual architecture
+  build environment, require `cargo:rustc-link-arg-tests` for the test manifest,
+  and reject all-target manifest arguments and `/MANIFEST:NO` cancellation.
+- The cross-build quality gate must run strict Windows-target Clippy with
+  `FYAGENT_WINDOWS_MANIFEST=release`, link a release-profile Windows library
+  test harness with `FYAGENT_WINDOWS_MANIFEST=test --no-run`, and complete at
+  least the requested MSI architecture build plus Linux-side structure and
+  checksum checks. These checks do not replace native Windows validation.
 - Run the declared safe checks through mise, including Rust format/clippy and
   the targeted/unit frontend suite. Native UAC, registry, MSI, PackageManager,
   signing, and live named-pipe validation are separate Windows release
@@ -159,3 +195,25 @@ write_activation_auth_and_frame(capability, challenge, argv)?;
 The client obtains its non-static endpoint and secret only from a protected,
 validated descriptor, proves the endpoint first, and forwards a bounded,
 authenticated request second.
+
+### Manifest linker scope
+
+Wrong:
+
+```rust
+println!("cargo:rustc-link-arg=/MANIFESTINPUT:fyagent-test.manifest");
+println!("cargo:rustc-link-arg-bins=/MANIFEST:NO");
+```
+
+This sends test-manifest state to application binaries and then tries to
+disable the application manifest globally.
+
+Correct:
+
+```rust
+println!("cargo:rustc-link-arg-tests=/MANIFEST:EMBED");
+println!("cargo:rustc-link-arg-tests=/MANIFESTINPUT:fyagent-test.manifest");
+```
+
+Only test targets receive the ordinary-user manifest; the formal application
+binary keeps the manifest resource selected and emitted by `tauri-build`.

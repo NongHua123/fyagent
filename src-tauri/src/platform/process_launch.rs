@@ -78,24 +78,25 @@ where
         Self { launcher }
     }
 
-    pub(crate) fn open_http_url_as_user(&self, raw_url: &str) -> Result<(), ProcessLaunchError> {
+    #[cfg(test)]
+    fn open_http_url_as_user(&self, raw_url: &str) -> Result<(), ProcessLaunchError> {
         let request = InteractiveUserLaunch::http_url(raw_url)?;
         self.dispatch(request)
     }
 
-    pub(crate) fn open_directory_as_user(
-        &self,
-        directory: &Path,
-    ) -> Result<(), ProcessLaunchError> {
+    #[cfg(test)]
+    fn open_directory_as_user(&self, directory: &Path) -> Result<(), ProcessLaunchError> {
         let request = InteractiveUserLaunch::directory(directory)?;
         self.dispatch(request)
     }
 
+    #[cfg(test)]
     fn open_terminal_script_as_user(&self, script: &Path) -> Result<(), ProcessLaunchError> {
         let request = InteractiveUserLaunch::terminal_script(script)?;
         self.dispatch(request)
     }
 
+    #[cfg(test)]
     fn open_trusted_windows_app_aumid_as_user(
         &self,
         aumid: &str,

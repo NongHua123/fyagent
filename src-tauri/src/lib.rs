@@ -534,15 +534,14 @@ pub fn run() {
         return;
     }
 
-    let mut builder = tauri::Builder::default();
+    let builder = tauri::Builder::default();
 
     // Windows owns single-business-instance detection before Tauri exists so a
     // rejected second launch cannot initialize the runtime, logger, database,
     // tray, or renderer. Keep the cross-platform plugin on its native
     // macOS/Linux paths only.
     #[cfg(any(target_os = "macos", target_os = "linux"))]
-    {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             log::info!("=== Single Instance Callback Triggered ===");
             log::debug!("Args count: {}", args.len());
             // Arguments can be arbitrary local paths or custom-protocol URLs
@@ -579,7 +578,6 @@ pub fn run() {
                 }
             }
         }));
-    }
 
     let builder = builder
         // 注册 deep-link 插件（处理 macOS AppleEvent 和其他平台的深链接）
