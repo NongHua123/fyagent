@@ -22,8 +22,8 @@ use std::{
 use futures::future::BoxFuture;
 
 use super::{
-    CodexDesktopPlatform, PlatformInstallPlan, PlatformProgressSink, RuntimeInspection,
-    TrustedRuntimeInstance, VerifiedPackage, MACOS_CODEX_STABLE_IDENTITY,
+    CodexDesktopPlatform, PlatformInstallPlan, PlatformProgressSink, RestartCandidateInspection,
+    RuntimeInspection, TrustedRuntimeInstance, VerifiedPackage, MACOS_CODEX_STABLE_IDENTITY,
 };
 use crate::codex_desktop::{
     download::DownloadedArtifact,
@@ -578,6 +578,18 @@ impl CodexDesktopPlatform for MacosPlatformAdapter {
         })
     }
 
+    fn inspect_restart_candidates(
+        &self,
+    ) -> BoxFuture<'_, Result<RestartCandidateInspection, InstallerError>> {
+        // v1.0.2 deliberately does not reuse the legacy macOS bundle-path
+        // inspection as lifecycle authority. The target Bundle ID has not
+        // received the required independent production evidence, so any
+        // restart request must fail closed before it can enumerate a process,
+        // send a close message, or launch an app. This also prevents a path,
+        // display-name, or title fallback from creeping into the adapter.
+        Box::pin(async { Ok(RestartCandidateInspection::UntrustedTarget) })
+    }
+
     fn preflight<'a>(
         &'a self,
         release: &'a ReleaseDescriptor,
@@ -695,32 +707,6 @@ impl CodexDesktopPlatform for MacosPlatformAdapter {
             }
             run_blocking(move || {
                 bundle::inspect_runtime(runner.as_ref(), filesystem.as_ref(), &installed)
-            })
-            .await
-        })
-    }
-
-    fn request_graceful_shutdown<'a>(
-        &'a self,
-        installed: &'a InstalledApplication,
-        instances: &'a [TrustedRuntimeInstance],
-    ) -> BoxFuture<'a, Result<(), InstallerError>> {
-        let runner = self.runner.clone();
-        let filesystem = self.filesystem.clone();
-        let installed = installed.clone();
-        let instances = instances.to_vec();
-        let host_error = self.host_support_error();
-        Box::pin(async move {
-            if let Some(error) = host_error {
-                return Err(error);
-            }
-            run_blocking(move || {
-                bundle::request_graceful_shutdown(
-                    runner.as_ref(),
-                    filesystem.as_ref(),
-                    &installed,
-                    &instances,
-                )
             })
             .await
         })

@@ -60,34 +60,38 @@ export type CodexDesktopRuntimeStatus =
   | {
       state: "unsupported";
       reason: UnsupportedReason;
-    };
+    }
+  | { state: "untrusted_target" };
 
-export type CodexDesktopRestartUnavailableReason =
-  | "not_installed"
-  | "not_running"
-  | "installations_ambiguous"
-  | "instances_ambiguous"
-  | "identity_verification"
+/**
+ * Renderer-safe reason for the single destructive restart confirmation.
+ * `unique_runtime` deliberately avoids claiming that multiple applications
+ * were found when the backend has one exact, trusted runtime target.
+ */
+export type CodexDesktopRestartPromptReason =
+  | "unique_runtime"
+  | "multiple_instances"
+  | "multiple_installations"
+  | "identity_binding_ambiguous";
+
+export type CodexDesktopManualRestartReason =
+  | "untrusted_target"
   | "unsupported";
-
-export type CodexDesktopRestartPhase =
-  | "detect"
-  | "quit"
-  | "force_quit"
-  | "launch"
-  | "verify";
 
 /** The opaque force token is returned only to the trusted backend verbatim. */
 export type CodexDesktopRestartOutcome =
   | { state: "restarted" }
-  | { state: "force_confirmation_required"; token: string }
-  | { state: "unavailable"; reason: CodexDesktopRestartUnavailableReason }
-  | { state: "cancelled" }
   | {
-      state: "failed";
-      phase: CodexDesktopRestartPhase;
-      error: InstallerErrorDto;
-    };
+      state: "confirmation_required";
+      token: string;
+      reason: CodexDesktopRestartPromptReason;
+    }
+  | { state: "not_running" }
+  | {
+      state: "manual_restart_required";
+      reason: CodexDesktopManualRestartReason;
+    }
+  | { state: "incomplete"; retryToken: string };
 
 export type InstallerErrorCode =
   | "PLATFORM_UNSUPPORTED"

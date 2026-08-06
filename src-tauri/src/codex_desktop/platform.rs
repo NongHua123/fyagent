@@ -18,12 +18,9 @@ use super::{
     error::{InstallerError, InstallerErrorCode},
     types::{
         CpuArchitecture, DesktopPlatform, InstalledApplication, JobProgress, LocalInstallStatus,
-        ReleaseDescriptor,
+        ReleaseDescriptor, UnsupportedReason,
     },
 };
-
-#[cfg(any(not(any(target_os = "windows", target_os = "macos")), test))]
-use super::types::UnsupportedReason;
 
 // The command/filesystem boundary is target-neutral, so test builds include it
 // on every host and can exercise the adapter with fakes. Runtime construction
@@ -122,6 +119,30 @@ impl fmt::Debug for TrustedRuntimeInstance {
     }
 }
 
+impl TrustedRuntimeInstance {
+    /// Produces an internal-only identity key used to deduplicate a close set
+    /// and revision a restart plan. This value is never serialized, logged, or
+    /// returned across IPC: it can contain process identity evidence.
+    pub(crate) fn restart_identity_key(&self) -> String {
+        match self {
+            Self::Windows {
+                package_family_name,
+                process_id,
+                creation_time,
+            } => format!("windows:{package_family_name}:{process_id}:{creation_time}"),
+            Self::Macos {
+                process_id,
+                bundle_path,
+                launch_timestamp_ms,
+                ..
+            } => format!(
+                "macos:{}:{process_id}:{launch_timestamp_ms}",
+                bundle_path.to_string_lossy()
+            ),
+        }
+    }
+}
+
 /// Runtime detection uses only [`TrustedRuntimeInstance`] evidence. A platform
 /// may report ambiguity instead of trying to disambiguate with an executable
 /// or display-name heuristic.
@@ -137,6 +158,89 @@ pub(crate) enum RuntimeInspection {
     NotRunning,
     Running(Vec<TrustedRuntimeInstance>),
     Ambiguous,
+}
+
+/// Trust scope used only to resolve a deterministic restart launch target.
+/// It is never serialized to the renderer because scope can reveal an
+/// installation arrangement that is irrelevant to the user-facing dialog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    not(any(target_os = "windows", target_os = "macos", test)),
+    expect(
+        dead_code,
+        reason = "system scope is constructed by supported platform adapters and fake tests"
+    )
+)]
+pub(crate) enum RestartInstallationScope {
+    System,
+    CurrentUser,
+}
+
+impl RestartInstallationScope {
+    pub(crate) const fn priority(self) -> u8 {
+        match self {
+            Self::System => 0,
+            Self::CurrentUser => 1,
+        }
+    }
+}
+
+/// A platform-verified installation candidate. `stable_key` is kept private
+/// to the backend and derives from an exact platform target (PFN/AUMID or a
+/// verified bundle record), never a display name, title, executable name, or
+/// path fallback supplied by IPC.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct TrustedInstallationCandidate {
+    pub(crate) application: InstalledApplication,
+    pub(crate) scope: RestartInstallationScope,
+    pub(crate) stable_key: String,
+}
+
+impl fmt::Debug for TrustedInstallationCandidate {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("TrustedInstallationCandidate")
+            .field("stable_identity", &self.application.stable_identity)
+            .field("scope", &self.scope)
+            .field("stable_key", &"<redacted>")
+            .finish()
+    }
+}
+
+/// Candidate discovery is deliberately separate from legacy local installer
+/// discovery. An adapter that cannot produce an exact lifecycle identity must
+/// return `UntrustedTarget`; the service will then do zero close/launch work.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RestartCandidateInspection {
+    NotInstalled,
+    Trusted(Vec<TrustedInstallationCandidate>),
+    UntrustedTarget,
+    Unsupported(UnsupportedReason),
+}
+
+fn stable_restart_key(application: &InstalledApplication) -> String {
+    let launch_component = match &application.launch_target {
+        super::types::LaunchTarget::WindowsAumid(aumid) => format!("windows:{aumid}"),
+        super::types::LaunchTarget::MacBundlePath(path) => {
+            format!("macos:{}", path.to_string_lossy())
+        }
+    };
+    format!(
+        "{}:{}:{launch_component}",
+        application.stable_identity,
+        application.platform_version.canonical()
+    )
+}
+
+fn default_restart_candidate(application: InstalledApplication) -> TrustedInstallationCandidate {
+    TrustedInstallationCandidate {
+        stable_key: stable_restart_key(&application),
+        application,
+        // Legacy `inspect_local` can only discover the active user scope. A
+        // platform that can enumerate more scopes must override the method
+        // below rather than allowing ambiguity to select one accidentally.
+        scope: RestartInstallationScope::CurrentUser,
+    }
 }
 
 /// Platform-specific preflight output consumed by the service's shared disk
@@ -331,6 +435,37 @@ pub(crate) trait CodexDesktopPlatform: Send + Sync {
 
     fn inspect_local(&self) -> BoxFuture<'_, Result<LocalInstallStatus, InstallerError>>;
 
+    /// Enumerate only candidates with exact lifecycle identity evidence. The
+    /// default supports the old unique-installation adapters but treats their
+    /// ambiguous result as untrusted rather than selecting an arbitrary
+    /// candidate. Windows overrides this to retain all exact PFN-bound records
+    /// for the restart-plan comparator; macOS presently fails closed until its
+    /// target bundle identity is independently validated.
+    fn inspect_restart_candidates(
+        &self,
+    ) -> BoxFuture<'_, Result<RestartCandidateInspection, InstallerError>> {
+        Box::pin(async move {
+            match self.inspect_local().await? {
+                LocalInstallStatus::NotInstalled { .. } => {
+                    Ok(RestartCandidateInspection::NotInstalled)
+                }
+                LocalInstallStatus::Installed { application } => {
+                    Ok(RestartCandidateInspection::Trusted(vec![
+                        default_restart_candidate(application),
+                    ]))
+                }
+                LocalInstallStatus::Unsupported { reason } => {
+                    Ok(RestartCandidateInspection::Unsupported(reason))
+                }
+                // Legacy discovery exposes summaries but not the exact
+                // restart identity that would bind every close/launch action.
+                LocalInstallStatus::Ambiguous { .. } => {
+                    Ok(RestartCandidateInspection::UntrustedTarget)
+                }
+            }
+        })
+    }
+
     fn preflight<'a>(
         &'a self,
         release: &'a ReleaseDescriptor,
@@ -373,22 +508,10 @@ pub(crate) trait CodexDesktopPlatform: Send + Sync {
         })
     }
 
-    /// Ask only the previously verified runtime instance(s) to close normally.
-    /// The default makes forceful lifecycle behavior opt-in per platform.
-    fn request_graceful_shutdown<'a>(
-        &'a self,
-        _installed: &'a InstalledApplication,
-        _instances: &'a [TrustedRuntimeInstance],
-    ) -> BoxFuture<'a, Result<(), InstallerError>> {
-        Box::pin(async {
-            Err(InstallerError::new(InstallerErrorCode::PlatformUnsupported)
-                .with_diagnostic_message("trusted graceful shutdown is unavailable"))
-        })
-    }
-
-    /// Force only the previously verified runtime instance(s) after a separate
-    /// user confirmation. Implementations must revalidate identity immediately
-    /// before terminating anything.
+    /// Force only the previously verified runtime instance(s) after the one
+    /// explicit renderer confirmation. Implementations must revalidate exact
+    /// identity immediately before terminating anything; graceful shutdown is
+    /// intentionally absent from v1.0.2's lifecycle contract.
     fn force_shutdown<'a>(
         &'a self,
         _installed: &'a InstalledApplication,
@@ -400,8 +523,8 @@ pub(crate) trait CodexDesktopPlatform: Send + Sync {
         })
     }
 
-    /// Check whether the exact runtime evidence captured before a graceful or
-    /// force request is still alive. Unlike general runtime discovery, this is
+    /// Check whether the exact runtime evidence captured before a force request
+    /// is still alive. Unlike general runtime discovery, this is
     /// allowed to observe a just-closed primary process while package helper
     /// processes finish their own shutdown; it must never select a replacement
     /// PID or a different instance.

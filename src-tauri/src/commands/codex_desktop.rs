@@ -41,23 +41,24 @@ pub async fn get_codex_desktop_runtime_status(
         .map_err(to_ipc_error)
 }
 
-/// Request a normal, identity-bound Codex Desktop restart. A graceful quit
-/// timeout returns only an opaque confirmation token; it never forces a
-/// process from this first command.
+/// Prepare the one identity-bound Codex Desktop force-restart confirmation.
+/// This command is observational only: it never sends a normal close, forces
+/// a process, or launches an application. The renderer receives only a
+/// privacy-safe state/reason plus an opaque capability when appropriate.
 #[tauri::command]
 pub async fn request_codex_desktop_restart(
     state: State<'_, AppState>,
 ) -> Result<CodexDesktopRestartOutcome, InstallerErrorDto> {
-    // Operational failures remain encoded in the restart outcome so the
-    // renderer can distinguish unavailable/confirmation/phase failures. The
-    // Result envelope satisfies Tauri's async command contract without
-    // reclassifying those expected state-machine results as transport errors.
+    // Expected lifecycle outcomes remain in the DTO. The Result envelope is
+    // reserved for Tauri transport errors and never serializes internal
+    // process/installation diagnostics to the renderer.
     Ok(state.codex_desktop_service.request_restart().await)
 }
 
-/// Complete the force branch only after the renderer has shown a second
-/// confirmation. `token` is opaque and is bound server-side to the originally
-/// verified runtime instance, rather than being a PID/path/command from IPC.
+/// Consume an opaque confirmation or retry capability. The service
+/// re-enumerates exact candidates, validates the selected installation, then
+/// force-closes all current matching instances and launches once. `token`
+/// cannot select a PID, path, process name, or command from IPC.
 #[tauri::command]
 pub async fn continue_codex_desktop_restart_with_force(
     token: String,
@@ -69,7 +70,7 @@ pub async fn continue_codex_desktop_restart_with_force(
         .await)
 }
 
-/// Discard a pending force-confirmation continuation when the user chooses to
+/// Discard a pending confirmation/retry capability when the user chooses to
 /// restart manually. `token` remains opaque; this command neither returns nor
 /// accepts a PID, path, process name, or launch instruction.
 #[tauri::command]

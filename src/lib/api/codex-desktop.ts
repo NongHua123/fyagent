@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   CodexDesktopRestartOutcome,
-  CodexDesktopRuntimeStatus,
   JobSnapshot,
   LocalInstallStatus,
   RemoteReleaseStatus,
@@ -44,17 +43,14 @@ export const codexDesktopApi = {
     await invoke("codex_desktop_open_log_directory");
   },
 
-  async getRuntimeStatus(): Promise<CodexDesktopRuntimeStatus> {
-    return await invoke("get_codex_desktop_runtime_status");
-  },
-
   async requestRestart(): Promise<CodexDesktopRestartOutcome> {
     return await invoke("request_codex_desktop_restart");
   },
 
   /**
-   * The backend-issued token is opaque, single-use, and short-lived. The
-   * renderer never derives, alters, or combines it with process information.
+   * Consume either the initial confirmation capability or an incomplete
+   * operation's retry capability. Both values are opaque, short-lived and
+   * single-use; the renderer only echoes them to this trusted command.
    */
   async continueRestartWithForce(
     token: string,

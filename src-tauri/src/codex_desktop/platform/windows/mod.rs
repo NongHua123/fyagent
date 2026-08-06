@@ -34,7 +34,8 @@ use self::deployment::WindowsNativeError;
 #[cfg(target_os = "windows")]
 mod runtime;
 use super::{
-    CodexDesktopPlatform, PlatformInstallPlan, PlatformProgressSink, RuntimeInspection,
+    CodexDesktopPlatform, PlatformInstallPlan, PlatformProgressSink, RestartCandidateInspection,
+    RestartInstallationScope, RuntimeInspection, TrustedInstallationCandidate,
     TrustedRuntimeInstance, VerifiedPackage, WINDOWS_CODEX_STABLE_IDENTITY,
 };
 use crate::codex_desktop::{
@@ -248,6 +249,31 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
         })
     }
 
+    fn inspect_restart_candidates(
+        &self,
+    ) -> BoxFuture<'_, Result<RestartCandidateInspection, InstallerError>> {
+        let package_manager = self.package_manager.clone();
+        let host = self.host.clone();
+        let publisher_evidence = self.publisher_evidence.clone();
+        let host_error = self.host_support_error();
+        Box::pin(async move {
+            if host.architecture() != CpuArchitecture::X86_64
+                && host.architecture() != CpuArchitecture::Aarch64
+            {
+                return Ok(RestartCandidateInspection::Unsupported(
+                    UnsupportedReason::Architecture,
+                ));
+            }
+            if let Some(error) = host_error {
+                return Err(error);
+            }
+            run_blocking(move || {
+                inspect_restart_candidates(package_manager.as_ref(), &host, &publisher_evidence)
+            })
+            .await
+        })
+    }
+
     fn preflight<'a>(
         &'a self,
         release: &'a ReleaseDescriptor,
@@ -338,22 +364,6 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
         })
     }
 
-    fn request_graceful_shutdown<'a>(
-        &'a self,
-        installed: &'a InstalledApplication,
-        instances: &'a [TrustedRuntimeInstance],
-    ) -> BoxFuture<'a, Result<(), InstallerError>> {
-        let installed = installed.clone();
-        let instances = instances.to_vec();
-        let host_error = self.host_support_error();
-        Box::pin(async move {
-            if let Some(error) = host_error {
-                return Err(error);
-            }
-            run_blocking(move || runtime::request_graceful_shutdown(&installed, &instances)).await
-        })
-    }
-
     fn force_shutdown<'a>(
         &'a self,
         installed: &'a InstalledApplication,
@@ -426,6 +436,44 @@ fn inspect_local(
                 .to_dto(),
         }),
     }
+}
+
+/// Produces every current-user exact PFN-bound installation candidate for the
+/// v1.0.2 restart planner. `family_name` is obtained from PackageManager and
+/// is validated while forming the verified AUMID; display name, executable
+/// name, window title, and package path never participate in candidate
+/// discovery or ordering.
+fn inspect_restart_candidates(
+    package_manager: &dyn WindowsPackageManager,
+    host: &WindowsHost,
+    publisher_evidence: &VerifiedPublisherEvidence,
+) -> Result<RestartCandidateInspection, InstallerError> {
+    let records = package_manager
+        .current_user_packages()
+        .map_err(deployment_error)?;
+    let stable_records = records
+        .iter()
+        .filter(|record| record.identity_name == WINDOWS_CODEX_STABLE_IDENTITY)
+        .collect::<Vec<_>>();
+    if stable_records.is_empty() {
+        return Ok(RestartCandidateInspection::NotInstalled);
+    }
+
+    let candidates = stable_records
+        .into_iter()
+        .map(|record| {
+            let application = installed_application_from_record(record, host, publisher_evidence)?;
+            Ok(TrustedInstallationCandidate {
+                // The Package Family Name is the exact Windows lifecycle
+                // identity. It stays private to the planner/token record and
+                // never crosses IPC or appears in ordinary diagnostics.
+                stable_key: format!("windows-pfn:{}", record.family_name),
+                application,
+                scope: RestartInstallationScope::CurrentUser,
+            })
+        })
+        .collect::<Result<Vec<_>, InstallerError>>()?;
+    Ok(RestartCandidateInspection::Trusted(candidates))
 }
 
 fn installed_application_from_record(

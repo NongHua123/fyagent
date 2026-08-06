@@ -2,9 +2,10 @@
 //!
 //! This module never selects a process by executable name. It starts from the
 //! exact PackageManager-verified AUMID held by `InstalledApplication`, derives
-//! its package family, and accepts only a unique top-level window whose owning
-//! process has that exact OS package family. PIDs and creation times remain
-//! private runtime evidence and are rechecked before any close or termination.
+//! its package family, and accepts every matching top-level-window process.
+//! Multiple windows for one process are folded into one `(PID, creation time)`
+//! record; PIDs and creation times remain private runtime evidence and are
+//! rechecked before any close or termination.
 
 use std::{collections::HashSet, mem::size_of};
 
@@ -13,7 +14,7 @@ use windows::{
     Win32::{
         Foundation::{
             CloseHandle, GetLastError, ERROR_INSUFFICIENT_BUFFER, ERROR_INVALID_PARAMETER,
-            ERROR_NO_MORE_FILES, FILETIME, HANDLE, HWND, LPARAM, WPARAM,
+            ERROR_NO_MORE_FILES, FILETIME, HANDLE, HWND, LPARAM,
         },
         Storage::Packaging::Appx::GetPackageFamilyName,
         System::{
@@ -26,7 +27,7 @@ use windows::{
                 PROCESS_TERMINATE,
             },
         },
-        UI::WindowsAndMessaging::{EnumWindows, GetWindowThreadProcessId, PostMessageW, WM_CLOSE},
+        UI::WindowsAndMessaging::{EnumWindows, GetWindowThreadProcessId},
     },
 };
 
@@ -61,10 +62,11 @@ impl Drop for OwnedHandle {
     }
 }
 
-/// Inspect the runtime only when it has exactly one top-level window owned by
-/// a process from the verified package family. Background helpers are ignored:
-/// they can neither be selected for termination nor cause a restart to target
-/// a process-name-style group.
+/// Inspect every exact package-family process that owns a top-level window.
+/// The window list is only a UI-process grouping aid: one process may own many
+/// windows, but it produces exactly one private runtime record. Background
+/// helpers without a top-level window are ignored and never become a
+/// process-name-style close target.
 pub(super) fn inspect(
     installed: &InstalledApplication,
 ) -> Result<RuntimeInspection, InstallerError> {
@@ -72,105 +74,89 @@ pub(super) fn inspect(
     let candidate_process_ids = matching_process_ids(&package_family_name)?;
     let top_level_windows = collect_top_level_windows(&candidate_process_ids)?;
 
-    let [window] = top_level_windows.as_slice() else {
-        return Ok(if top_level_windows.is_empty() {
-            RuntimeInspection::NotRunning
-        } else {
-            RuntimeInspection::Ambiguous
-        });
-    };
-
-    let process = open_verified_process(
-        window.process_id,
-        &package_family_name,
-        PROCESS_QUERY_LIMITED_INFORMATION,
-    )?;
-    let creation_time = process_creation_time(process.raw())?;
-
-    Ok(RuntimeInspection::Running(vec![
-        TrustedRuntimeInstance::Windows {
-            package_family_name,
-            process_id: window.process_id,
-            creation_time,
-        },
-    ]))
-}
-
-/// Ask only the exact, still-verified primary window to close. Re-inspection
-/// and creation-time verification stop a newly started/recycled PID from being
-/// influenced by an older restart operation.
-pub(super) fn request_graceful_shutdown(
-    installed: &InstalledApplication,
-    instances: &[TrustedRuntimeInstance],
-) -> Result<(), InstallerError> {
-    let target = bound_windows_runtime(installed, instances)?;
-    ensure_current_runtime_matches(installed, instances)?;
-
-    // Retain the checked handle through the message post so Windows cannot
-    // recycle the numeric PID between identity verification and WM_CLOSE.
-    let verified_process = open_verified_process(
-        target.process_id,
-        &target.package_family_name,
-        PROCESS_QUERY_LIMITED_INFORMATION,
-    )?;
-    if process_creation_time(verified_process.raw())? != target.creation_time {
-        return Err(runtime_identity_error());
+    let process_ids = top_level_windows
+        .into_iter()
+        .map(|window| window.process_id)
+        .collect::<HashSet<_>>();
+    if process_ids.is_empty() {
+        return Ok(RuntimeInspection::NotRunning);
     }
 
-    let windows = collect_top_level_windows(&[target.process_id])?;
-    let [window] = windows.as_slice() else {
-        return Err(runtime_identity_error());
-    };
-    unsafe { PostMessageW(Some(window.hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)) }
-        .map_err(|_| runtime_identity_error())?;
-    Ok(())
+    let mut instances = process_ids
+        .into_iter()
+        .map(|process_id| {
+            let process = open_verified_process(
+                process_id,
+                &package_family_name,
+                PROCESS_QUERY_LIMITED_INFORMATION,
+            )?;
+            let creation_time = process_creation_time(process.raw())?;
+            Ok(TrustedRuntimeInstance::Windows {
+                package_family_name: package_family_name.clone(),
+                process_id,
+                creation_time,
+            })
+        })
+        .collect::<Result<Vec<_>, InstallerError>>()?;
+    instances.sort_by_key(|instance| instance.restart_identity_key());
+    Ok(RuntimeInspection::Running(instances))
 }
 
-/// Force-stop only after the service has obtained the second explicit user
-/// confirmation. The concrete process is re-inspected, package-verified, and
-/// creation-time-verified immediately before `TerminateProcess`.
+/// Force-stop every exact bound runtime after the one explicit user
+/// confirmation. Each concrete process is package- and creation-time-verified
+/// immediately before `TerminateProcess`; an exited process is harmless, but
+/// a recycled PID or changed package identity fails closed and stops launch.
 pub(super) fn force_shutdown(
     installed: &InstalledApplication,
     instances: &[TrustedRuntimeInstance],
 ) -> Result<(), InstallerError> {
-    let target = bound_windows_runtime(installed, instances)?;
-    ensure_current_runtime_matches(installed, instances)?;
-
-    let process = open_verified_process(
-        target.process_id,
-        &target.package_family_name,
-        PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
-    )?;
-    if process_creation_time(process.raw())? != target.creation_time {
-        return Err(runtime_identity_error());
+    for target in bound_windows_runtimes(installed, instances)? {
+        let process = match unsafe {
+            OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+                false,
+                target.process_id,
+            )
+        } {
+            Ok(handle) => OwnedHandle::new(handle)?,
+            Err(_) if unsafe { GetLastError() } == ERROR_INVALID_PARAMETER => continue,
+            Err(_) => return Err(runtime_identity_error()),
+        };
+        if package_family_for_process(process.raw()).as_deref()
+            != Some(target.package_family_name.as_str())
+            || process_creation_time(process.raw())? != target.creation_time
+        {
+            return Err(runtime_identity_error());
+        }
+        unsafe { TerminateProcess(process.raw(), 1) }.map_err(|_| force_shutdown_error())?;
     }
-
-    unsafe { TerminateProcess(process.raw(), 1) }.map_err(|_| force_shutdown_error())?;
     Ok(())
 }
 
-/// Check the original process only. It deliberately does not call general
-/// discovery: once the bound primary window exits, remaining package helpers
-/// must not delay restart or become a replacement shutdown target.
+/// Check every original exact process only. It deliberately does not call
+/// general discovery: a later process is never a replacement shutdown target,
+/// while a PID reuse with mismatched evidence fails closed.
 pub(super) fn is_instance_running(
     installed: &InstalledApplication,
     instances: &[TrustedRuntimeInstance],
 ) -> Result<bool, InstallerError> {
-    let target = bound_windows_runtime(installed, instances)?;
-    let process =
-        match unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, target.process_id) } {
+    for target in bound_windows_runtimes(installed, instances)? {
+        let process = match unsafe {
+            OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, target.process_id)
+        } {
             Ok(handle) => OwnedHandle::new(handle)?,
-            Err(_) if unsafe { GetLastError() } == ERROR_INVALID_PARAMETER => return Ok(false),
+            Err(_) if unsafe { GetLastError() } == ERROR_INVALID_PARAMETER => continue,
             Err(_) => return Err(runtime_identity_error()),
         };
-
-    if package_family_for_process(process.raw()).as_deref()
-        != Some(target.package_family_name.as_str())
-        || process_creation_time(process.raw())? != target.creation_time
-    {
-        return Err(runtime_identity_error());
+        if package_family_for_process(process.raw()).as_deref()
+            != Some(target.package_family_name.as_str())
+            || process_creation_time(process.raw())? != target.creation_time
+        {
+            return Err(runtime_identity_error());
+        }
+        return Ok(true);
     }
-    Ok(true)
+    Ok(false)
 }
 
 #[derive(Clone)]
@@ -182,7 +168,6 @@ struct WindowsRuntimeTarget {
 
 #[derive(Clone, Copy)]
 struct TopLevelWindow {
-    hwnd: HWND,
     process_id: u32,
 }
 
@@ -209,39 +194,39 @@ fn trusted_package_family_name(installed: &InstalledApplication) -> Result<Strin
     Ok(package_family_name.to_owned())
 }
 
-fn bound_windows_runtime(
+fn bound_windows_runtimes(
     installed: &InstalledApplication,
     instances: &[TrustedRuntimeInstance],
-) -> Result<WindowsRuntimeTarget, InstallerError> {
+) -> Result<Vec<WindowsRuntimeTarget>, InstallerError> {
     let expected_family = trusted_package_family_name(installed)?;
-    let [TrustedRuntimeInstance::Windows {
-        package_family_name,
-        process_id,
-        creation_time,
-    }] = instances
-    else {
-        return Err(runtime_identity_error());
-    };
-    if package_family_name != &expected_family || *process_id == 0 || *creation_time == 0 {
+    if instances.is_empty() {
         return Err(runtime_identity_error());
     }
-    Ok(WindowsRuntimeTarget {
-        package_family_name: expected_family,
-        process_id: *process_id,
-        creation_time: *creation_time,
-    })
-}
-
-fn ensure_current_runtime_matches(
-    installed: &InstalledApplication,
-    instances: &[TrustedRuntimeInstance],
-) -> Result<(), InstallerError> {
-    match inspect(installed)? {
-        RuntimeInspection::Running(current) if current == instances => Ok(()),
-        RuntimeInspection::NotRunning
-        | RuntimeInspection::Running(_)
-        | RuntimeInspection::Ambiguous => Err(runtime_identity_error()),
-    }
+    let mut seen = HashSet::new();
+    instances
+        .iter()
+        .map(|instance| match instance {
+            TrustedRuntimeInstance::Windows {
+                package_family_name,
+                process_id,
+                creation_time,
+            } if package_family_name == &expected_family
+                && *process_id != 0
+                && *creation_time != 0 =>
+            {
+                Ok(WindowsRuntimeTarget {
+                    package_family_name: expected_family.clone(),
+                    process_id: *process_id,
+                    creation_time: *creation_time,
+                })
+            }
+            _ => Err(runtime_identity_error()),
+        })
+        .filter(|target| match target {
+            Ok(target) => seen.insert((target.process_id, target.creation_time)),
+            Err(_) => true,
+        })
+        .collect()
 }
 
 fn matching_process_ids(package_family_name: &str) -> Result<Vec<u32>, InstallerError> {
@@ -326,7 +311,7 @@ unsafe extern "system" fn collect_window_callback(hwnd: HWND, lparam: LPARAM) ->
         GetWindowThreadProcessId(hwnd, Some(&mut process_id));
     }
     if collection.candidate_process_ids.contains(&process_id) {
-        collection.windows.push(TopLevelWindow { hwnd, process_id });
+        collection.windows.push(TopLevelWindow { process_id });
     }
     BOOL(1)
 }

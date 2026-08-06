@@ -217,6 +217,16 @@ function createWrapper() {
   return { queryClient, wrapper };
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 beforeEach(() => {
   mocks.listeners.clear();
   mocks.listen.mockClear();
@@ -308,6 +318,163 @@ describe("deriveInstallerViewState", () => {
       ),
     ).toBe("unsupported_architecture");
   });
+});
+
+describe("Codex desktop version field states", () => {
+  it("keeps initial local and remote queries as explicit loading states", async () => {
+    const localDeferred = createDeferred<LocalInstallStatus>();
+    const remoteDeferred = createDeferred<RemoteReleaseStatus>();
+    mocks.api.getLocalStatus.mockReturnValue(localDeferred.promise);
+    mocks.api.checkLatest.mockReturnValue(remoteDeferred.promise);
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useCodexDesktopInstaller(), {
+      wrapper,
+    });
+
+    await waitFor(() => {
+      expect(result.current.localVersion).toEqual({ kind: "loading" });
+      expect(result.current.remoteVersion).toEqual({ kind: "loading" });
+    });
+    expect(result.current.statusMessageKey).toBe(
+      "codexDesktop.version.localLoading",
+    );
+    expect(result.current.primaryAction).toBeNull();
+  });
+
+  it("retains a version during background refresh while disabling update and preserving launch", async () => {
+    const refreshDeferred = createDeferred<RemoteReleaseStatus>();
+    mocks.api.getLocalStatus.mockResolvedValue(installedOld);
+    mocks.api.checkLatest.mockImplementation((force: boolean) =>
+      force ? refreshDeferred.promise : Promise.resolve(remote),
+    );
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useCodexDesktopInstaller(), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.state).toBe("ready_update"));
+
+    let refresh!: Promise<void>;
+    await act(async () => {
+      refresh = result.current.refresh();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(result.current.remoteVersion).toEqual({
+        kind: "refreshing",
+        version: remote.displayVersion,
+      });
+    });
+    expect(result.current.statusMessageKey).toBe(
+      "codexDesktop.version.refreshing",
+    );
+    expect(result.current.canUpdate).toBe(false);
+    expect(result.current.canLaunch).toBe(true);
+    expect(result.current.primaryAction).toBe("update");
+    expect(result.current.primaryDisabled).toBe(true);
+
+    await act(async () => {
+      refreshDeferred.resolve(remote);
+      await refresh;
+    });
+  });
+
+  it("retains prior remote data after a refetch failure and keeps launch usable", async () => {
+    mocks.api.getLocalStatus.mockResolvedValue(installedOld);
+    mocks.api.checkLatest.mockImplementation((force: boolean) =>
+      force
+        ? Promise.reject({
+            ...makeRedactedDownloadError(),
+            code: "SOURCE_UNAVAILABLE",
+            stage: null,
+            messageKey: "codexDesktop.error.sourceUnavailable",
+          } satisfies InstallerErrorDto)
+        : Promise.resolve(remote),
+    );
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useCodexDesktopInstaller(), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.state).toBe("ready_update"));
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    await waitFor(() => {
+      expect(result.current.remoteVersion).toEqual({
+        kind: "refetch_error",
+        version: remote.displayVersion,
+      });
+    });
+    expect(result.current.statusMessageKey).toBe(
+      "codexDesktop.version.refreshNetworkFailed",
+    );
+    expect(result.current.canUpdate).toBe(false);
+    expect(result.current.canLaunch).toBe(true);
+    expect(result.current.state).toBe("ready_update");
+    expect(result.current.primaryAction).toBe("update");
+    expect(result.current.primaryDisabled).toBe(true);
+  });
+
+  it("uses an explicit initial-network-error state and retry action without cached data", async () => {
+    mocks.api.checkLatest.mockRejectedValue({
+      ...makeRedactedDownloadError(),
+      code: "SOURCE_UNAVAILABLE",
+      stage: null,
+      messageKey: "codexDesktop.error.sourceUnavailable",
+    } satisfies InstallerErrorDto);
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useCodexDesktopInstaller(), {
+      wrapper,
+    });
+
+    await waitFor(() => {
+      expect(result.current.remoteVersion).toEqual({
+        kind: "initial_network_error",
+      });
+    });
+    expect(result.current.statusMessageKey).toBe(
+      "codexDesktop.version.fetchFailed",
+    );
+    expect(result.current.canRetryRemote).toBe(true);
+    expect(result.current.primaryAction).toBe("retry");
+  });
+
+  it.each([
+    [
+      "platform release is absent",
+      "RELEASE_NOT_AVAILABLE",
+      "platform_unavailable",
+      "codexDesktop.version.platformUnavailable",
+    ],
+    [
+      "release metadata is invalid",
+      "RELEASE_METADATA_INVALID",
+      "metadata_error",
+      "codexDesktop.version.metadataInvalid",
+    ],
+  ] as const)(
+    "maps %s to its distinct remote state",
+    async (_caseName, code, kind, statusMessageKey) => {
+      mocks.api.checkLatest.mockRejectedValue({
+        ...makeRedactedDownloadError(),
+        code,
+        stage: null,
+        messageKey: "codexDesktop.error.sourceUnavailable",
+      } satisfies InstallerErrorDto);
+      const { wrapper } = createWrapper();
+      const { result } = renderHook(() => useCodexDesktopInstaller(), {
+        wrapper,
+      });
+
+      await waitFor(() => {
+        expect(result.current.remoteVersion.kind).toBe(kind);
+      });
+      expect(result.current.statusMessageKey).toBe(statusMessageKey);
+    },
+  );
 });
 
 describe("shouldAcceptJobSnapshot", () => {

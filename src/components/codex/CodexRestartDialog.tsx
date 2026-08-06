@@ -1,5 +1,6 @@
-import { Loader2, RotateCw, TriangleAlert } from "lucide-react";
+import { Loader2, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -8,96 +9,175 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import type { CodexDesktopRestartPromptReason } from "@/types/codexDesktop";
 import type { CodexRestartDialogState } from "@/hooks/useCodexRestartCoordinator";
 
 interface CodexRestartDialogProps {
   dialog: CodexRestartDialogState;
-  isRestarting: boolean;
-  onRestart: () => void;
-  onConfirmForceRestart: () => void;
+  onConfirm: () => void;
+  onRetry: () => void;
   onDefer: () => void;
 }
 
+function confirmationReasonText(
+  reason: CodexDesktopRestartPromptReason,
+  t: (key: string, options?: { defaultValue?: string }) => string,
+): string {
+  switch (reason) {
+    case "unique_runtime":
+      return t("codexRestart.confirm.uniqueRuntime", {
+        defaultValue: "Codex 正在运行。",
+      });
+    case "multiple_instances":
+      return t("codexRestart.confirm.multipleInstances", {
+        defaultValue: "检测到多个正在运行的 Codex。",
+      });
+    case "multiple_installations":
+      return t("codexRestart.confirm.multipleInstallations", {
+        defaultValue: "检测到多个可用的 Codex 安装。",
+      });
+    case "identity_binding_ambiguous":
+      return t("codexRestart.confirm.identityAmbiguous", {
+        defaultValue: "当前无法确认唯一的 Codex 实例。",
+      });
+  }
+}
+
 /**
- * Presents only the renderer-safe restart choices. The process identity and
- * force token remain opaque and entirely backend-controlled.
+ * Renders only the renderer-safe restart choices. The backend retains all
+ * runtime identity and force-close details; this dialog receives opaque tokens
+ * through its state but never displays them.
  */
 export function CodexRestartDialog({
   dialog,
-  isRestarting,
-  onRestart,
-  onConfirmForceRestart,
+  onConfirm,
+  onRetry,
   onDefer,
 }: CodexRestartDialogProps) {
   const { t } = useTranslation();
-  const isForceConfirmation = dialog?.kind === "force";
+  const isProgress = dialog?.kind === "progress";
+  const confirmationReason =
+    dialog?.kind === "confirm"
+      ? confirmationReasonText(dialog.reason, t)
+      : null;
 
   return (
     <Dialog
       open={dialog !== null}
       onOpenChange={(open) => {
-        if (!open && dialog !== null && !isRestarting) {
+        if (!open && dialog !== null && !isProgress) {
           onDefer();
         }
       }}
     >
-      <DialogContent className="max-w-sm" zIndex="top">
-        <DialogHeader className="space-y-3 border-b-0 bg-transparent pb-0">
-          <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
-            {isForceConfirmation ? (
-              <TriangleAlert className="h-5 w-5 text-amber-500" />
-            ) : (
-              <RotateCw className="h-5 w-5 text-blue-500" />
-            )}
-            {isForceConfirmation
-              ? t("codexRestart.forceTitle", {
-                  defaultValue: "Codex 未能正常退出",
-                })
-              : t("codexRestart.title", { defaultValue: "配置已更新" })}
-          </DialogTitle>
-          <DialogDescription className="whitespace-pre-line text-sm leading-relaxed">
-            {isForceConfirmation
-              ? t("codexRestart.forceDescription", {
-                  defaultValue:
-                    "配置已保存，但 Codex 没有在等待时间内正常退出。确认后才会强制关闭已验证的实例并重新启动；你也可以稍后手动重启。",
-                })
-              : t("codexRestart.description", {
-                  defaultValue:
-                    "当前 Codex 正在运行。重启后会加载刚刚保存的新配置。",
+      <DialogContent
+        className="max-w-sm"
+        zIndex="top"
+        onEscapeKeyDown={(event) => {
+          if (isProgress) event.preventDefault();
+        }}
+      >
+        {dialog?.kind === "confirm" && (
+          <>
+            <DialogHeader className="space-y-3 border-b-0 bg-transparent pb-0">
+              <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
+                <TriangleAlert className="h-5 w-5 text-amber-500" />
+                {t("codexRestart.confirm.title", {
+                  defaultValue: "需要重启 Codex",
                 })}
-          </DialogDescription>
-        </DialogHeader>
+              </DialogTitle>
+              <DialogDescription className="space-y-2 text-sm leading-relaxed">
+                <span className="block">
+                  {t("codexRestart.confirm.saved", {
+                    defaultValue: "配置已保存。",
+                  })}
+                </span>
+                <span className="block">{confirmationReason}</span>
+                <span className="block">
+                  {t("codexRestart.confirm.risk", {
+                    defaultValue:
+                      "继续后将强制关闭所有匹配的 Codex。未保存的工作可能丢失，随后只会启动一个实例。",
+                  })}
+                </span>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex gap-2 border-t-0 bg-transparent pt-2 sm:justify-end">
+              <Button
+                autoFocus
+                type="button"
+                variant="outline"
+                onClick={onDefer}
+              >
+                {t("codexRestart.confirm.manual", {
+                  defaultValue: "稍后手动重启",
+                })}
+              </Button>
+              <Button type="button" variant="destructive" onClick={onConfirm}>
+                {t("codexRestart.confirm.force", {
+                  defaultValue: "强制关闭并重启",
+                })}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
 
-        <DialogFooter className="flex gap-2 border-t-0 bg-transparent pt-2 sm:justify-end">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isRestarting}
-            onClick={onDefer}
-          >
-            {t("codexRestart.laterAction", {
-              defaultValue: "稍后手动重启",
-            })}
-          </Button>
-          <Button
-            type="button"
-            variant={isForceConfirmation ? "destructive" : "default"}
-            disabled={isRestarting}
-            onClick={isForceConfirmation ? onConfirmForceRestart : onRestart}
-          >
-            {isRestarting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : null}
-            {isForceConfirmation
-              ? t("codexRestart.forceAction", {
-                  defaultValue: "强制退出并重启",
-                })
-              : t("codexRestart.restartAction", {
-                  defaultValue: "重启 Codex",
+        {isProgress && (
+          <DialogHeader className="space-y-3 border-b-0 bg-transparent pb-0">
+            <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
+              <Loader2
+                aria-hidden="true"
+                className="h-5 w-5 animate-spin text-blue-500"
+              />
+              {t("codexRestart.progress", {
+                defaultValue: "正在重启 Codex…",
+              })}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              {t("codexRestart.progressDescription", {
+                defaultValue: "请稍候。",
+              })}
+            </DialogDescription>
+          </DialogHeader>
+        )}
+
+        {dialog?.kind === "incomplete" && (
+          <>
+            <DialogHeader className="space-y-3 border-b-0 bg-transparent pb-0">
+              <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
+                <TriangleAlert className="h-5 w-5 text-amber-500" />
+                {t("codexRestart.incomplete.title", {
+                  defaultValue: "Codex 重启未完成",
                 })}
-          </Button>
-        </DialogFooter>
+              </DialogTitle>
+              <DialogDescription className="text-sm leading-relaxed">
+                {t("codexRestart.incomplete.body", {
+                  defaultValue: "配置已保存，但 Codex 重启未完成。",
+                })}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex gap-2 border-t-0 bg-transparent pt-2 sm:justify-end">
+              <Button
+                autoFocus
+                type="button"
+                variant="outline"
+                onClick={onDefer}
+              >
+                {t("codexRestart.incomplete.manual", {
+                  defaultValue: "我将手动重启",
+                })}
+              </Button>
+              <Button
+                type="button"
+                disabled={!dialog.retryToken}
+                onClick={onRetry}
+              >
+                {t("codexRestart.incomplete.retry", {
+                  defaultValue: "再次尝试重启",
+                })}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -16,16 +16,23 @@ function createViewModel(
 ): CodexDesktopInstallerViewModel {
   return {
     state: "ready_install",
-    localVersion: undefined,
-    remoteVersion: "26.1.0",
+    localVersion: { kind: "not_installed" },
+    remoteVersion: { kind: "available", version: "26.1.0" },
+    canInstall: true,
+    canUpdate: false,
+    canLaunch: false,
+    canRetryRemote: false,
+    statusMessageKey: "codexDesktop.state.readyInstall",
     progress: undefined,
     primaryAction: "install",
     primaryDisabled: false,
     canCancel: false,
     error: null,
+    isActing: false,
     isRefreshing: false,
     refresh: vi.fn().mockResolvedValue(undefined),
     runPrimaryAction: vi.fn().mockResolvedValue(undefined),
+    launch: vi.fn().mockResolvedValue(undefined),
     cancel: vi.fn().mockResolvedValue(undefined),
     copyErrorDetails: vi.fn().mockResolvedValue(undefined),
     openLogs: vi.fn().mockResolvedValue(undefined),
@@ -41,7 +48,10 @@ describe("CodexDesktopInstallerCard", () => {
   it("offers Update Codex as the only action when a newer release is available", () => {
     const installer = createViewModel({
       state: "ready_update",
-      localVersion: "26.0.0",
+      localVersion: { kind: "installed", version: "26.0.0" },
+      canInstall: false,
+      canUpdate: true,
+      canLaunch: true,
       primaryAction: "update",
     });
     mocks.useInstaller.mockReturnValue(installer);
@@ -59,6 +69,115 @@ describe("CodexDesktopInstallerCard", () => {
     ).not.toBeInTheDocument();
 
     fireEvent.click(updateButton);
+    expect(installer.runPrimaryAction).toHaveBeenCalledOnce();
+  });
+
+  it("renders loading fields explicitly instead of reporting unavailable or not installed", () => {
+    mocks.useInstaller.mockReturnValue(
+      createViewModel({
+        state: "checking",
+        localVersion: { kind: "loading" },
+        remoteVersion: { kind: "loading" },
+        canInstall: false,
+        primaryAction: null,
+        primaryDisabled: true,
+        statusMessageKey: "codexDesktop.version.localLoading",
+      }),
+    );
+
+    render(<CodexDesktopInstallerCard />);
+
+    expect(screen.getAllByText("正在检测本地版本")).not.toHaveLength(0);
+    expect(screen.getByText("正在获取最新版本号")).toBeVisible();
+    expect(
+      screen.queryByText("codexDesktop.details.unavailable"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("common.notInstalled")).not.toBeInTheDocument();
+  });
+
+  it("keeps launch usable while a retained remote version is refreshing and update is disabled", () => {
+    const installer = createViewModel({
+      state: "ready_update",
+      localVersion: { kind: "installed", version: "26.0.0" },
+      remoteVersion: { kind: "refreshing", version: "26.1.0" },
+      canInstall: false,
+      canUpdate: false,
+      canLaunch: true,
+      statusMessageKey: "codexDesktop.version.refreshing",
+      primaryAction: "update",
+      primaryDisabled: true,
+      isRefreshing: true,
+    });
+    mocks.useInstaller.mockReturnValue(installer);
+
+    render(<CodexDesktopInstallerCard />);
+
+    expect(screen.getByText("26.1.0")).toBeVisible();
+    expect(screen.getByText("正在刷新最新版本")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "codexDesktop.actions.update" }),
+    ).toBeDisabled();
+    const launchButton = screen.getByRole("button", {
+      name: "codexDesktop.actions.launch",
+    });
+    expect(launchButton).toBeEnabled();
+    fireEvent.click(launchButton);
+    expect(installer.launch).toHaveBeenCalledOnce();
+  });
+
+  it("retains the displayed version after a refetch error without generic unavailable wording", () => {
+    const installer = createViewModel({
+      state: "ready_update",
+      localVersion: { kind: "installed", version: "26.0.0" },
+      remoteVersion: { kind: "refetch_error", version: "26.1.0" },
+      canInstall: false,
+      canUpdate: false,
+      canLaunch: true,
+      canRetryRemote: true,
+      statusMessageKey: "codexDesktop.version.refreshNetworkFailed",
+      primaryAction: "update",
+      primaryDisabled: true,
+    });
+    mocks.useInstaller.mockReturnValue(installer);
+
+    render(<CodexDesktopInstallerCard />);
+
+    expect(screen.getByText("26.1.0")).toBeVisible();
+    expect(
+      screen.getByText("获取最新版本失败，请检查网络是否正常"),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "codexDesktop.actions.update" }),
+    ).toBeDisabled();
+    const launchButton = screen.getByRole("button", {
+      name: "codexDesktop.actions.launch",
+    });
+    expect(launchButton).toBeEnabled();
+    fireEvent.click(launchButton);
+    expect(installer.launch).toHaveBeenCalledOnce();
+    expect(
+      screen.queryByText("codexDesktop.details.unavailable"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows an initial network failure as retryable instead of unavailable", () => {
+    const installer = createViewModel({
+      state: "remote_unavailable",
+      localVersion: { kind: "not_installed" },
+      remoteVersion: { kind: "initial_network_error" },
+      canInstall: false,
+      canRetryRemote: true,
+      statusMessageKey: "codexDesktop.version.fetchFailed",
+      primaryAction: "retry",
+    });
+    mocks.useInstaller.mockReturnValue(installer);
+
+    render(<CodexDesktopInstallerCard />);
+
+    expect(screen.getAllByText("获取失败")).not.toHaveLength(0);
+    fireEvent.click(
+      screen.getByRole("button", { name: "codexDesktop.actions.retry" }),
+    );
     expect(installer.runPrimaryAction).toHaveBeenCalledOnce();
   });
 
@@ -168,9 +287,13 @@ describe("CodexDesktopInstallerCard", () => {
     (state, localVersion) => {
       const installer = createViewModel({
         state,
-        localVersion,
+        localVersion: { kind: "installed", version: localVersion },
         remoteVersion:
-          state === "remote_unavailable_installed" ? undefined : "26.1.0",
+          state === "remote_unavailable_installed"
+            ? { kind: "initial_network_error" }
+            : { kind: "available", version: "26.1.0" },
+        canInstall: false,
+        canLaunch: true,
         primaryAction: "launch",
       });
       mocks.useInstaller.mockReturnValue(installer);
@@ -225,7 +348,9 @@ describe("CodexDesktopInstallerCard", () => {
     mocks.useInstaller.mockReturnValue(
       createViewModel({
         state: "unsupported_architecture",
-        remoteVersion: undefined,
+        localVersion: { kind: "error" },
+        remoteVersion: { kind: "loading" },
+        statusMessageKey: "codexDesktop.state.unsupportedArchitecture",
         primaryAction: null,
         primaryDisabled: true,
       }),

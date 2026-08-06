@@ -201,6 +201,37 @@ export const handlers = [
     success({ state: "not_running" }),
   ),
 
+  // Keep the App integration harness fully fake. These responses intentionally
+  // describe a non-installed desktop client and never invoke or inspect a real
+  // Codex/ChatGPT process, package, or local configuration.
+  http.post(`${TAURI_ENDPOINT}/codex_desktop_get_local_status`, () =>
+    success({
+      state: "not_installed",
+      platform: "windows",
+      architecture: "x86_64",
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/codex_desktop_check_latest`, () =>
+    success({
+      releaseId:
+        "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      displayVersion: "0.0.0-test",
+      platformVersion: {
+        kind: "windows_msix",
+        major: 0,
+        minor: 0,
+        build: 0,
+        revision: 1,
+      },
+      expectedSize: 0,
+      checkedAt: "2026-01-01T00:00:00.000Z",
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/codex_desktop_get_job`, () => success(null)),
+  http.post(`${TAURI_ENDPOINT}/request_codex_desktop_restart`, () =>
+    success({ state: "not_running" }),
+  ),
+
   http.post(`${TAURI_ENDPOINT}/open_external`, () => success(true)),
 
   http.post(`${TAURI_ENDPOINT}/list_sessions`, () => success(listSessions())),

@@ -752,15 +752,6 @@ pub(crate) fn inspect_runtime(
     }
 }
 
-pub(crate) fn request_graceful_shutdown(
-    runner: &dyn CommandRunner,
-    filesystem: &dyn MacosFilesystem,
-    installed: &InstalledApplication,
-    instances: &[TrustedRuntimeInstance],
-) -> Result<(), InstallerError> {
-    terminate_runtime(runner, filesystem, installed, instances, "normal")
-}
-
 pub(crate) fn force_shutdown(
     runner: &dyn CommandRunner,
     filesystem: &dyn MacosFilesystem,

@@ -5,12 +5,14 @@
 //! already-constrained core adapters and exposes only the fixed V1 operations
 //! that the Tauri command shell delegates to.
 
+mod restart_plan;
+
 use std::{
     collections::HashMap,
     panic::AssertUnwindSafe,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use chrono::Utc;
@@ -23,29 +25,35 @@ use crate::codex_desktop::{
     jobs::{JobCancellation, JobEventSink, JobStore},
     platform::{
         installed_application_matches_release, CodexDesktopPlatform, PlatformProgressReporter,
-        PlatformProgressSink, RuntimeInspection, TrustedRuntimeInstance,
+        PlatformProgressSink, RestartCandidateInspection, RuntimeInspection,
+        TrustedInstallationCandidate,
     },
     source::{CacheMode, ReleaseSource},
     temp::JobTempDir,
     types::{
-        CodexDesktopRestartOutcome, CodexDesktopRestartPhase, CodexDesktopRestartUnavailableReason,
-        CodexDesktopRuntimeAmbiguity, CodexDesktopRuntimeStatus, CpuArchitecture, DesktopPlatform,
-        InstallResult, InstalledApplication, InstallerWarningCode, JobProgress, JobSnapshot,
-        JobStage, LocalInstallStatus, ProgressPhase, ReleaseDescriptor, RemoteReleaseStatus,
+        CodexDesktopManualRestartReason, CodexDesktopRestartOutcome, CodexDesktopRuntimeAmbiguity,
+        CodexDesktopRuntimeStatus, CpuArchitecture, DesktopPlatform, InstallResult,
+        InstalledApplication, InstallerWarningCode, JobProgress, JobSnapshot, JobStage,
+        LocalInstallStatus, ProgressPhase, ReleaseDescriptor, RemoteReleaseStatus,
         StartInstallRequest, UnsupportedReason,
     },
     verify::{ensure_required_disk_space, DiskSpaceProbe},
 };
+
+#[cfg(test)]
+use crate::codex_desktop::platform::TrustedRuntimeInstance;
+
+use self::restart_plan::{RestartInstallationRuntime, RestartPlan};
 
 /// Fixed event name used by the Tauri integration adapter.
 pub const JOB_UPDATED_EVENT: &str = "codex-desktop-installer://job-updated";
 
 const PROGRESS_MINIMUM_INTERVAL: Duration = Duration::from_millis(100);
 const PROGRESS_MINIMUM_BYTE_DELTA: u64 = 1024 * 1024;
-const RESTART_GRACEFUL_QUIT_TIMEOUT: Duration = Duration::from_secs(8);
+const RESTART_CLOSE_TIMEOUT: Duration = Duration::from_secs(8);
 const RESTART_LAUNCH_VERIFY_TIMEOUT: Duration = Duration::from_secs(15);
 const RESTART_POLL_INTERVAL: Duration = Duration::from_millis(200);
-const RESTART_FORCE_TOKEN_TTL: Duration = Duration::from_secs(120);
+const RESTART_CAPABILITY_TTL: Duration = Duration::from_secs(120);
 
 /// Time boundary for deterministic service tests and complete job snapshots.
 pub trait InstallerClock: Send + Sync {
@@ -118,40 +126,74 @@ struct CheckedRelease {
 
 #[derive(Debug, Clone, Copy)]
 struct RestartTiming {
-    graceful_quit_timeout: Duration,
+    close_timeout: Duration,
     launch_verify_timeout: Duration,
     poll_interval: Duration,
-    force_token_ttl: Duration,
+    capability_ttl: Duration,
 }
 
 impl Default for RestartTiming {
     fn default() -> Self {
         Self {
-            graceful_quit_timeout: RESTART_GRACEFUL_QUIT_TIMEOUT,
+            close_timeout: RESTART_CLOSE_TIMEOUT,
             launch_verify_timeout: RESTART_LAUNCH_VERIFY_TIMEOUT,
             poll_interval: RESTART_POLL_INTERVAL,
-            force_token_ttl: RESTART_FORCE_TOKEN_TTL,
+            capability_ttl: RESTART_CAPABILITY_TTL,
         }
     }
 }
 
 #[derive(Debug, Clone)]
 struct PendingRestart {
-    installed: InstalledApplication,
-    instances: Vec<TrustedRuntimeInstance>,
-    expires_at: Instant,
+    action: PendingRestartAction,
+    app_identity: String,
+    selected_installation: String,
+    plan_revision: String,
+    expires_at_millis: u64,
 }
 
-#[derive(Debug, Clone)]
-struct RuntimeTarget {
-    installed: InstalledApplication,
-    instances: Vec<TrustedRuntimeInstance>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PendingRestartAction {
+    Confirm,
+    Retry,
 }
 
 #[derive(Default)]
 struct RestartState {
     in_progress: bool,
-    pending_force: HashMap<String, PendingRestart>,
+    pending: HashMap<String, PendingRestart>,
+}
+
+/// A tiny injectable clock used only for opaque restart capability expiry.
+/// It intentionally does not expose wall-clock values through IPC; fake tests
+/// can advance it without sleeping or touching any desktop application.
+trait RestartCapabilityClock: Send + Sync {
+    fn now_millis(&self) -> u64;
+}
+
+#[derive(Debug, Default)]
+struct SystemRestartCapabilityClock;
+
+impl RestartCapabilityClock for SystemRestartCapabilityClock {
+    fn now_millis(&self) -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::ZERO)
+            .as_millis()
+            .try_into()
+            .unwrap_or(u64::MAX)
+    }
+}
+
+/// Concatenating two independent UUID v4 values leaves 244 random bits after
+/// their version/variant bits. The value remains an opaque printable token,
+/// but now exceeds the shared 128-bit capability-entropy floor.
+fn new_opaque_restart_capability_token() -> String {
+    format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    )
 }
 
 /// Process-local V1 installer service.
@@ -172,6 +214,7 @@ pub struct CodexDesktopService {
     event_sink: Arc<ForwardingJobEventSink>,
     log_directory_opener: Arc<Mutex<Option<Arc<dyn LogDirectoryOpener>>>>,
     restart_timing: RestartTiming,
+    restart_capability_clock: Arc<dyn RestartCapabilityClock>,
     restart_state: Arc<Mutex<RestartState>>,
 }
 
@@ -180,51 +223,19 @@ enum InstallFlowOutcome {
     LaunchedExisting(InstalledApplication),
 }
 
-fn runtime_status_from_local_install(local: &LocalInstallStatus) -> CodexDesktopRuntimeStatus {
-    match local {
-        LocalInstallStatus::NotInstalled { .. } => CodexDesktopRuntimeStatus::NotInstalled,
-        LocalInstallStatus::Installed { .. } => CodexDesktopRuntimeStatus::NotRunning,
-        LocalInstallStatus::Unsupported { reason } => CodexDesktopRuntimeStatus::Unsupported {
-            reason: reason.clone(),
-        },
-        LocalInstallStatus::Ambiguous { .. } => CodexDesktopRuntimeStatus::Ambiguous {
-            reason: CodexDesktopRuntimeAmbiguity::Installations,
-        },
-    }
+enum RestartPlanInspection {
+    NotInstalled,
+    UntrustedTarget,
+    Unsupported(UnsupportedReason),
+    Plan(RestartPlan),
 }
 
-fn restart_unavailable(status: CodexDesktopRuntimeStatus) -> CodexDesktopRestartOutcome {
-    let reason = match status {
-        CodexDesktopRuntimeStatus::NotInstalled => {
-            CodexDesktopRestartUnavailableReason::NotInstalled
-        }
-        CodexDesktopRuntimeStatus::NotRunning => CodexDesktopRestartUnavailableReason::NotRunning,
-        CodexDesktopRuntimeStatus::Running => {
-            CodexDesktopRestartUnavailableReason::InstancesAmbiguous
-        }
-        CodexDesktopRuntimeStatus::Ambiguous {
-            reason: CodexDesktopRuntimeAmbiguity::Installations,
-        } => CodexDesktopRestartUnavailableReason::InstallationsAmbiguous,
-        CodexDesktopRuntimeStatus::Ambiguous {
-            reason: CodexDesktopRuntimeAmbiguity::Instances,
-        } => CodexDesktopRestartUnavailableReason::InstancesAmbiguous,
-        CodexDesktopRuntimeStatus::Ambiguous {
-            reason: CodexDesktopRuntimeAmbiguity::IdentityVerification,
-        } => CodexDesktopRestartUnavailableReason::IdentityVerification,
-        CodexDesktopRuntimeStatus::Unsupported { .. } => {
-            CodexDesktopRestartUnavailableReason::Unsupported
-        }
-    };
-    CodexDesktopRestartOutcome::Unavailable { reason }
-}
-
-fn restart_failed(
-    phase: CodexDesktopRestartPhase,
-    error: InstallerError,
-) -> CodexDesktopRestartOutcome {
-    CodexDesktopRestartOutcome::Failed {
-        phase,
-        error: error.to_dto(),
+fn manual_untrusted_restart() -> CodexDesktopRestartOutcome {
+    // Invalid/expired/reused capabilities intentionally collapse into the
+    // same safe manual path as an untrusted target. This avoids turning token
+    // probing into an oracle for local process or installation state.
+    CodexDesktopRestartOutcome::ManualRestartRequired {
+        reason: CodexDesktopManualRestartReason::UntrustedTarget,
     }
 }
 
@@ -244,6 +255,15 @@ impl CodexDesktopService {
     #[cfg(test)]
     fn with_restart_timing(mut self, restart_timing: RestartTiming) -> Self {
         self.restart_timing = restart_timing;
+        self
+    }
+
+    #[cfg(test)]
+    fn with_restart_capability_clock(
+        mut self,
+        restart_capability_clock: Arc<dyn RestartCapabilityClock>,
+    ) -> Self {
+        self.restart_capability_clock = restart_capability_clock;
         self
     }
 
@@ -275,6 +295,7 @@ impl CodexDesktopService {
             event_sink,
             log_directory_opener: Arc::new(Mutex::new(None)),
             restart_timing: RestartTiming::default(),
+            restart_capability_clock: Arc::new(SystemRestartCapabilityClock),
             restart_state: Arc::new(Mutex::new(RestartState::default())),
         }
     }
@@ -297,110 +318,148 @@ impl CodexDesktopService {
         self.platform.inspect_local().await
     }
 
-    /// Inspect whether exactly one trusted Codex Desktop runtime is available
-    /// for a restart. This never launches, closes, or exposes an OS process
-    /// identifier; it merely combines the existing trusted installation check
-    /// with platform-specific identity-bound runtime inspection.
+    /// Inspect the privacy-safe runtime state without selecting, closing, or
+    /// launching anything. Multiple exact candidates remain an actionable
+    /// restart-plan state rather than an automatic no-op; untrusted discovery
+    /// remains fail-closed.
     pub async fn get_runtime_status(&self) -> Result<CodexDesktopRuntimeStatus, InstallerError> {
-        Ok(self.inspect_runtime_target().await?.0)
-    }
-
-    /// Begin a capability-scoped restart. A normal close is requested only
-    /// after the service has found one exact trusted runtime target. A timeout
-    /// produces an opaque force-confirmation token; no force action happens in
-    /// this method.
-    pub async fn request_restart(&self) -> CodexDesktopRestartOutcome {
-        if !self.claim_restart_operation() {
-            return CodexDesktopRestartOutcome::Unavailable {
-                reason: CodexDesktopRestartUnavailableReason::InstancesAmbiguous,
-            };
-        }
-
-        let outcome = match self.inspect_runtime_target().await {
-            Err(error) => restart_failed(CodexDesktopRestartPhase::Detect, error),
-            Ok((status, None)) => restart_unavailable(status),
-            Ok((_, Some(target))) => {
-                if let Err(error) = self
-                    .platform
-                    .request_graceful_shutdown(&target.installed, &target.instances)
-                    .await
-                {
-                    restart_failed(CodexDesktopRestartPhase::Quit, error)
-                } else {
-                    match self.wait_for_bound_instances_exit(&target).await {
-                        Err(error) => restart_failed(CodexDesktopRestartPhase::Quit, error),
-                        Ok(true) => self.launch_and_verify_restart(&target.installed).await,
-                        Ok(false) => {
-                            let token = uuid::Uuid::new_v4().to_string();
-                            self.store_pending_force_restart(token.clone(), target);
-                            CodexDesktopRestartOutcome::ForceConfirmationRequired { token }
-                        }
-                    }
+        Ok(match self.inspect_restart_plan().await? {
+            RestartPlanInspection::NotInstalled => CodexDesktopRuntimeStatus::NotInstalled,
+            RestartPlanInspection::UntrustedTarget => CodexDesktopRuntimeStatus::UntrustedTarget,
+            RestartPlanInspection::Unsupported(reason) => {
+                CodexDesktopRuntimeStatus::Unsupported { reason }
+            }
+            RestartPlanInspection::Plan(plan) if plan.is_not_running() => {
+                CodexDesktopRuntimeStatus::NotRunning
+            }
+            RestartPlanInspection::Plan(plan) if plan.has_identity_binding_ambiguity() => {
+                CodexDesktopRuntimeStatus::Ambiguous {
+                    reason: CodexDesktopRuntimeAmbiguity::IdentityVerification,
                 }
             }
+            RestartPlanInspection::Plan(plan) if plan.installations.len() > 1 => {
+                CodexDesktopRuntimeStatus::Ambiguous {
+                    reason: CodexDesktopRuntimeAmbiguity::Installations,
+                }
+            }
+            RestartPlanInspection::Plan(plan) if plan.runtime_instances.len() > 1 => {
+                CodexDesktopRuntimeStatus::Ambiguous {
+                    reason: CodexDesktopRuntimeAmbiguity::Instances,
+                }
+            }
+            RestartPlanInspection::Plan(_) => CodexDesktopRuntimeStatus::Running,
+        })
+    }
+
+    /// Prepare the one explicit destructive confirmation. This call never
+    /// requests a graceful shutdown, force-closes a process, or launches an
+    /// application. All close/launch work happens only when the opaque token
+    /// is consumed by `continue_restart_with_force`.
+    pub async fn request_restart(&self) -> CodexDesktopRestartOutcome {
+        if !self.claim_restart_operation() {
+            return manual_untrusted_restart();
+        }
+
+        let outcome = match self.inspect_restart_plan().await {
+            Err(error) => {
+                log::warn!(
+                    "Codex restart plan could not be prepared: code={:?}",
+                    error.code()
+                );
+                CodexDesktopRestartOutcome::ManualRestartRequired {
+                    reason: CodexDesktopManualRestartReason::Unsupported,
+                }
+            }
+            Ok(RestartPlanInspection::UntrustedTarget) => manual_untrusted_restart(),
+            Ok(RestartPlanInspection::Unsupported(_)) => {
+                CodexDesktopRestartOutcome::ManualRestartRequired {
+                    reason: CodexDesktopManualRestartReason::Unsupported,
+                }
+            }
+            Ok(RestartPlanInspection::Plan(plan)) if plan.is_not_running() => {
+                CodexDesktopRestartOutcome::NotRunning
+            }
+            Ok(RestartPlanInspection::Plan(plan)) => {
+                let token = self.issue_restart_capability(&plan, PendingRestartAction::Confirm);
+                CodexDesktopRestartOutcome::ConfirmationRequired {
+                    token,
+                    reason: plan.prompt_reason(),
+                }
+            }
+            Ok(RestartPlanInspection::NotInstalled) => CodexDesktopRestartOutcome::NotRunning,
         };
 
         if !matches!(
             outcome,
-            CodexDesktopRestartOutcome::ForceConfirmationRequired { .. }
+            CodexDesktopRestartOutcome::ConfirmationRequired { .. }
         ) {
             self.complete_restart_operation();
         }
         outcome
     }
 
-    /// Continue only a previously timed-out restart after the renderer has
-    /// obtained a second explicit force confirmation. The opaque token is
-    /// single-use, short-lived, and internally bound to the original trusted
-    /// installation and runtime evidence.
+    /// Consume an opaque confirmation or retry capability and directly carry
+    /// out the force-close-and-relaunch algorithm. The capability is single
+    /// use; the current exact candidates and runtime evidence are always
+    /// re-enumerated so a process that appeared after confirmation is included
+    /// and no stale PID becomes a lifecycle target.
     pub async fn continue_restart_with_force(&self, token: &str) -> CodexDesktopRestartOutcome {
-        let Some(pending) = self.take_pending_force_restart(token) else {
-            return CodexDesktopRestartOutcome::Cancelled;
+        let Some(_pending) = self.take_restart_capability(token) else {
+            return manual_untrusted_restart();
         };
 
-        let outcome = match self.revalidate_bound_installation(&pending.installed).await {
-            Err(error) => restart_failed(CodexDesktopRestartPhase::ForceQuit, error),
-            Ok(()) => match self
-                .platform
-                .is_runtime_instance_running(&pending.installed, &pending.instances)
-                .await
-            {
-                Err(error) => restart_failed(CodexDesktopRestartPhase::ForceQuit, error),
-                Ok(false) => {
-                    // The original process exited while the user was deciding.
-                    // The subsequent launch remains bound to the installation
-                    // captured before graceful shutdown, not whichever local
-                    // record happens to be unique now.
-                    self.launch_and_verify_restart(&pending.installed).await
+        let outcome = match self.inspect_restart_plan().await {
+            Err(error) => {
+                log::warn!(
+                    "Codex restart execution plan could not be rebuilt: code={:?}",
+                    error.code()
+                );
+                CodexDesktopRestartOutcome::ManualRestartRequired {
+                    reason: CodexDesktopManualRestartReason::Unsupported,
                 }
-                Ok(true) => {
-                    let target = RuntimeTarget {
-                        installed: pending.installed.clone(),
-                        instances: pending.instances.clone(),
-                    };
-                    if let Err(error) = self
-                        .platform
-                        .force_shutdown(&target.installed, &target.instances)
-                        .await
+            }
+            Ok(RestartPlanInspection::UntrustedTarget) => manual_untrusted_restart(),
+            Ok(RestartPlanInspection::Unsupported(_)) => {
+                CodexDesktopRestartOutcome::ManualRestartRequired {
+                    reason: CodexDesktopManualRestartReason::Unsupported,
+                }
+            }
+            Ok(RestartPlanInspection::NotInstalled) => manual_untrusted_restart(),
+            Ok(RestartPlanInspection::Plan(plan)) if plan.has_identity_binding_ambiguity() => {
+                self.incomplete_restart(&plan)
+            }
+            Ok(RestartPlanInspection::Plan(plan)) => {
+                // This must happen before the first force-close. If a selected
+                // installation vanished or lost its exact identity, no live
+                // instance is touched and the renderer receives only the
+                // generic retry/manual recovery UI.
+                if self
+                    .revalidate_selected_installation(plan.selected())
+                    .await
+                    .is_err()
+                {
+                    self.incomplete_restart(&plan)
+                } else {
+                    let close_targets = plan.close_targets();
+                    let close_result = self.force_shutdown_targets(&close_targets).await;
+                    if close_result.is_ok()
+                        && self
+                            .wait_for_bound_instances_exit(&close_targets)
+                            .await
+                            .unwrap_or(false)
                     {
-                        restart_failed(CodexDesktopRestartPhase::ForceQuit, error)
-                    } else {
-                        match self.wait_for_bound_instances_exit(&target).await {
-                            Err(error) => {
-                                restart_failed(CodexDesktopRestartPhase::ForceQuit, error)
-                            }
-                            Ok(true) => self.launch_and_verify_restart(&target.installed).await,
-                            Ok(false) => restart_failed(
-                                CodexDesktopRestartPhase::ForceQuit,
-                                InstallerError::new(InstallerErrorCode::LaunchFailed)
-                                    .with_diagnostic_message(
-                                        "the trusted runtime did not exit after force shutdown",
-                                    ),
-                            ),
+                        match self.launch_and_verify_restart(plan.selected()).await {
+                            Ok(()) => CodexDesktopRestartOutcome::Restarted,
+                            Err(_) => self.incomplete_restart(&plan),
                         }
+                    } else {
+                        // Any failed force call, liveness read, or timeout is
+                        // terminal for this attempt. Never launch after a
+                        // partial close set.
+                        self.incomplete_restart(&plan)
                     }
                 }
-            },
+            }
         };
         self.complete_restart_operation();
         outcome
@@ -410,71 +469,117 @@ impl CodexDesktopService {
     /// restart manually. Invalid, expired, or already-consumed tokens are an
     /// intentional no-op so this capability cannot reveal process state.
     pub fn cancel_restart_with_force(&self, token: &str) {
-        self.discard_pending_force_restart(token);
+        self.discard_restart_capability(token);
     }
 
-    async fn inspect_runtime_target(
-        &self,
-    ) -> Result<(CodexDesktopRuntimeStatus, Option<RuntimeTarget>), InstallerError> {
-        let local = self.platform.inspect_local().await?;
-        let LocalInstallStatus::Installed { application } = local else {
-            return Ok((runtime_status_from_local_install(&local), None));
+    async fn inspect_restart_plan(&self) -> Result<RestartPlanInspection, InstallerError> {
+        let candidates = match self.platform.inspect_restart_candidates().await? {
+            RestartCandidateInspection::NotInstalled => {
+                return Ok(RestartPlanInspection::NotInstalled)
+            }
+            RestartCandidateInspection::UntrustedTarget => {
+                return Ok(RestartPlanInspection::UntrustedTarget)
+            }
+            RestartCandidateInspection::Unsupported(reason) => {
+                return Ok(RestartPlanInspection::Unsupported(reason))
+            }
+            RestartCandidateInspection::Trusted(candidates) => candidates,
         };
 
-        match self.platform.inspect_runtime(&application).await {
-            Ok(RuntimeInspection::NotRunning) => Ok((CodexDesktopRuntimeStatus::NotRunning, None)),
-            Ok(RuntimeInspection::Running(instances)) if instances.len() == 1 => Ok((
-                CodexDesktopRuntimeStatus::Running,
-                Some(RuntimeTarget {
-                    installed: application,
-                    instances,
-                }),
-            )),
-            Ok(RuntimeInspection::Running(_)) | Ok(RuntimeInspection::Ambiguous) => Ok((
-                CodexDesktopRuntimeStatus::Ambiguous {
-                    reason: CodexDesktopRuntimeAmbiguity::Instances,
-                },
-                None,
-            )),
-            Err(error) if matches!(error.code(), InstallerErrorCode::PlatformUnsupported) => Ok((
-                CodexDesktopRuntimeStatus::Unsupported {
-                    reason: UnsupportedReason::Platform,
-                },
-                None,
-            )),
-            Err(error) => Err(error),
+        if candidates.is_empty()
+            || candidates.iter().any(|candidate| {
+                candidate.application.stable_identity != candidates[0].application.stable_identity
+            })
+        {
+            return Ok(RestartPlanInspection::UntrustedTarget);
         }
+
+        let mut installations = Vec::with_capacity(candidates.len());
+        for candidate in candidates {
+            let (instances, identity_binding_ambiguous) =
+                match self.platform.inspect_runtime(&candidate.application).await {
+                    Ok(RuntimeInspection::NotRunning) => (Vec::new(), false),
+                    Ok(RuntimeInspection::Running(instances)) => (instances, false),
+                    Ok(RuntimeInspection::Ambiguous) => (Vec::new(), true),
+                    Err(error)
+                        if matches!(error.code(), InstallerErrorCode::PlatformUnsupported) =>
+                    {
+                        return Ok(RestartPlanInspection::Unsupported(
+                            UnsupportedReason::Platform,
+                        ));
+                    }
+                    Err(error) => return Err(error),
+                };
+            installations.push(RestartInstallationRuntime {
+                candidate,
+                instances,
+                identity_binding_ambiguous,
+            });
+        }
+
+        RestartPlan::new(installations)
+            .map(RestartPlanInspection::Plan)
+            .ok_or_else(|| {
+                InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+                    .with_diagnostic_message("restart plan did not contain a trusted candidate")
+            })
     }
 
-    /// Re-read only the locally discovered installation and require exact
-    /// equality with the record that originally granted restart authority.
-    /// A different/newly unique installation is not a replacement target.
-    async fn revalidate_bound_installation(
+    /// Re-enumerate trusted candidates and require the selected stable key to
+    /// remain exact before force-closing any runtime. This check deliberately
+    /// does not substitute a newly preferred candidate; execution itself has
+    /// already rebuilt the plan with the fixed comparator.
+    async fn revalidate_selected_installation(
         &self,
-        expected: &InstalledApplication,
+        expected: &TrustedInstallationCandidate,
     ) -> Result<(), InstallerError> {
-        match self.platform.inspect_local().await? {
-            LocalInstallStatus::Installed { application } if application == *expected => Ok(()),
+        match self.platform.inspect_restart_candidates().await? {
+            RestartCandidateInspection::Trusted(candidates)
+                if candidates.iter().any(|candidate| {
+                    candidate.stable_key == expected.stable_key
+                        && candidate.application == expected.application
+                }) =>
+            {
+                Ok(())
+            }
             _ => Err(
                 InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
                     .with_diagnostic_message(
-                        "the verified Codex Desktop installation changed during restart",
+                        "the selected Codex installation changed before force restart",
                     ),
             ),
         }
     }
 
+    async fn force_shutdown_targets(
+        &self,
+        targets: &[RestartInstallationRuntime],
+    ) -> Result<(), InstallerError> {
+        for target in targets {
+            self.platform
+                .force_shutdown(&target.candidate.application, &target.instances)
+                .await?;
+        }
+        Ok(())
+    }
+
     async fn wait_for_bound_instances_exit(
         &self,
-        target: &RuntimeTarget,
+        targets: &[RestartInstallationRuntime],
     ) -> Result<bool, InstallerError> {
-        let deadline = Instant::now() + self.restart_timing.graceful_quit_timeout;
+        let deadline = Instant::now() + self.restart_timing.close_timeout;
         loop {
-            if !self
-                .platform
-                .is_runtime_instance_running(&target.installed, &target.instances)
-                .await?
-            {
+            let mut any_running = false;
+            for target in targets {
+                if self
+                    .platform
+                    .is_runtime_instance_running(&target.candidate.application, &target.instances)
+                    .await?
+                {
+                    any_running = true;
+                }
+            }
+            if !any_running {
                 return Ok(true);
             }
 
@@ -487,54 +592,43 @@ impl CodexDesktopService {
 
     async fn launch_and_verify_restart(
         &self,
-        expected_installed: &InstalledApplication,
-    ) -> CodexDesktopRestartOutcome {
-        if let Err(error) = self.revalidate_bound_installation(expected_installed).await {
-            return restart_failed(CodexDesktopRestartPhase::Launch, error);
-        }
-        if let Err(error) = self.platform.launch(expected_installed).await {
-            return restart_failed(CodexDesktopRestartPhase::Launch, error);
-        }
+        expected: &TrustedInstallationCandidate,
+    ) -> Result<(), InstallerError> {
+        self.revalidate_selected_installation(expected).await?;
+        self.platform.launch(&expected.application).await?;
 
         let deadline = Instant::now() + self.restart_timing.launch_verify_timeout;
         loop {
-            if let Err(error) = self.revalidate_bound_installation(expected_installed).await {
-                return restart_failed(CodexDesktopRestartPhase::Verify, error);
-            }
-            match self.platform.inspect_runtime(expected_installed).await {
-                Ok(RuntimeInspection::Running(instances)) if instances.len() == 1 => {
-                    return CodexDesktopRestartOutcome::Restarted;
-                }
-                Ok(RuntimeInspection::Running(_)) | Ok(RuntimeInspection::Ambiguous) => {
-                    return restart_failed(
-                        CodexDesktopRestartPhase::Verify,
+            self.revalidate_selected_installation(expected).await?;
+            match self.platform.inspect_runtime(&expected.application).await {
+                Ok(RuntimeInspection::Running(instances)) if !instances.is_empty() => return Ok(()),
+                Ok(RuntimeInspection::Running(_)) => {}
+                Ok(RuntimeInspection::Ambiguous) => {
+                    return Err(
                         InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
                             .with_diagnostic_message(
-                                "the trusted runtime is ambiguous after launch",
+                                "the trusted runtime could not be bound after launch",
                             ),
                     );
                 }
                 Ok(RuntimeInspection::NotRunning) => {}
-                Err(error) => return restart_failed(CodexDesktopRestartPhase::Verify, error),
+                Err(error) => return Err(error),
             }
             if Instant::now() >= deadline {
-                return restart_failed(
-                    CodexDesktopRestartPhase::Verify,
-                    InstallerError::new(InstallerErrorCode::LaunchFailed)
-                        .with_diagnostic_message("the trusted runtime did not appear after launch"),
-                );
+                return Err(InstallerError::new(InstallerErrorCode::LaunchFailed)
+                    .with_diagnostic_message("the trusted runtime did not appear after launch"));
             }
             tokio::time::sleep(self.restart_timing.poll_interval).await;
         }
     }
 
     fn claim_restart_operation(&self) -> bool {
-        let now = Instant::now();
+        let now = self.restart_capability_clock.now_millis();
         let mut state = recover_lock(&self.restart_state);
         state
-            .pending_force
-            .retain(|_, pending| pending.expires_at > now);
-        if state.in_progress || !state.pending_force.is_empty() {
+            .pending
+            .retain(|_, pending| pending.expires_at_millis > now);
+        if state.in_progress || !state.pending.is_empty() {
             return false;
         }
         state.in_progress = true;
@@ -546,40 +640,70 @@ impl CodexDesktopService {
         state.in_progress = false;
     }
 
-    fn store_pending_force_restart(&self, token: String, target: RuntimeTarget) {
+    fn issue_restart_capability(&self, plan: &RestartPlan, action: PendingRestartAction) -> String {
+        let token = new_opaque_restart_capability_token();
+        let now = self.restart_capability_clock.now_millis();
+        let capability_ttl_millis = self
+            .restart_timing
+            .capability_ttl
+            .as_millis()
+            .try_into()
+            .unwrap_or(u64::MAX);
         let mut state = recover_lock(&self.restart_state);
-        state.pending_force.insert(
-            token,
+        state.pending.insert(
+            token.clone(),
             PendingRestart {
-                installed: target.installed,
-                instances: target.instances,
-                expires_at: Instant::now() + self.restart_timing.force_token_ttl,
+                action,
+                app_identity: plan.app_identity.clone(),
+                selected_installation: plan.selected_installation.clone(),
+                plan_revision: plan.plan_revision.clone(),
+                expires_at_millis: now.saturating_add(capability_ttl_millis),
             },
         );
         state.in_progress = false;
+        token
     }
 
-    fn take_pending_force_restart(&self, token: &str) -> Option<PendingRestart> {
-        let now = Instant::now();
+    fn take_restart_capability(&self, token: &str) -> Option<PendingRestart> {
+        let now = self.restart_capability_clock.now_millis();
         let mut state = recover_lock(&self.restart_state);
         state
-            .pending_force
-            .retain(|_, pending| pending.expires_at > now);
-        let pending = state.pending_force.remove(token)?;
+            .pending
+            .retain(|_, pending| pending.expires_at_millis > now);
+        let pending = state.pending.remove(token)?;
+        // The token is opaque, but its server-side capability record still
+        // binds it to a known action, exact app identity, selected stable key,
+        // and a fixed plan revision. We intentionally do not compare those
+        // transient selections to the execution plan: the algorithm must
+        // re-enumerate and apply the current deterministic comparator.
+        if !matches!(
+            pending.action,
+            PendingRestartAction::Confirm | PendingRestartAction::Retry
+        ) || pending.app_identity.is_empty()
+            || pending.selected_installation.is_empty()
+            || pending.plan_revision.len() != 64
+        {
+            return None;
+        }
         state.in_progress = true;
         Some(pending)
     }
 
-    fn discard_pending_force_restart(&self, token: &str) {
-        let now = Instant::now();
+    fn discard_restart_capability(&self, token: &str) {
+        let now = self.restart_capability_clock.now_millis();
         let mut state = recover_lock(&self.restart_state);
         state
-            .pending_force
-            .retain(|_, pending| pending.expires_at > now);
-        // Do not mutate `in_progress`: a force continuation removes its token
-        // before it starts and owns that flag until it finishes. A cancellation
-        // racing with that continuation must never unlock a live operation.
-        state.pending_force.remove(token);
+            .pending
+            .retain(|_, pending| pending.expires_at_millis > now);
+        // Do not mutate `in_progress`: a continuation removes its token before
+        // it starts and owns that flag until it completes. A cancellation
+        // racing with it must never unlock a live destructive operation.
+        state.pending.remove(token);
+    }
+
+    fn incomplete_restart(&self, plan: &RestartPlan) -> CodexDesktopRestartOutcome {
+        let retry_token = self.issue_restart_capability(plan, PendingRestartAction::Retry);
+        CodexDesktopRestartOutcome::Incomplete { retry_token }
     }
 
     /// Resolves the latest trusted descriptor and remembers it as the only
@@ -1317,10 +1441,23 @@ mod tests {
     use crate::codex_desktop::{
         cancellation::Cancellation,
         download::{TransportError, TransportFuture, TransportResponse},
-        platform::{PlatformInstallPlan, VerifiedPackage, WINDOWS_CODEX_STABLE_IDENTITY},
+        platform::{
+            PlatformInstallPlan, RestartCandidateInspection, TrustedInstallationCandidate,
+            VerifiedPackage, WINDOWS_CODEX_STABLE_IDENTITY,
+        },
         types::{LaunchTarget, PlatformVersion, TrustedDownloadEndpoint},
         verify::{DiskSpaceProbeError, VolumeKey},
     };
+
+    #[test]
+    fn restart_capabilities_exceed_the_required_random_entropy_floor() {
+        let first = new_opaque_restart_capability_token();
+        let second = new_opaque_restart_capability_token();
+
+        assert_eq!(first.len(), 64);
+        assert_eq!(second.len(), 64);
+        assert_ne!(first, second);
+    }
 
     #[derive(Default)]
     struct FixedClock;
@@ -1612,16 +1749,15 @@ mod tests {
 
     #[derive(Clone)]
     struct RestartFixturePlatform {
-        installed: Arc<Mutex<InstalledApplication>>,
-        local_applications: Arc<Mutex<VecDeque<InstalledApplication>>>,
+        fallback_candidate_inspection: Arc<Mutex<RestartCandidateInspection>>,
+        candidate_inspections: Arc<Mutex<VecDeque<RestartCandidateInspection>>>,
         runtime_inspections: Arc<Mutex<VecDeque<RuntimeInspection>>>,
         fallback_runtime: Arc<Mutex<RuntimeInspection>>,
         liveness: Arc<Mutex<VecDeque<bool>>>,
         fallback_liveness: Arc<AtomicBool>,
-        graceful_calls: Arc<AtomicUsize>,
+        force_results: Arc<Mutex<VecDeque<bool>>>,
         force_calls: Arc<AtomicUsize>,
         launch_calls: Arc<AtomicUsize>,
-        graceful_targets: Arc<Mutex<Vec<Vec<TrustedRuntimeInstance>>>>,
         force_targets: Arc<Mutex<Vec<Vec<TrustedRuntimeInstance>>>>,
         liveness_targets: Arc<Mutex<Vec<Vec<TrustedRuntimeInstance>>>>,
         launch_targets: Arc<Mutex<Vec<InstalledApplication>>>,
@@ -1630,20 +1766,25 @@ mod tests {
     impl RestartFixturePlatform {
         fn new(installed: InstalledApplication) -> Self {
             Self {
-                installed: Arc::new(Mutex::new(installed)),
-                local_applications: Arc::new(Mutex::new(VecDeque::new())),
+                fallback_candidate_inspection: Arc::new(Mutex::new(
+                    RestartCandidateInspection::Trusted(vec![restart_candidate(installed)]),
+                )),
+                candidate_inspections: Arc::new(Mutex::new(VecDeque::new())),
                 runtime_inspections: Arc::new(Mutex::new(VecDeque::new())),
                 fallback_runtime: Arc::new(Mutex::new(RuntimeInspection::NotRunning)),
                 liveness: Arc::new(Mutex::new(VecDeque::new())),
                 fallback_liveness: Arc::new(AtomicBool::new(false)),
-                graceful_calls: Arc::new(AtomicUsize::new(0)),
+                force_results: Arc::new(Mutex::new(VecDeque::new())),
                 force_calls: Arc::new(AtomicUsize::new(0)),
                 launch_calls: Arc::new(AtomicUsize::new(0)),
-                graceful_targets: Arc::new(Mutex::new(Vec::new())),
                 force_targets: Arc::new(Mutex::new(Vec::new())),
                 liveness_targets: Arc::new(Mutex::new(Vec::new())),
                 launch_targets: Arc::new(Mutex::new(Vec::new())),
             }
+        }
+
+        fn queue_candidates(&self, values: impl IntoIterator<Item = RestartCandidateInspection>) {
+            recover_lock(&self.candidate_inspections).extend(values);
         }
 
         fn queue_runtime(&self, values: impl IntoIterator<Item = RuntimeInspection>) {
@@ -1654,14 +1795,14 @@ mod tests {
             recover_lock(&self.liveness).extend(values);
         }
 
-        fn queue_local_applications(&self, values: impl IntoIterator<Item = InstalledApplication>) {
-            recover_lock(&self.local_applications).extend(values);
+        fn queue_force_results(&self, values: impl IntoIterator<Item = bool>) {
+            recover_lock(&self.force_results).extend(values);
         }
 
-        fn next_local_application(&self) -> InstalledApplication {
-            recover_lock(&self.local_applications)
+        fn next_candidates(&self) -> RestartCandidateInspection {
+            recover_lock(&self.candidate_inspections)
                 .pop_front()
-                .unwrap_or_else(|| recover_lock(&self.installed).clone())
+                .unwrap_or_else(|| recover_lock(&self.fallback_candidate_inspection).clone())
         }
 
         fn next_runtime(&self) -> RuntimeInspection {
@@ -1675,6 +1816,12 @@ mod tests {
                 .pop_front()
                 .unwrap_or_else(|| self.fallback_liveness.load(Ordering::SeqCst))
         }
+
+        fn next_force_result(&self) -> bool {
+            recover_lock(&self.force_results)
+                .pop_front()
+                .unwrap_or(true)
+        }
     }
 
     impl CodexDesktopPlatform for RestartFixturePlatform {
@@ -1687,8 +1834,51 @@ mod tests {
         }
 
         fn inspect_local(&self) -> BoxFuture<'_, Result<LocalInstallStatus, InstallerError>> {
-            let application = self.next_local_application();
-            Box::pin(async move { Ok(LocalInstallStatus::Installed { application }) })
+            let inspection = self.next_candidates();
+            Box::pin(async move {
+                Ok(match inspection {
+                    RestartCandidateInspection::Trusted(mut candidates)
+                        if candidates.len() == 1 =>
+                    {
+                        LocalInstallStatus::Installed {
+                            application: candidates.remove(0).application,
+                        }
+                    }
+                    RestartCandidateInspection::NotInstalled => LocalInstallStatus::NotInstalled {
+                        platform: DesktopPlatform::Windows,
+                        architecture: CpuArchitecture::X86_64,
+                    },
+                    RestartCandidateInspection::Unsupported(reason) => {
+                        LocalInstallStatus::Unsupported { reason }
+                    }
+                    RestartCandidateInspection::Trusted(candidates) => {
+                        LocalInstallStatus::Ambiguous {
+                            candidates: candidates
+                                .iter()
+                                .map(|candidate| {
+                                    crate::codex_desktop::types::InstalledApplicationSummary::from(
+                                        &candidate.application,
+                                    )
+                                })
+                                .collect(),
+                            error: InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+                                .to_dto(),
+                        }
+                    }
+                    RestartCandidateInspection::UntrustedTarget => LocalInstallStatus::Ambiguous {
+                        candidates: Vec::new(),
+                        error: InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+                            .to_dto(),
+                    },
+                })
+            })
+        }
+
+        fn inspect_restart_candidates(
+            &self,
+        ) -> BoxFuture<'_, Result<RestartCandidateInspection, InstallerError>> {
+            let inspection = self.next_candidates();
+            Box::pin(async move { Ok(inspection) })
         }
 
         fn preflight<'a>(
@@ -1732,16 +1922,6 @@ mod tests {
             Box::pin(async move { Ok(inspection) })
         }
 
-        fn request_graceful_shutdown<'a>(
-            &'a self,
-            _installed: &'a InstalledApplication,
-            instances: &'a [TrustedRuntimeInstance],
-        ) -> BoxFuture<'a, Result<(), InstallerError>> {
-            self.graceful_calls.fetch_add(1, Ordering::SeqCst);
-            recover_lock(&self.graceful_targets).push(instances.to_vec());
-            Box::pin(async { Ok(()) })
-        }
-
         fn force_shutdown<'a>(
             &'a self,
             _installed: &'a InstalledApplication,
@@ -1749,7 +1929,13 @@ mod tests {
         ) -> BoxFuture<'a, Result<(), InstallerError>> {
             self.force_calls.fetch_add(1, Ordering::SeqCst);
             recover_lock(&self.force_targets).push(instances.to_vec());
-            Box::pin(async { Ok(()) })
+            let succeeds = self.next_force_result();
+            Box::pin(async move {
+                succeeds.then_some(()).ok_or_else(|| {
+                    InstallerError::new(InstallerErrorCode::LaunchFailed)
+                        .with_diagnostic_message("fixture force failure")
+                })
+            })
         }
 
         fn is_runtime_instance_running<'a>(
@@ -1775,26 +1961,55 @@ mod tests {
         }
     }
 
-    fn restart_instance() -> TrustedRuntimeInstance {
+    fn restart_candidate(installed: InstalledApplication) -> TrustedInstallationCandidate {
+        let LaunchTarget::WindowsAumid(aumid) = &installed.launch_target else {
+            unreachable!("restart fixtures always use a Windows AUMID");
+        };
+        TrustedInstallationCandidate {
+            stable_key: format!("windows-pfn:{aumid}"),
+            application: installed,
+            scope: crate::codex_desktop::platform::RestartInstallationScope::CurrentUser,
+        }
+    }
+
+    fn restart_instance(process_id: u32) -> TrustedRuntimeInstance {
         TrustedRuntimeInstance::Windows {
             package_family_name: "fixture_family".to_owned(),
-            process_id: 4242,
-            creation_time: 1,
+            process_id,
+            creation_time: process_id as u64,
         }
     }
 
     fn immediate_restart_timing() -> RestartTiming {
         RestartTiming {
-            graceful_quit_timeout: Duration::ZERO,
+            close_timeout: Duration::ZERO,
             launch_verify_timeout: Duration::ZERO,
             poll_interval: Duration::ZERO,
-            force_token_ttl: Duration::from_secs(60),
+            capability_ttl: Duration::from_secs(60),
+        }
+    }
+
+    #[derive(Default)]
+    struct FixtureRestartCapabilityClock {
+        now_millis: AtomicUsize,
+    }
+
+    impl FixtureRestartCapabilityClock {
+        fn advance_millis(&self, milliseconds: usize) {
+            self.now_millis.fetch_add(milliseconds, Ordering::SeqCst);
+        }
+    }
+
+    impl RestartCapabilityClock for FixtureRestartCapabilityClock {
+        fn now_millis(&self) -> u64 {
+            self.now_millis.load(Ordering::SeqCst) as u64
         }
     }
 
     struct RestartHarness {
         service: CodexDesktopService,
         platform: Arc<RestartFixturePlatform>,
+        capability_clock: Arc<FixtureRestartCapabilityClock>,
         _temporary_parent: tempfile::TempDir,
         _log_directory: tempfile::TempDir,
     }
@@ -1811,6 +2026,7 @@ mod tests {
         let temporary_parent = tempfile::tempdir().unwrap();
         let log_directory = tempfile::tempdir().unwrap();
         let platform = Arc::new(RestartFixturePlatform::new(installed));
+        let capability_clock = Arc::new(FixtureRestartCapabilityClock::default());
         let dependencies = CodexDesktopServiceDependencies::new(
             Arc::new(FixtureSource::new(release)),
             platform.clone(),
@@ -1820,11 +2036,13 @@ mod tests {
             log_directory.path().to_path_buf(),
         );
         let service = CodexDesktopService::with_clock(dependencies, Arc::new(FixedClock))
-            .with_restart_timing(restart_timing);
+            .with_restart_timing(restart_timing)
+            .with_restart_capability_clock(capability_clock.clone());
 
         RestartHarness {
             service,
             platform,
+            capability_clock,
             _temporary_parent: temporary_parent,
             _log_directory: log_directory,
         }
@@ -2276,216 +2494,218 @@ mod tests {
     }
 
     #[test]
-    fn restart_deadlines_match_the_documented_eight_and_fifteen_second_bounds() {
+    fn restart_deadlines_match_the_documented_close_and_verify_bounds() {
         let timing = RestartTiming::default();
-        assert_eq!(timing.graceful_quit_timeout, Duration::from_secs(8));
+        assert_eq!(timing.close_timeout, Duration::from_secs(8));
         assert_eq!(timing.launch_verify_timeout, Duration::from_secs(15));
         assert_eq!(timing.poll_interval, Duration::from_millis(200));
+        assert_eq!(timing.capability_ttl, Duration::from_secs(120));
     }
 
     #[tokio::test]
-    async fn unique_bound_runtime_exits_before_the_same_installation_is_relaunched() {
+    async fn confirmation_is_inert_then_reenumerates_and_force_closes_all_exact_instances() {
         let installed = restart_application("primary");
-        let original_instance = restart_instance();
+        let original_instance = restart_instance(4242);
+        let instance_started_after_confirmation = restart_instance(4243);
         let harness = restart_harness(installed.clone());
         harness.platform.queue_runtime([
             RuntimeInspection::Running(vec![original_instance.clone()]),
-            RuntimeInspection::Running(vec![original_instance.clone()]),
+            // The execution-time scan observes a new exact instance. It must
+            // enter the same close set without asking the user again.
+            RuntimeInspection::Running(vec![
+                original_instance.clone(),
+                instance_started_after_confirmation.clone(),
+            ]),
+            RuntimeInspection::Running(vec![restart_instance(9000)]),
         ]);
         harness.platform.queue_liveness([false]);
 
-        let outcome = harness.service.request_restart().await;
+        let first = harness.service.request_restart().await;
+        let CodexDesktopRestartOutcome::ConfirmationRequired { token, .. } = first else {
+            panic!("a running exact target must require one opaque confirmation");
+        };
 
-        assert_eq!(outcome, CodexDesktopRestartOutcome::Restarted);
-        assert_eq!(harness.platform.graceful_calls.load(Ordering::SeqCst), 1);
+        // Preparing confirmation is observational only: no force close or
+        // launch is allowed before the user confirms.
         assert_eq!(harness.platform.force_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
+
+        let outcome = harness.service.continue_restart_with_force(&token).await;
+        assert_eq!(outcome, CodexDesktopRestartOutcome::Restarted);
+        assert_eq!(harness.platform.force_calls.load(Ordering::SeqCst), 1);
         assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 1);
         assert_eq!(
-            recover_lock(&harness.platform.graceful_targets).as_slice(),
-            [vec![original_instance.clone()]]
+            recover_lock(&harness.platform.force_targets).as_slice(),
+            [vec![
+                original_instance.clone(),
+                instance_started_after_confirmation,
+            ]]
         );
         assert_eq!(
             recover_lock(&harness.platform.liveness_targets).as_slice(),
-            [vec![original_instance]]
+            [vec![original_instance, restart_instance(4243)]]
         );
         assert_eq!(
             recover_lock(&harness.platform.launch_targets).as_slice(),
             [installed],
-            "restart must launch the installation that supplied the original runtime evidence"
+            "restart must launch the selected exact installation exactly once"
         );
     }
 
     #[tokio::test]
-    async fn ambiguous_runtime_is_unavailable_and_never_receives_shutdown_or_launch() {
+    async fn identity_binding_ambiguity_prompts_then_fails_incomplete_without_process_actions() {
         let harness = restart_harness(restart_application("primary"));
-        harness
-            .platform
-            .queue_runtime([RuntimeInspection::Ambiguous]);
+        harness.platform.queue_runtime([
+            RuntimeInspection::Ambiguous,
+            RuntimeInspection::Ambiguous,
+            RuntimeInspection::Ambiguous,
+        ]);
 
         assert_eq!(
             harness.service.get_runtime_status().await.unwrap(),
             CodexDesktopRuntimeStatus::Ambiguous {
-                reason: CodexDesktopRuntimeAmbiguity::Instances
+                reason: CodexDesktopRuntimeAmbiguity::IdentityVerification
             }
         );
-        harness
-            .platform
-            .queue_runtime([RuntimeInspection::Ambiguous]);
-        let outcome = harness.service.request_restart().await;
-
-        assert_eq!(
-            outcome,
-            CodexDesktopRestartOutcome::Unavailable {
-                reason: CodexDesktopRestartUnavailableReason::InstancesAmbiguous
-            }
-        );
-        assert_eq!(harness.platform.graceful_calls.load(Ordering::SeqCst), 0);
-        assert_eq!(harness.platform.force_calls.load(Ordering::SeqCst), 0);
-        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
-    }
-
-    #[tokio::test]
-    async fn graceful_timeout_requires_a_second_force_confirmation_and_rechecks_original_identity()
-    {
-        let installed = restart_application("primary");
-        let original_instance = restart_instance();
-        let harness = restart_harness(installed.clone());
-        harness
-            .platform
-            .queue_runtime([RuntimeInspection::Running(vec![original_instance])]);
-        harness.platform.queue_liveness([true]);
-
         let first = harness.service.request_restart().await;
-        let CodexDesktopRestartOutcome::ForceConfirmationRequired { token } = first else {
-            panic!("zero-duration fixture must exercise the graceful-timeout branch");
+        let CodexDesktopRestartOutcome::ConfirmationRequired { token, reason } = first else {
+            panic!("an identity ambiguity must enter the one-confirmation UI state");
         };
-        assert_eq!(harness.platform.graceful_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(harness.platform.force_calls.load(Ordering::SeqCst), 0);
-        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
-
-        // The original installation disappears from the trusted local result
-        // while the user is reading the second confirmation. A different
-        // unique installation is not a replacement force/launch target.
-        harness
-            .platform
-            .queue_local_applications([restart_application("replacement")]);
-        let second = harness.service.continue_restart_with_force(&token).await;
+        assert_eq!(
+            reason,
+            crate::codex_desktop::types::CodexDesktopRestartPromptReason::IdentityBindingAmbiguous
+        );
+        let outcome = harness.service.continue_restart_with_force(&token).await;
         assert!(matches!(
-            second,
-            CodexDesktopRestartOutcome::Failed {
-                phase: CodexDesktopRestartPhase::ForceQuit,
-                ..
-            }
+            outcome,
+            CodexDesktopRestartOutcome::Incomplete { .. }
         ));
         assert_eq!(harness.platform.force_calls.load(Ordering::SeqCst), 0);
         assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
-    async fn second_confirmation_force_stops_only_the_original_instance_then_relaunches_bound_installation(
-    ) {
+    async fn selected_installation_loss_before_close_returns_incomplete_without_force_or_launch() {
         let installed = restart_application("primary");
-        let original_instance = restart_instance();
+        let original_instance = restart_instance(4242);
         let harness = restart_harness(installed.clone());
         harness.platform.queue_runtime([
             RuntimeInspection::Running(vec![original_instance.clone()]),
-            RuntimeInspection::Running(vec![original_instance.clone()]),
+            RuntimeInspection::Running(vec![original_instance]),
         ]);
-        harness.platform.queue_liveness([true, true, false]);
 
         let first = harness.service.request_restart().await;
-        let CodexDesktopRestartOutcome::ForceConfirmationRequired { token } = first else {
-            panic!("first request must not force without an opaque token");
+        let CodexDesktopRestartOutcome::ConfirmationRequired { token, .. } = first else {
+            panic!("a trusted running fixture must enter confirmation");
+        };
+
+        // Execution may rebuild its plan, but a second exact candidate read
+        // must still validate the selected app before any close call.
+        harness.platform.queue_candidates([
+            RestartCandidateInspection::Trusted(vec![restart_candidate(installed)]),
+            RestartCandidateInspection::NotInstalled,
+        ]);
+        let second = harness.service.continue_restart_with_force(&token).await;
+        assert!(matches!(
+            second,
+            CodexDesktopRestartOutcome::Incomplete { .. }
+        ));
+        assert_eq!(harness.platform.force_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn force_failure_returns_incomplete_and_never_launches() {
+        let original_instance = restart_instance(4242);
+        let harness = restart_harness(restart_application("primary"));
+        harness.platform.queue_runtime([
+            RuntimeInspection::Running(vec![original_instance.clone()]),
+            RuntimeInspection::Running(vec![original_instance]),
+        ]);
+        harness.platform.queue_force_results([false]);
+
+        let first = harness.service.request_restart().await;
+        let CodexDesktopRestartOutcome::ConfirmationRequired { token, .. } = first else {
+            panic!("first request must create a confirmation capability");
         };
         let outcome = harness.service.continue_restart_with_force(&token).await;
 
-        assert_eq!(outcome, CodexDesktopRestartOutcome::Restarted);
-        assert_eq!(harness.platform.graceful_calls.load(Ordering::SeqCst), 1);
+        assert!(matches!(
+            outcome,
+            CodexDesktopRestartOutcome::Incomplete { .. }
+        ));
         assert_eq!(harness.platform.force_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(
-            recover_lock(&harness.platform.force_targets).as_slice(),
-            [vec![original_instance.clone()]]
-        );
-        assert_eq!(
-            recover_lock(&harness.platform.liveness_targets).as_slice(),
-            [
-                vec![original_instance.clone()],
-                vec![original_instance.clone()],
-                vec![original_instance],
-            ]
-        );
-        assert_eq!(
-            recover_lock(&harness.platform.launch_targets).as_slice(),
-            [installed]
-        );
+        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
     async fn launch_verification_waits_for_a_trusted_runtime_to_become_ready() {
-        let original_instance = restart_instance();
+        let original_instance = restart_instance(4242);
         let harness = restart_harness_with_timing(
             restart_application("primary"),
             RestartTiming {
-                graceful_quit_timeout: Duration::ZERO,
+                close_timeout: Duration::ZERO,
                 launch_verify_timeout: Duration::from_secs(1),
                 poll_interval: Duration::ZERO,
-                force_token_ttl: Duration::from_secs(60),
+                capability_ttl: Duration::from_secs(60),
             },
         );
         harness.platform.queue_runtime([
+            RuntimeInspection::Running(vec![original_instance.clone()]),
             RuntimeInspection::Running(vec![original_instance]),
-            // The macOS adapter represents a matching instance that has not
-            // yet finished launching as NotRunning. It must not be reported as
-            // a successful restart, but the generic verification state machine
-            // must keep polling until the platform returns ready evidence.
+            // The exact runtime is not immediately visible after launch. The
+            // service must keep waiting without exposing phase details.
             RuntimeInspection::NotRunning,
-            RuntimeInspection::Running(vec![restart_instance()]),
+            RuntimeInspection::Running(vec![restart_instance(9000)]),
         ]);
         harness.platform.queue_liveness([false]);
 
-        let outcome = harness.service.request_restart().await;
+        let first = harness.service.request_restart().await;
+        let CodexDesktopRestartOutcome::ConfirmationRequired { token, .. } = first else {
+            panic!("the running fixture must produce a confirmation capability");
+        };
+        let outcome = harness.service.continue_restart_with_force(&token).await;
 
         assert_eq!(outcome, CodexDesktopRestartOutcome::Restarted);
         assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
-    async fn runtime_that_never_becomes_ready_fails_the_bounded_fifteen_second_verification() {
-        let original_instance = restart_instance();
+    async fn launch_verification_failure_is_incomplete_without_technical_error_details() {
+        let original_instance = restart_instance(4242);
         let harness = restart_harness(restart_application("primary"));
         harness.platform.queue_runtime([
+            RuntimeInspection::Running(vec![original_instance.clone()]),
             RuntimeInspection::Running(vec![original_instance]),
-            // See the ready-transition case above: this is a trusted macOS
-            // candidate that remains visible but never reaches
-            // isFinishedLaunching == true before the verification deadline.
             RuntimeInspection::NotRunning,
         ]);
         harness.platform.queue_liveness([false]);
 
-        let outcome = harness.service.request_restart().await;
-
-        let CodexDesktopRestartOutcome::Failed { phase, error } = outcome else {
-            panic!("a perpetually unready runtime must not be reported as restarted");
+        let first = harness.service.request_restart().await;
+        let CodexDesktopRestartOutcome::ConfirmationRequired { token, .. } = first else {
+            panic!("the running fixture must produce a confirmation capability");
         };
-        assert_eq!(phase, CodexDesktopRestartPhase::Verify);
-        assert_eq!(error.code, InstallerErrorCode::LaunchFailed);
+        let outcome = harness.service.continue_restart_with_force(&token).await;
+
+        assert!(matches!(
+            outcome,
+            CodexDesktopRestartOutcome::Incomplete { .. }
+        ));
         assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
-    async fn declining_force_restart_discards_the_token_and_allows_an_immediate_retry() {
-        let original_instance = restart_instance();
+    async fn declining_restart_discards_the_capability_and_allows_a_new_confirmation() {
+        let original_instance = restart_instance(4242);
         let harness = restart_harness(restart_application("primary"));
         harness.platform.queue_runtime([
             RuntimeInspection::Running(vec![original_instance.clone()]),
             RuntimeInspection::Running(vec![original_instance]),
         ]);
-        harness.platform.queue_liveness([true, true]);
 
         let first = harness.service.request_restart().await;
-        let CodexDesktopRestartOutcome::ForceConfirmationRequired { token } = first else {
-            panic!("the first graceful timeout must issue an opaque token");
+        let CodexDesktopRestartOutcome::ConfirmationRequired { token, .. } = first else {
+            panic!("the first request must issue an opaque confirmation capability");
         };
 
         harness.service.cancel_restart_with_force(&token);
@@ -2493,10 +2713,66 @@ mod tests {
 
         assert!(matches!(
             retry,
-            CodexDesktopRestartOutcome::ForceConfirmationRequired { .. }
+            CodexDesktopRestartOutcome::ConfirmationRequired { .. }
         ));
-        assert_eq!(harness.platform.graceful_calls.load(Ordering::SeqCst), 2);
         assert_eq!(harness.platform.force_calls.load(Ordering::SeqCst), 0);
         assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn expired_or_reused_capabilities_fail_closed_without_process_actions() {
+        let original_instance = restart_instance(4242);
+        let harness = restart_harness_with_timing(
+            restart_application("primary"),
+            RestartTiming {
+                capability_ttl: Duration::from_millis(1),
+                ..immediate_restart_timing()
+            },
+        );
+        harness
+            .platform
+            .queue_runtime([RuntimeInspection::Running(vec![original_instance])]);
+
+        let first = harness.service.request_restart().await;
+        let CodexDesktopRestartOutcome::ConfirmationRequired { token, .. } = first else {
+            panic!("the running fixture must issue a capability");
+        };
+        harness.capability_clock.advance_millis(2);
+
+        assert_eq!(
+            harness.service.continue_restart_with_force(&token).await,
+            manual_untrusted_restart()
+        );
+        assert_eq!(harness.platform.force_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
+
+        // A consumed/unknown opaque token produces the same fail-closed DTO;
+        // callers cannot use it to infer local runtime state.
+        assert_eq!(
+            harness
+                .service
+                .continue_restart_with_force("tampered-token")
+                .await,
+            manual_untrusted_restart()
+        );
+    }
+
+    #[tokio::test]
+    async fn untrusted_target_never_reaches_runtime_force_or_launch_boundaries() {
+        let harness = restart_harness(restart_application("primary"));
+        harness
+            .platform
+            .queue_candidates([RestartCandidateInspection::UntrustedTarget]);
+
+        assert_eq!(
+            harness.service.request_restart().await,
+            CodexDesktopRestartOutcome::ManualRestartRequired {
+                reason: CodexDesktopManualRestartReason::UntrustedTarget,
+            }
+        );
+        assert_eq!(harness.platform.force_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
+        assert!(recover_lock(&harness.platform.force_targets).is_empty());
+        assert!(recover_lock(&harness.platform.launch_targets).is_empty());
     }
 }

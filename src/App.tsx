@@ -1795,9 +1795,8 @@ function App() {
 
       <CodexRestartDialog
         dialog={codexRestart.dialog}
-        isRestarting={codexRestart.isRestarting}
-        onRestart={() => void codexRestart.requestRestart()}
-        onConfirmForceRestart={() => void codexRestart.confirmForceRestart()}
+        onConfirm={() => void codexRestart.requestRestart()}
+        onRetry={() => void codexRestart.retryRestart()}
         onDefer={codexRestart.deferRestart}
       />
 

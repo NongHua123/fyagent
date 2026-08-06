@@ -555,6 +555,12 @@ pub enum CodexDesktopRuntimeStatus {
     Unsupported {
         reason: UnsupportedReason,
     },
+    /// The host exposed a display-level installation record but did not
+    /// provide the exact PFN / Bundle ID evidence required for lifecycle
+    /// control.  This is intentionally distinct from an unsupported host:
+    /// callers may still ask the user to restart manually, but must not select
+    /// a process or launch target from a name, title, or path fallback.
+    UntrustedTarget,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -567,46 +573,45 @@ pub enum CodexDesktopRuntimeAmbiguity {
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum CodexDesktopRestartPhase {
-    Detect,
-    Quit,
-    ForceQuit,
-    Launch,
-    Verify,
+pub enum CodexDesktopRestartPromptReason {
+    /// The standard single-installation/single-instance destructive action.
+    /// It is separate from the three ambiguity reasons so the renderer never
+    /// has to claim that multiple applications were found when that is false.
+    UniqueRuntime,
+    MultipleInstances,
+    MultipleInstallations,
+    IdentityBindingAmbiguous,
 }
 
-/// A restart request is unavailable when the application is not a uniquely
-/// verified, running Codex Desktop installation. This is a normal race-safe
-/// result, not an invitation to launch or to select a process by name.
+/// A lifecycle capability is unavailable without exposing local process or
+/// installation details. The renderer can only offer a manual restart path.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum CodexDesktopRestartUnavailableReason {
-    NotInstalled,
-    NotRunning,
-    InstallationsAmbiguous,
-    InstancesAmbiguous,
-    IdentityVerification,
+pub enum CodexDesktopManualRestartReason {
+    UntrustedTarget,
     Unsupported,
 }
 
-/// Result of a capability-scoped Codex Desktop restart. The opaque token is
-/// minted by the backend only after a normal quit timeout and is bound to the
-/// originally verified runtime instance(s); callers cannot provide a PID,
-/// path, process name, launch command, or arbitrary force target.
+/// Result of a capability-scoped Codex Desktop restart. Opaque capabilities
+/// stay server-side and never encode a PID, path, package family, bundle ID,
+/// version, candidate count, or failure phase. The only destructive branch is
+/// entered after `ConfirmationRequired`; it always force-closes exact trusted
+/// instances and never performs a graceful-close / second-confirmation flow.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum CodexDesktopRestartOutcome {
     Restarted,
-    ForceConfirmationRequired {
+    ConfirmationRequired {
         token: String,
+        reason: CodexDesktopRestartPromptReason,
     },
-    Unavailable {
-        reason: CodexDesktopRestartUnavailableReason,
+    NotRunning,
+    ManualRestartRequired {
+        reason: CodexDesktopManualRestartReason,
     },
-    Cancelled,
-    Failed {
-        phase: CodexDesktopRestartPhase,
-        error: InstallerErrorDto,
+    Incomplete {
+        #[serde(rename = "retryToken")]
+        retry_token: String,
     },
 }
 
