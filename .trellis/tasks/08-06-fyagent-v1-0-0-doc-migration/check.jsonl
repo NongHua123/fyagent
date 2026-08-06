@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/index.md","reason":"活动 backend 规范索引和迁移后优先级文本。"}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"旧冻结基线路径必须转为历史引用的规范。"}
+{"file":"docs/fyagent/dev/v1-0.0/","type":"directory","reason":"验证结果：新目录存在、旧目录不存在；14 份 Markdown 与 HEAD 中旧路径逐字一致。00、02、05、16、17 只更新了 v1.0.0 历史归档定位、历史 ZIP 路径或 v1.0.2 当前契约优先级。"}
+{"file":".trellis/spec/backend/fyagent-v1-0-1-config-domains.md","reason":"验证结果：v1.0.1 已明确降为仅补充 v1.0.2 未覆盖配置域契约的历史输入。"}

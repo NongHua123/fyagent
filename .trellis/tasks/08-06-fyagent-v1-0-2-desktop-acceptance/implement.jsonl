@@ -1,0 +1,4 @@
+{"file":"docs/fyagent/dev/v1-0.2/07-验收标准与自动化测试计划.md","reason":"E2E、视觉、发布、I18N 和报告的主验收设计。"}
+{"file":"docs/fyagent/dev/v1-0.2/08-ADR与外部资料.md","reason":"ADR-020 的手动 CI、平台基线和视觉取舍。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"前端测试与本地化质量约定。"}
+{"file":".trellis/spec/backend/development-environment.md","reason":"可运行工具与平台验证边界。"}

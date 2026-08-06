@@ -1,0 +1,8 @@
+{"file":"docs/fyagent/dev/v1-0.2/07-验收标准与自动化测试计划.md","reason":"WB-T 和 WB-UI 验收场景。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"前端测试、翻译与格式质量门。"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"卡片、对话框、表单和可访问性约定。"}
+{"file":"src-tauri/src/services/workbuddy/","type":"directory","reason":"rustfmt --check 通过；离线锁定的 WorkBuddy Rust 单元测试 46/46 通过，使用临时目录和 fake loopback，不读取或写入真实用户 WorkBuddy 配置。"}
+{"file":"src/components/workbuddy/","type":"directory","reason":"WorkBuddy 页面、覆盖对话框及 App mock 集成测试 15/15 通过；全部经 jsdom/MSW 模拟 Tauri IPC。"}
+{"file":"src/lib/api/workbuddy.ts","reason":"pnpm typecheck 通过，前端 IPC 类型与新的判别保存结果一致。"}
+{"file":"src/i18n/locales/","type":"directory","reason":"四语言 JSON 已经 Prettier 格式化；新增错误键与界面键可解析。"}
+{"file":"src-tauri/src/lib.rs","reason":"新只读已有模型命令已在 invoke handler 注册；未启动、控制或测试真实 Codex/ChatGPT。"}

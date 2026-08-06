@@ -53,6 +53,20 @@ Shared primitives already carry focus-visible styling and form ARIA linkage.
 Preserve those properties when editing them, and test interactive behavior
 through accessible roles where the nearby tests do so.
 
+### Locale Schema Parity
+
+`tests/config/localeKeyParity.test.ts` treats `zh.json` as the key-schema
+baseline and requires `en.json`, `ja.json`, and `zh-TW.json` to have the exact
+same leaf-key set. When adding, renaming, or deleting user-visible text:
+
+- change all four locale files in the same patch;
+- keep nested keys as objects and translation leaves as strings; and
+- run `mise exec -- pnpm test:unit -- tests/config/localeKeyParity.test.ts`
+  before relying on fallback text.
+
+Do not add a locale-specific key merely to silence a rendering issue. Fix the
+shared key shape so a missing translation cannot become a production fallback.
+
 ## Evidence
 
 - [package.json](../../../package.json) defines the runnable type-check,
@@ -61,5 +75,7 @@ through accessible roles where the nearby tests do so.
   environment and shared setup files.
 - [tests/setupTests.ts](../../../tests/setupTests.ts) manages Testing Library,
   i18n, MSW, cleanup, and mock reset lifecycle.
+- [tests/config/localeKeyParity.test.ts](../../../tests/config/localeKeyParity.test.ts)
+  enforces the registered locale key schema.
 - [Development Environment](../backend/development-environment.md) owns local
   runtime versions and command execution.

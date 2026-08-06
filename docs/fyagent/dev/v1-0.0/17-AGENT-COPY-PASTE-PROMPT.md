@@ -4,12 +4,14 @@ version: v1
 usage: reusable implementation and review checklists
 ---
 
-# FyAgent V1 维护者实施检查清单
+# FyAgent V1.0.0 历史维护者实施检查清单
+
+> 归档说明：以下提示词按 V1.0.0 当时的范围原样保留作历史参考，不是当前实施指令。当前实现先使用 `../v1-0.2/` 文档；需要追溯初版假设时再阅读本目录。
 
 ## 1. 总控集成
 
 ```text
-在当前 `NongHua123/cc-switch` 仓库 checkout 中实施 FyAgent V1“一键安装 Codex”。先完整阅读 v1/00-AGENT-START-HERE.md 至 v1/18-REFERENCES.md，并把这些文档视为实现契约。
+在当前 `NongHua123/cc-switch` 仓库 checkout 中实施 FyAgent V1“一键安装 Codex”。先完整阅读 `v1-0.0/00-AGENT-START-HERE.md` 至 `v1-0.0/18-REFERENCES.md`，并把它们视为该历史版本的实现契约。
 
 目标：基于当前仓库的 CC Switch 3.18.0 衍生代码，按最小侵入方式新增 Windows x64、Windows ARM64、macOS Apple Silicon 的官方 ChatGPT 桌面应用（包含 Codex）镜像安装功能。最终用户运行时必须只走中国大陆友好的 agentsmirror 内置端点；开发阶段联网不受限制。
 
@@ -47,7 +49,7 @@ mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
 ## 2. Core 实施
 
 ```text
-Core 实施者只修改 v1/03-AGENT-WORKTREE-EXECUTION.md 分配的文件。先阅读 01、02、04、05、06、10、11、12、13。
+Core 实施者只修改 `v1-0.0/03-AGENT-WORKTREE-EXECUTION.md` 分配的文件。先阅读 01、02、04、05、06、10、11、12、13。
 
 实现：领域DTO、稳定错误、版本/平台模型、agentsmirror manifest/checksum adapter、canonical release_id、5分钟缓存输入、redirect/retry策略、流式downloader、三倍磁盘预检、临时目录清理、单Job状态机、取消、完整快照事件、service编排、薄Tauri命令契约和mock platform trait。不要修改共享注册文件、Cargo、App.tsx或平台实现。
 

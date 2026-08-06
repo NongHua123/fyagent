@@ -1,0 +1,37 @@
+{
+  "id": "fyagent-v1-0-2-workbuddy",
+  "name": "fyagent-v1-0-2-workbuddy",
+  "title": "Implement FyAgent v1.0.2 fixes and enhancements",
+  "description": "Parent task for the v1.0.2 WorkBuddy, Codex runtime, shell, Windows security, acceptance, and legacy-document migration deliverables.",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "fyagent-v1-0-2-full-release",
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-06",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-06-fyagent-v1-0-0-doc-migration",
+    "08-06-fyagent-v1-0-2-workbuddy-data-ui",
+    "08-06-fyagent-v1-0-2-codex-runtime",
+    "08-06-fyagent-v1-0-2-shell-window",
+    "08-06-fyagent-v1-0-2-windows-security",
+    "08-06-fyagent-v1-0-2-desktop-acceptance"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "source_docs": "docs/fyagent/dev/v1-0.2",
+    "planning_blocker": "resolved-baseline; macos-runtime-identity-is-manual-gate",
+    "role": "parent"
+  }
+}

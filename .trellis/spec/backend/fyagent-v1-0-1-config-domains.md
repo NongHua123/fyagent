@@ -7,11 +7,14 @@ provider-native capabilities, the Codex Desktop restart flow, or WorkBuddy
 configuration. These changes cross Rust/Tauri commands, renderer state,
 user-owned configuration files, and Windows process identity boundaries.
 
-The product baseline is `docs/fyagent/dev/v1-0.1/`. Those documents contain a
-historical `3.18.0` source snapshot and must not be mechanically rewritten as
-part of an application-version update. WorkBuddy is a top-level configuration
-domain, not an `AppType`, Provider, MCP, Skill, Prompt, Profile, Session, usage,
-or local-proxy domain.
+The v1.0.1 configuration-domain input is `docs/fyagent/dev/v1-0.1/`. For the
+active v1.0.2 scope, `docs/fyagent/dev/v1-0.2/` is authoritative where it
+supersedes a contract; retain this v1.0.1 contract only for configuration-domain
+rules not superseded by v1.0.2. The v1.0.1 documents contain a historical
+`3.18.0` source snapshot and must not be mechanically rewritten as part of an
+application-version update. WorkBuddy is a top-level configuration domain, not
+an `AppType`, Provider, MCP, Skill, Prompt, Profile, Session, usage, or
+local-proxy domain.
 
 ## 2. Signatures
 

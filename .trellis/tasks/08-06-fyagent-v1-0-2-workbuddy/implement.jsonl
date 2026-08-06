@@ -1,0 +1,6 @@
+{"file":"docs/fyagent/dev/v1-0.2/01-需求规格与决策基线.md","reason":"v1.0.2 需求编号、范围、已确认决策和非目标。"}
+{"file":"docs/fyagent/dev/v1-0.2/04-系统架构与IPC设计.md","reason":"跨层 DTO、重启状态机、窗口和 IPC 安全契约。"}
+{"file":"docs/fyagent/dev/v1-0.2/05-WorkBuddy数据模型与安全设计.md","reason":"WorkBuddy 双根、事务、令牌、密钥和写入安全契约。"}
+{"file":"docs/fyagent/dev/v1-0.2/06-实施顺序与仓库变更地图.md","reason":"依赖顺序、文件边界和回滚组。"}
+{"file":".trellis/spec/backend/fyagent-v1-0-1-config-domains.md","reason":"既有配置域与 v1.0.2 覆盖前的兼容边界。"}
+{"file":".trellis/spec/frontend/index.md","reason":"renderer API、状态、本地化和测试入口。"}

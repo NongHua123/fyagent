@@ -127,7 +127,7 @@ Core 先冻结契约，Windows/macOS/UI 并行，集成负责人 cherry-pick。
 
 ### ADR-029：文档多 Markdown，无独立任务卡（Accepted）
 
-最终 `v1.zip/v1/`，含复制提示词和参考资料。
+历史交付为 `v1.zip/v1/`，含复制提示词和参考资料；仓库内该归档现更名为 `docs/fyagent/dev/v1-0.0/`。
 
 ### ADR-030：结构遵循 CC Switch而非机械预设（Accepted）
 
@@ -238,7 +238,7 @@ Commands/Services/Domain/Platform、API/Query/Hook/Component 分层，允许按�
 | D78 | all-users人工结果非阻断 |
 | D79 | Agent/脚本不自动卸载清理 |
 | D80 | 接受后续路线图 |
-| D81 | ZIP根目录 `v1/` |
+| D81 | 历史 ZIP 根目录 `v1/`；仓库归档目录现为 `docs/fyagent/dev/v1-0.0/` |
 | D82 | 文档精确到接口/文件/测试，但不复制全套生产代码 |
 | D83 | UI固定current-user；all-users隐藏CLI实验 |
 | D84 | 不禁用目标官方应用自更新 |
