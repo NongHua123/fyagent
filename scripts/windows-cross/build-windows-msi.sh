@@ -139,6 +139,8 @@ case "$CARGO_TARGET_ROOT" in
   *) CARGO_TARGET_ROOT="$PROJECT_ROOT/$CARGO_TARGET_ROOT" ;;
 esac
 CARGO_TARGET_ROOT="$(realpath -m -- "$CARGO_TARGET_ROOT")"
+APP_CARGO_TARGET_ROOT="$CARGO_TARGET_ROOT/app"
+INSTALLER_ACTIONS_TARGET_ROOT="$CARGO_TARGET_ROOT/installer-actions"
 
 case "$OUTPUT_ROOT" in
   /|"${HOME:?}"|"$PROJECT_ROOT")
@@ -222,7 +224,7 @@ declare -a REQUIRED_COMMANDS=(
   msiinfo msidump msiextract msidiff osslsigncode
   cabextract unzip zip zstd jq git file
   sha256sum realpath readlink flock find grep awk sed sort head tr date mktemp
-  cp chmod mv rm rmdir touch unlink
+  cmp cp chmod mv rm rmdir touch unlink
 )
 
 record_error() {
@@ -283,8 +285,11 @@ check_project_inputs() {
     src-tauri/Cargo.toml
     src-tauri/Cargo.lock
     src-tauri/tauri.conf.json
+    src-tauri/installer-actions/Cargo.toml
     src-tauri/tauri.windows.conf.json
+    src-tauri/wix/fyagent-install-dir-ui.wxs
     src-tauri/wix/per-machine-main.wxs
+    scripts/version.mjs
   )
 
   for required_file in "${required_files[@]}"; do
@@ -487,6 +492,15 @@ check_build_policy() {
   esac
 }
 
+check_version_contract() {
+  local version_output
+
+  version_output="$(pnpm --silent run version:check 2>&1)" || {
+    record_error "version contract check failed: $version_output"
+    return 0
+  }
+}
+
 run_preflight() {
   local managed_tool
 
@@ -504,6 +518,7 @@ run_preflight() {
   check_wine_prefix
   check_xwin_cache
   check_build_policy
+  check_version_contract
 
   if (( ${#PREFLIGHT_ERRORS[@]} > 0 )); then
     printf '[windows-cross] preflight failed with %d problem(s):\n' "${#PREFLIGHT_ERRORS[@]}" >&2
@@ -528,18 +543,14 @@ if [[ "$CHECK_ONLY" == "1" ]]; then
   exit 0
 fi
 
-mapfile -t PROJECT_METADATA < <(
-  node -e '
-    const fs = require("node:fs");
-    const config = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
-    process.stdout.write(
-      String(config.productName ?? "") + "\n" + String(config.version ?? "") + "\n",
-    );
-  '
-)
-[[ "${#PROJECT_METADATA[@]}" -eq 2 ]] || die "cannot read product metadata from src-tauri/tauri.conf.json"
-PRODUCT_NAME="${PROJECT_METADATA[0]}"
-PRODUCT_VERSION="${PROJECT_METADATA[1]}"
+PRODUCT_NAME="$(node -e '
+  const fs = require("node:fs");
+  const config = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
+  process.stdout.write(String(config.productName ?? ""));
+')"
+PRODUCT_VERSION="$(pnpm --silent run version:get)"
+[[ -n "$PRODUCT_NAME" && -n "$PRODUCT_VERSION" ]] || \
+  die "cannot read product metadata and version contract"
 [[ "$PRODUCT_NAME" == "FyAgent" ]] || die "unexpected productName: $PRODUCT_NAME"
 [[ "$PRODUCT_VERSION" =~ ^[0-9A-Za-z][0-9A-Za-z._+-]*$ ]] || \
   die "unsafe product version for artifact paths: $PRODUCT_VERSION"
@@ -561,6 +572,7 @@ PUBLISH_ROOT="$JOB_ROOT/publish/$PRODUCT_VERSION"
 RELEASE_STAGE=""
 ACTIVE_WINE_PREFIX=""
 ACTIVE_XWIN_CLANG_WRAPPER=""
+INSTALLER_ACTIONS_DLL=""
 FINAL_VERSION_DIR=""
 BACKUP_VERSION_DIR=""
 mkdir -p "$PUBLISH_ROOT"
@@ -683,23 +695,237 @@ artifact_name_for_arch() {
   esac
 }
 
+wine_visible_path() {
+  local host_path="$1"
+
+  # The hardened Tauri Wine runner intentionally forwards only TAURI_-prefixed
+  # variables to Candle/Light. Keep the public build contract in
+  # FYAGENT_INSTALLER_ACTIONS_DLL and pass the same file through a Windows-path
+  # bridge that Wine's Z: drive can resolve.
+  printf 'Z:%s\n' "${host_path//\//\\}"
+}
+
+verify_installer_actions_dll() {
+  local dll="$1"
+  local arch="$2"
+  local context="$3"
+  local description
+
+  [[ -f "$dll" ]] || die "$context installer-actions DLL is missing: $dll"
+  description="$(file -b "$dll")" || die "cannot inspect $context installer-actions DLL: $dll"
+  if ! grep -Eiq 'PE32.*DLL' <<<"$description"; then
+    die "$context installer-actions artifact is not a PE DLL: $description"
+  fi
+
+  case "$arch" in
+    x64)
+      grep -Eiq 'x86-64|x86_64|amd64' <<<"$description" || \
+        die "$context installer-actions DLL machine is not x64: $description"
+      ;;
+    arm64)
+      grep -Eiq 'aarch64|arm64' <<<"$description" || \
+        die "$context installer-actions DLL machine is not ARM64: $description"
+      ;;
+    *) die "unsupported architecture: $arch" ;;
+  esac
+}
+
+msi_table_has_action_condition() {
+  local table_file="$1"
+  local action="$2"
+  local condition="$3"
+
+  awk -F $'\t' -v action="$action" -v condition="$condition" \
+    '$1 == action && $2 == condition { found = 1 } END { exit(found ? 0 : 1) }' \
+    "$table_file"
+}
+
+msi_custom_action_matches() {
+  local table_file="$1"
+  local action="$2"
+  local type="$3"
+  local source="$4"
+  local target="$5"
+
+  awk -F $'\t' -v action="$action" -v type="$type" -v source="$source" -v target="$target" '
+    FNR <= 3 { next }
+    { sub(/\r$/, "", $NF) }
+    $1 == action {
+      matches += 1
+      if ($2 == type && $3 == source && $4 == target) {
+        exact = 1
+      }
+    }
+    END { exit(matches == 1 && exact ? 0 : 1) }
+  ' "$table_file"
+}
+
+msi_reg_locator_matches() {
+  local table_file="$1"
+  local signature="$2"
+  local root="$3"
+  local key="$4"
+  local name="$5"
+  local type="$6"
+
+  awk -F $'\t' -v signature="$signature" -v root="$root" -v key="$key" -v name="$name" -v type="$type" '
+    FNR <= 3 { next }
+    { sub(/\r$/, "", $NF) }
+    $1 == signature {
+      matches += 1
+      if ($2 == root && $3 == key && $4 == name && $5 == type) {
+        exact = 1
+      }
+    }
+    END { exit(matches == 1 && exact ? 0 : 1) }
+  ' "$table_file"
+}
+
+msi_install_dir_component_list() {
+  local directory_table="$1"
+  local component_table="$2"
+
+  awk -F $'\t' '
+    NR == FNR {
+      if (FNR > 3) {
+        sub(/\r$/, "", $NF)
+        parent[$1] = $2
+      }
+      next
+    }
+    FNR <= 3 { next }
+    {
+      sub(/\r$/, "", $NF)
+      if (is_install_dir_descendant($3)) {
+        print $1
+      }
+    }
+    function is_install_dir_descendant(directory, seen) {
+      split("", seen)
+      while (directory != "" && !(directory in seen)) {
+        if (directory == "INSTALLDIR") {
+          return 1
+        }
+        seen[directory] = 1
+        directory = parent[directory]
+      }
+      return 0
+    }
+  ' "$directory_table" "$component_table" | LC_ALL=C sort
+}
+
+msi_table_action_sequence() {
+  local table_file="$1"
+  local action="$2"
+
+  awk -F $'\t' -v action="$action" '
+    $1 == action { value = $3; count += 1 }
+    END {
+      if (count == 1) {
+        sub(/\r$/, "", value)
+        print value
+      } else {
+        exit 1
+      }
+    }
+  ' "$table_file"
+}
+
+assert_msi_sequence_before() {
+  local description="$1"
+  local earlier="$2"
+  local later="$3"
+
+  [[ "$earlier" =~ ^[0-9]+$ && "$later" =~ ^[0-9]+$ ]] || \
+    die "$description has a non-numeric MSI sequence: $earlier, $later"
+  (( 10#$earlier < 10#$later )) || \
+    die "$description is out of order: $earlier is not before $later"
+}
+
+build_installer_actions_dll() {
+  local arch="$1"
+  local target="$2"
+  local compiler_wrapper_dir="$3"
+  local dll="$INSTALLER_ACTIONS_TARGET_ROOT/$target/release/fyagent_installer_actions.dll"
+
+  log "building $arch installer-actions DLL for $target"
+  if ! (
+    export CARGO_NET_OFFLINE=true
+    # Keep the helper out of Tauri's main target/release scan. It belongs in
+    # the MSI Binary table only, never as an application payload file.
+    export CARGO_TARGET_DIR="$INSTALLER_ACTIONS_TARGET_ROOT"
+    export XWIN_CACHE_DIR="$XWIN_CACHE_DIR_RESOLVED"
+    export XWIN_CROSS_COMPILER=clang-cl
+    export PATH="$compiler_wrapper_dir:$PATH"
+    cargo-xwin build \
+      --locked \
+      --manifest-path "$PROJECT_ROOT/src-tauri/Cargo.toml" \
+      --package fyagent-installer-actions \
+      --target "$target" \
+      --release
+  ); then
+    die "$arch installer-actions DLL build failed"
+  fi
+
+  verify_installer_actions_dll "$dll" "$arch" "built"
+  INSTALLER_ACTIONS_DLL="$dll"
+}
+
 verify_linux_candidate() {
   local msi="$1"
   local arch="$2"
   local evidence_dir="$3"
+  local expected_actions_dll="$4"
   local listing
   local rendered_file
+  local summary
+  local action_stream
   local verify_dir="$JOB_ROOT/verify/$arch"
+  local maintenance_condition='Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE'
+  local pure_uninstall_condition='$CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2'
+  local missing_anchor_condition="(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND NOT FYAGENT_PREVIOUS_INSTALLDIR AND NOT ($pure_uninstall_condition)"
+  local restore_directory_condition='(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND FYAGENT_PREVIOUS_INSTALLDIR'
+  local active_directory_condition="NOT ($pure_uninstall_condition)"
+  local allowed_directory_condition="$active_directory_condition AND FYAGENT_INSTALLDIR_VALID = \"1\""
+  local rejected_directory_condition="$active_directory_condition AND FYAGENT_INSTALLDIR_VALID <> \"1\""
+  local expected_install_dir_components=$'CMP_UninstallShortcut\nInstallDirectoryAcl\nPath\nRegistryEntries'
+  local actual_install_dir_components
+  local execute_app_search_sequence
+  local execute_clear_anchor_sequence
+  local execute_clear_install_dir_sequence
+  local execute_missing_anchor_sequence
+  local execute_restore_sequence
+  local execute_cost_finalize_sequence
+  local execute_validate_sequence
+  local execute_apply_sequence
+  local execute_reject_sequence
+  local execute_install_validate_sequence
+  local execute_install_files_sequence
+  local ui_app_search_sequence
+  local ui_clear_anchor_sequence
+  local ui_clear_install_dir_sequence
+  local ui_missing_anchor_sequence
+  local ui_restore_sequence
+  local ui_cost_finalize_sequence
+  local ui_validate_sequence
+  local ui_apply_sequence
   local -a rendered_wxs=()
   local table
   local tables=(
     Property Directory Component Feature FeatureComponents File Registry
-    Shortcut Upgrade InstallExecuteSequence
+    Shortcut Upgrade Binary CustomAction InstallUISequence InstallExecuteSequence
+    Dialog Control ControlEvent MsiLockPermissionsEx AppSearch RegLocator
   )
 
   mkdir -p "$verify_dir"
   for table in "${tables[@]}"; do
-    msiinfo export "$msi" "$table" >"$verify_dir/$table.idt" || \
+    # msiinfo materializes Binary-table streams next to its current directory.
+    # Keep those inspection-only files inside the private verification tree so a
+    # successful build never pollutes the repository root.
+    (
+      cd "$verify_dir"
+      msiinfo export "$msi" "$table" >"$table.idt"
+    ) || \
       die "$arch MSI is missing or cannot export required table: $table"
   done
 
@@ -711,6 +937,142 @@ verify_linux_candidate() {
   fi
   grep -Fiq 'fyagent' "$verify_dir/Registry.idt" || \
     die "$arch MSI does not contain the fyagent protocol registry contract"
+  if grep -Fiq 'fyagent_installer_actions.dll' "$verify_dir/File.idt"; then
+    die "$arch MSI must not install the custom-action DLL as application payload"
+  fi
+  # The pure-uninstall predicate in WiX names every current component rooted at
+  # INSTALLDIR. Recompute that closure from the rendered tables so a future
+  # template addition cannot silently make a mixed transaction skip admission.
+  actual_install_dir_components="$(msi_install_dir_component_list "$verify_dir/Directory.idt" "$verify_dir/Component.idt")"
+  [[ "$actual_install_dir_components" == "$expected_install_dir_components" ]] || \
+    die "$arch MSI INSTALLDIR component guard drifted; update the pure-uninstall predicate for: ${actual_install_dir_components//$'\n'/, }"
+  grep -Fq $'FyAgentInstallerActions\t' "$verify_dir/Binary.idt" || \
+    die "$arch MSI does not embed the installer-actions DLL"
+  grep -Fq $'ValidateFyAgentInstallDirUi\t1\tFyAgentInstallerActions\tValidateFyAgentInstallDirUi' \
+    "$verify_dir/CustomAction.idt" || \
+    die "$arch MSI UI directory action is not a Type 1 installer-actions entry"
+  grep -Fq $'ValidateFyAgentInstallDirExecute\t1\tFyAgentInstallerActions\tValidateFyAgentInstallDirExecute' \
+    "$verify_dir/CustomAction.idt" || \
+    die "$arch MSI execute directory action is not a Type 1 installer-actions entry"
+  msi_custom_action_matches "$verify_dir/CustomAction.idt" \
+    "ClearFyAgentPreviousInstallDir" "307" "FYAGENT_PREVIOUS_INSTALLDIR" "" || \
+    die "$arch MSI does not clear the AppSearch anchor with a first-sequence Type 51 action"
+  msi_custom_action_matches "$verify_dir/CustomAction.idt" \
+    "ClearMaintenanceInstallDir" "307" "INSTALLDIR" "" || \
+    die "$arch MSI does not clear a maintenance INSTALLDIR with a first-sequence Type 51 action"
+  msi_custom_action_matches "$verify_dir/CustomAction.idt" \
+    "RestoreInstallDirFromPrevious" "51" "INSTALLDIR" "[FYAGENT_PREVIOUS_INSTALLDIR]" || \
+    die "$arch MSI does not restore INSTALLDIR from the protected AppSearch anchor"
+  grep -Fq $'AbortUnsafeFyAgentInstallDir\t19\t' "$verify_dir/CustomAction.idt" || \
+    die "$arch MSI does not contain the unsafe-directory Type 19 action"
+  grep -Fq $'AbortUntrustedFyAgentMaintenance\t19\t' "$verify_dir/CustomAction.idt" || \
+    die "$arch MSI does not contain the missing-anchor Type 19 action"
+  grep -Fq $'FYAGENT_PREVIOUS_INSTALLDIR\tFyAgentPreviousInstallDir' \
+    "$verify_dir/AppSearch.idt" || \
+    die "$arch MSI does not bind the previous install directory to AppSearch"
+  msi_reg_locator_matches "$verify_dir/RegLocator.idt" \
+    "FyAgentPreviousInstallDir" "2" "Software\\\\fyagent\\\\FyAgent" "InstallDir" "18" || \
+    die "$arch MSI does not locate the protected HKLM InstallDir anchor"
+  grep -Fq $'INSTALLDIR\tINSTALLDIR\tCreateFolder\tO:SYD:P(A;OICI;0x1200a9;;;BU)(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)' \
+    "$verify_dir/MsiLockPermissionsEx.idt" || \
+    die "$arch MSI INSTALLDIR protected DACL contract failed"
+
+  for table in InstallExecuteSequence InstallUISequence; do
+    msi_table_has_action_condition "$verify_dir/$table.idt" \
+      "ClearFyAgentPreviousInstallDir" "$maintenance_condition" || \
+      die "$arch MSI $table does not schedule the AppSearch-anchor reset"
+    msi_table_has_action_condition "$verify_dir/$table.idt" \
+      "ClearMaintenanceInstallDir" "$maintenance_condition" || \
+      die "$arch MSI $table does not schedule the INSTALLDIR reset"
+    msi_table_has_action_condition "$verify_dir/$table.idt" \
+      "AbortUntrustedFyAgentMaintenance" "$missing_anchor_condition" || \
+      die "$arch MSI $table does not fail closed when the InstallDir anchor is absent"
+    msi_table_has_action_condition "$verify_dir/$table.idt" \
+      "RestoreInstallDirFromPrevious" "$restore_directory_condition" || \
+      die "$arch MSI $table does not restore the trusted InstallDir anchor"
+  done
+  msi_table_has_action_condition "$verify_dir/InstallExecuteSequence.idt" \
+    "ValidateFyAgentInstallDirExecute" "$active_directory_condition" || \
+    die "$arch MSI execute directory validation condition drifted"
+  msi_table_has_action_condition "$verify_dir/InstallExecuteSequence.idt" \
+    "ApplyValidatedFyAgentInstallDir" "$allowed_directory_condition" || \
+    die "$arch MSI execute normalized-directory condition drifted"
+  msi_table_has_action_condition "$verify_dir/InstallExecuteSequence.idt" \
+    "AbortUnsafeFyAgentInstallDir" "$rejected_directory_condition" || \
+    die "$arch MSI execute unsafe-directory condition drifted"
+  msi_table_has_action_condition "$verify_dir/InstallUISequence.idt" \
+    "ValidateFyAgentInstallDirUi" "$active_directory_condition" || \
+    die "$arch MSI UI directory validation condition drifted"
+  msi_table_has_action_condition "$verify_dir/InstallUISequence.idt" \
+    "ApplyValidatedFyAgentInstallDir" "$allowed_directory_condition" || \
+    die "$arch MSI UI normalized-directory condition drifted"
+
+  execute_app_search_sequence="$(msi_table_action_sequence "$verify_dir/InstallExecuteSequence.idt" AppSearch)" || die "$arch MSI execute AppSearch sequence is ambiguous"
+  execute_clear_anchor_sequence="$(msi_table_action_sequence "$verify_dir/InstallExecuteSequence.idt" ClearFyAgentPreviousInstallDir)" || die "$arch MSI execute anchor-reset sequence is ambiguous"
+  execute_clear_install_dir_sequence="$(msi_table_action_sequence "$verify_dir/InstallExecuteSequence.idt" ClearMaintenanceInstallDir)" || die "$arch MSI execute INSTALLDIR-reset sequence is ambiguous"
+  execute_missing_anchor_sequence="$(msi_table_action_sequence "$verify_dir/InstallExecuteSequence.idt" AbortUntrustedFyAgentMaintenance)" || die "$arch MSI execute missing-anchor sequence is ambiguous"
+  execute_restore_sequence="$(msi_table_action_sequence "$verify_dir/InstallExecuteSequence.idt" RestoreInstallDirFromPrevious)" || die "$arch MSI execute InstallDir-restore sequence is ambiguous"
+  execute_cost_finalize_sequence="$(msi_table_action_sequence "$verify_dir/InstallExecuteSequence.idt" CostFinalize)" || die "$arch MSI execute CostFinalize sequence is ambiguous"
+  execute_validate_sequence="$(msi_table_action_sequence "$verify_dir/InstallExecuteSequence.idt" ValidateFyAgentInstallDirExecute)" || die "$arch MSI execute validation sequence is ambiguous"
+  execute_apply_sequence="$(msi_table_action_sequence "$verify_dir/InstallExecuteSequence.idt" ApplyValidatedFyAgentInstallDir)" || die "$arch MSI execute normalized-directory sequence is ambiguous"
+  execute_reject_sequence="$(msi_table_action_sequence "$verify_dir/InstallExecuteSequence.idt" AbortUnsafeFyAgentInstallDir)" || die "$arch MSI execute unsafe-directory sequence is ambiguous"
+  execute_install_validate_sequence="$(msi_table_action_sequence "$verify_dir/InstallExecuteSequence.idt" InstallValidate)" || die "$arch MSI InstallValidate sequence is ambiguous"
+  execute_install_files_sequence="$(msi_table_action_sequence "$verify_dir/InstallExecuteSequence.idt" InstallFiles)" || die "$arch MSI InstallFiles sequence is ambiguous"
+  assert_msi_sequence_before "$arch execute anchor reset before AppSearch" "$execute_clear_anchor_sequence" "$execute_app_search_sequence"
+  assert_msi_sequence_before "$arch execute INSTALLDIR reset before AppSearch" "$execute_clear_install_dir_sequence" "$execute_app_search_sequence"
+  assert_msi_sequence_before "$arch execute AppSearch before InstallDir restore" "$execute_app_search_sequence" "$execute_restore_sequence"
+  assert_msi_sequence_before "$arch execute InstallDir restore before CostFinalize" "$execute_restore_sequence" "$execute_cost_finalize_sequence"
+  assert_msi_sequence_before "$arch execute CostFinalize before missing-anchor abort" "$execute_cost_finalize_sequence" "$execute_missing_anchor_sequence"
+  assert_msi_sequence_before "$arch execute missing-anchor abort before validation" "$execute_missing_anchor_sequence" "$execute_validate_sequence"
+  assert_msi_sequence_before "$arch execute validation before normalized-directory apply" "$execute_validate_sequence" "$execute_apply_sequence"
+  assert_msi_sequence_before "$arch execute normalized-directory apply before unsafe-directory abort" "$execute_apply_sequence" "$execute_reject_sequence"
+  assert_msi_sequence_before "$arch execute unsafe-directory abort before InstallValidate" "$execute_reject_sequence" "$execute_install_validate_sequence"
+  assert_msi_sequence_before "$arch execute InstallValidate before InstallFiles" "$execute_install_validate_sequence" "$execute_install_files_sequence"
+
+  ui_app_search_sequence="$(msi_table_action_sequence "$verify_dir/InstallUISequence.idt" AppSearch)" || die "$arch MSI UI AppSearch sequence is ambiguous"
+  ui_clear_anchor_sequence="$(msi_table_action_sequence "$verify_dir/InstallUISequence.idt" ClearFyAgentPreviousInstallDir)" || die "$arch MSI UI anchor-reset sequence is ambiguous"
+  ui_clear_install_dir_sequence="$(msi_table_action_sequence "$verify_dir/InstallUISequence.idt" ClearMaintenanceInstallDir)" || die "$arch MSI UI INSTALLDIR-reset sequence is ambiguous"
+  ui_missing_anchor_sequence="$(msi_table_action_sequence "$verify_dir/InstallUISequence.idt" AbortUntrustedFyAgentMaintenance)" || die "$arch MSI UI missing-anchor sequence is ambiguous"
+  ui_restore_sequence="$(msi_table_action_sequence "$verify_dir/InstallUISequence.idt" RestoreInstallDirFromPrevious)" || die "$arch MSI UI InstallDir-restore sequence is ambiguous"
+  ui_cost_finalize_sequence="$(msi_table_action_sequence "$verify_dir/InstallUISequence.idt" CostFinalize)" || die "$arch MSI UI CostFinalize sequence is ambiguous"
+  ui_validate_sequence="$(msi_table_action_sequence "$verify_dir/InstallUISequence.idt" ValidateFyAgentInstallDirUi)" || die "$arch MSI UI validation sequence is ambiguous"
+  ui_apply_sequence="$(msi_table_action_sequence "$verify_dir/InstallUISequence.idt" ApplyValidatedFyAgentInstallDir)" || die "$arch MSI UI normalized-directory sequence is ambiguous"
+  assert_msi_sequence_before "$arch UI anchor reset before AppSearch" "$ui_clear_anchor_sequence" "$ui_app_search_sequence"
+  assert_msi_sequence_before "$arch UI INSTALLDIR reset before AppSearch" "$ui_clear_install_dir_sequence" "$ui_app_search_sequence"
+  assert_msi_sequence_before "$arch UI AppSearch before InstallDir restore" "$ui_app_search_sequence" "$ui_restore_sequence"
+  assert_msi_sequence_before "$arch UI InstallDir restore before CostFinalize" "$ui_restore_sequence" "$ui_cost_finalize_sequence"
+  assert_msi_sequence_before "$arch UI CostFinalize before missing-anchor abort" "$ui_cost_finalize_sequence" "$ui_missing_anchor_sequence"
+  assert_msi_sequence_before "$arch UI missing-anchor abort before validation" "$ui_missing_anchor_sequence" "$ui_validate_sequence"
+  assert_msi_sequence_before "$arch UI validation before normalized-directory apply" "$ui_validate_sequence" "$ui_apply_sequence"
+  grep -Fq $'InstallDirDlg\tNext\tDoAction\tValidateFyAgentInstallDirUi' \
+    "$verify_dir/ControlEvent.idt" || \
+    die "$arch MSI InstallDir Next chain does not call the native UI action"
+  grep -Fq $'InstallDirDlg\tNext\tSpawnDialog\tFyAgentUnsafeInstallDirDlg' \
+    "$verify_dir/ControlEvent.idt" || \
+    die "$arch MSI InstallDir Next chain does not show the policy error dialog"
+  grep -Fq 'FyAgentUnsafeInstallDirDlg' "$verify_dir/Dialog.idt" || \
+    die "$arch MSI does not contain the policy error dialog"
+
+  action_stream="Binary.FyAgentInstallerActions"
+  msiinfo streams "$msi" | grep -Fxq "$action_stream" || \
+    die "$arch MSI does not expose the installer-actions Binary stream"
+  msiinfo extract "$msi" "$action_stream" >"$verify_dir/fyagent_installer_actions.dll" || \
+    die "$arch MSI installer-actions Binary stream cannot be extracted"
+  verify_installer_actions_dll "$verify_dir/fyagent_installer_actions.dll" "$arch" "MSI embedded"
+  cmp -s "$expected_actions_dll" "$verify_dir/fyagent_installer_actions.dll" || \
+    die "$arch MSI embedded installer-actions DLL differs from the verified build output"
+
+  summary="$(msiinfo suminfo "$msi")" || die "cannot inspect $arch MSI summary information"
+  case "$arch" in
+    x64)
+      grep -Eiq '^Template:.*(x64|intel64)' <<<"$summary" || \
+        die "$arch MSI summary template is not x64: $summary"
+      ;;
+    arm64)
+      grep -Eiq '^Template:.*(arm64|aarch64)' <<<"$summary" || \
+        die "$arch MSI summary template is not ARM64: $summary"
+      ;;
+  esac
 
   listing="$(msiextract -l "$msi")" || die "$arch MSI payload cannot be listed"
   grep -Fiq 'fyagent.exe' <<<"$listing" || die "$arch MSI payload does not contain fyagent.exe"
@@ -726,9 +1088,14 @@ verify_linux_candidate() {
   for rendered_file in "${rendered_wxs[@]}"; do
     if grep -a -E '/home/|/workspace/|/mnt/' "$rendered_file" >/dev/null 2>&1 || \
        grep -a -F "$PROJECT_ROOT/" "$rendered_file" >/dev/null 2>&1; then
-      die "$arch rendered WXS contains a Linux host path: $rendered_file"
+    die "$arch rendered WXS contains a Linux host path: $rendered_file"
     fi
   done
+
+  if grep -R -a -E 'ValidateInstallDirectory|Scripting\.FileSystemObject|Win32_LogicalFileSecuritySetting|GetSecurityDescriptor|FyAgentInstallDirectoryPolicy' \
+    "$verify_dir" >/dev/null 2>&1; then
+    die "$arch MSI still contains the legacy scripted directory validator"
+  fi
 
   if [[ "${FYAGENT_REQUIRE_WINDOWS_SIGNATURE:-0}" == "1" ]]; then
     osslsigncode verify -in "$msi" >"$verify_dir/signature.txt" 2>&1 || {
@@ -776,6 +1143,7 @@ build_architecture() {
   local artifact_name
   local arch_publish_dir
   local artifact_sha256
+  local installer_actions_dll_wine
   local -a generated_msis=()
 
   target="$(target_for_arch "$arch")"
@@ -786,18 +1154,33 @@ build_architecture() {
     ACTIVE_XWIN_CLANG_WRAPPER="$compiler_wrapper_dir/clang"
   fi
   ACTIVE_WINE_PREFIX="$prefix"
+  INSTALLER_ACTIONS_DLL=""
   evidence_dir="$JOB_ROOT/evidence/$arch"
-  bundle_dir="$CARGO_TARGET_ROOT/$target/release/bundle/msi"
+  bundle_dir="$APP_CARGO_TARGET_ROOT/$target/release/bundle/msi"
   build_marker="$JOB_ROOT/build-started-$arch"
   mkdir -p "$evidence_dir"
   touch "$build_marker"
+
+  if ! build_installer_actions_dll "$arch" "$target" "$compiler_wrapper_dir"; then
+    cleanup_active_xwin_clang_link
+    stop_active_wineserver
+    die "$arch installer-actions DLL build failed"
+  fi
+  if ! installer_actions_dll_wine="$(wine_visible_path "$INSTALLER_ACTIONS_DLL")"; then
+    cleanup_active_xwin_clang_link
+    stop_active_wineserver
+    die "$arch installer-actions DLL cannot be converted to a Wine-visible path"
+  fi
 
   log "building $arch MSI for $target"
   if ! (
     export CI=true
     export FYAGENT_WINDOWS_MANIFEST=release
     export CARGO_NET_OFFLINE=true
-    export CARGO_TARGET_DIR="$CARGO_TARGET_ROOT"
+    # Keep the application and custom-action targets disjoint. Tauri scans the
+    # application release directory for bundled DLLs, while the helper is only
+    # valid as the explicitly embedded MSI Binary stream.
+    export CARGO_TARGET_DIR="$APP_CARGO_TARGET_ROOT"
     export XWIN_CACHE_DIR="$XWIN_CACHE_DIR_RESOLVED"
     export XWIN_CROSS_COMPILER=clang-cl
     export PATH="$compiler_wrapper_dir:$PATH"
@@ -810,6 +1193,8 @@ build_architecture() {
     export TAURI_WIX_VALIDATION_MODE="${TAURI_WIX_VALIDATION_MODE:-native-deferred}"
     export TAURI_WIX_KEEP_INTERMEDIATES=1
     export TAURI_WIX_EVIDENCE_DIR="$evidence_dir"
+    export FYAGENT_INSTALLER_ACTIONS_DLL="$INSTALLER_ACTIONS_DLL"
+    export TAURI_FYAGENT_INSTALLER_ACTIONS_DLL="$installer_actions_dll_wine"
     export TZ=UTC
     export LC_ALL=C.UTF-8
 
@@ -832,7 +1217,7 @@ build_architecture() {
   [[ "${#generated_msis[@]}" -eq 1 ]] || \
     die "expected exactly one newly generated $arch MSI, found ${#generated_msis[@]}"
 
-  verify_linux_candidate "${generated_msis[0]}" "$arch" "$evidence_dir"
+  verify_linux_candidate "${generated_msis[0]}" "$arch" "$evidence_dir" "$INSTALLER_ACTIONS_DLL"
 
   arch_publish_dir="$PUBLISH_ROOT/$arch"
   mkdir -p "$arch_publish_dir/evidence"

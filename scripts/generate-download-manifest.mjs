@@ -1,21 +1,39 @@
 #!/usr/bin/env node
-// Generates the website download manifest (manifest.json) from a directory of
-// downloaded release assets. The deployment consumer and schema mirror must be
-// confirmed from the actual website configuration before changing fields or
-// classification rules; this repository does not define a website hostname.
+// Generates the release download manifest from assets that have already passed
+// the release workflow's platform gates. Version, tag, and source SHA are
+// explicit inputs from the frozen version-contract job; this script never
+// derives a version by trimming the tag.
 //
-// Usage: node scripts/generate-download-manifest.mjs <assets-dir> <tag> <base-url> [output]
+// Usage:
+//   node scripts/generate-download-manifest.mjs \
+//     <assets-dir> <app-version> <release-tag> <source-sha> <base-url> [output]
 
-import { readdirSync, statSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const [assetsDir, tag, baseUrl, output = "manifest.json"] =
+const [assetsDir, appVersion, releaseTag, sourceSha, baseUrl, output = "manifest.json"] =
   process.argv.slice(2);
 
-if (!assetsDir || !tag || !baseUrl) {
+if (!assetsDir || !appVersion || !releaseTag || !sourceSha || !baseUrl) {
   console.error(
-    "Usage: node scripts/generate-download-manifest.mjs <assets-dir> <tag> <base-url> [output]",
+    "Usage: node scripts/generate-download-manifest.mjs <assets-dir> <app-version> <release-tag> <source-sha> <base-url> [output]",
   );
+  process.exit(1);
+}
+
+if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(appVersion)) {
+  console.error(`Invalid application version: ${appVersion}`);
+  process.exit(1);
+}
+if (releaseTag !== `v${appVersion}`) {
+  console.error(
+    `Release tag must exactly match v${appVersion}; received ${releaseTag}`,
+  );
+  process.exit(1);
+}
+if (!/^[0-9a-f]{40}$/i.test(sourceSha)) {
+  console.error("source-sha must be a full 40-character Git commit SHA");
   process.exit(1);
 }
 
@@ -50,34 +68,48 @@ const RULES = [
 ];
 
 const normalizedBase = baseUrl.replace(/\/+$/, "");
-const files = [];
+const assets = [];
+const expectedPrefix = `FyAgent-${appVersion}-`;
 
 for (const name of readdirSync(assetsDir).sort()) {
-  // Unmatched files (.sig, .tar.gz updater artifacts, latest.json) are
-  // deliberately skipped — they are not user-facing downloads.
+  // Unmatched files (.sig, updater artifacts, and unrelated workflow output)
+  // are deliberately excluded from the user-facing download manifest.
   const rule = RULES.find((entry) => name.endsWith(entry.suffix));
   if (!rule) continue;
-  files.push({
+  if (!name.startsWith(expectedPrefix)) {
+    console.error(
+      `Release asset does not use the frozen application version ${appVersion}: ${name}`,
+    );
+    process.exit(1);
+  }
+
+  const assetPath = join(assetsDir, name);
+  assets.push({
     platform: rule.platform,
     kind: rule.kind,
     arch: rule.arch,
     name,
-    size: statSync(join(assetsDir, name)).size,
-    url: `${normalizedBase}/${tag}/${encodeURIComponent(name)}`,
+    size: statSync(assetPath).size,
+    sha256: createHash("sha256").update(readFileSync(assetPath)).digest("hex"),
+    url: `${normalizedBase}/${releaseTag}/${encodeURIComponent(name)}`,
   });
 }
 
-if (files.length === 0) {
+if (assets.length === 0) {
   console.error(`No release assets matched in ${assetsDir}`);
   process.exit(1);
 }
 
 const manifest = {
-  version: tag.replace(/^v/, ""),
-  tag,
+  schema: "fyagent-download-manifest/v1",
+  version: appVersion,
+  tag: releaseTag,
+  sourceSha,
   pubDate: new Date().toISOString(),
-  files,
+  assets,
 };
 
 writeFileSync(output, `${JSON.stringify(manifest, null, 2)}\n`);
-console.log(`Wrote ${output} with ${files.length} files for ${tag}`);
+console.log(
+  `Wrote ${output} with ${assets.length} assets for ${releaseTag} at ${sourceSha}`,
+);

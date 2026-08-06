@@ -1,6 +1,13 @@
+[workspace]
+members = [".", "installer-actions"]
+resolver = "2"
+
+[workspace.package]
+version = "0.2.1"
+
 [package]
 name = "fyagent"
-version = "0.2.0"
+version.workspace = true
 description = "All-in-One Assistant for Claude Code, Codex & Gemini CLI"
 authors = ["Jason Young"]
 license = "MIT"

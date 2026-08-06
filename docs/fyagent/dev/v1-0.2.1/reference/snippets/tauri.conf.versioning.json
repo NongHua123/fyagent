@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "FyAgent",
+  "identifier": "com.fyagent.desktop",
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "windows": {
+      "wix": {
+        "template": "wix/per-machine-main.wxs",
+        "fragmentPaths": [
+          "wix/fyagent-install-dir-ui.wxs"
+        ]
+      }
+    }
+  }
+}

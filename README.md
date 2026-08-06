@@ -168,11 +168,11 @@ For detailed guides on every feature, check out the **[User Manual](docs/user-ma
 
 ### Windows Users
 
-Download the latest `FyAgent-v{version}-Windows.msi` installer from the [Releases](https://github.com/NongHua123/cc-switch/releases) page. FyAgent no longer publishes a Windows Portable ZIP because the supported Windows application runs through the protected per-machine installation path.
+Download the latest `FyAgent-{version}-Windows.msi` installer from the [Releases](https://github.com/NongHua123/cc-switch/releases) page. FyAgent no longer publishes a Windows Portable ZIP because the supported Windows application runs through the protected per-machine installation path.
 
 ### macOS Users
 
-Download `FyAgent-v{version}-macOS.dmg` (recommended) or `.zip` from the [Releases](https://github.com/NongHua123/cc-switch/releases) page.
+Download `FyAgent-{version}-macOS.dmg` (recommended) or `.zip` from the [Releases](https://github.com/NongHua123/cc-switch/releases) page.
 
 > **Note**: Signing and notarization are release-specific. Check the evidence published with the exact FyAgent build before expecting macOS to allow a direct install.
 
@@ -180,9 +180,9 @@ Download `FyAgent-v{version}-macOS.dmg` (recommended) or `.zip` from the [Releas
 
 Download the latest Linux build, including builds usable on Arch Linux, from the [Releases](https://github.com/NongHua123/cc-switch/releases) page:
 
-- `FyAgent-v{version}-Linux-{arch}.deb` (Debian/Ubuntu)
-- `FyAgent-v{version}-Linux-{arch}.rpm` (Fedora/RHEL/openSUSE)
-- `FyAgent-v{version}-Linux-{arch}.AppImage` (portable; choose `x86_64` or `arm64` for `{arch}`)
+- `FyAgent-{version}-Linux-{arch}.deb` (Debian/Ubuntu)
+- `FyAgent-{version}-Linux-{arch}.rpm` (Fedora/RHEL/openSUSE)
+- `FyAgent-{version}-Linux-{arch}.AppImage` (portable; choose `x86_64` or `arm64` for `{arch}`)
 
 > **Flatpak**: Not included in official releases. You can build it yourself from the `.deb` — see [`flatpak/README.md`](flatpak/README.md) for instructions.
 

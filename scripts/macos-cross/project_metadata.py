@@ -20,6 +20,7 @@ EXPECTED_PNPM_VERSION = "10.12.3"
 EXPECTED_PYTHON_VERSION = "3.12.8"
 EXPECTED_RUST_VERSION = "1.95.0"
 EXPECTED_TAURI_CLI_VERSION = "2.8.1"
+EXPECTED_WORKSPACE_MEMBERS = [".", "installer-actions"]
 
 
 @dataclass(frozen=True)
@@ -149,13 +150,23 @@ def inspect_project(root: Path) -> Inspection:
         errors.append("tauri.conf.json: bundle.macOS must be an object")
         macos = {}
 
+    workspace = cargo.get("workspace", {})
+    if not isinstance(workspace, dict):
+        errors.append("src-tauri/Cargo.toml: workspace must be a table")
+        workspace = {}
+    workspace_package = workspace.get("package", {})
+    if not isinstance(workspace_package, dict):
+        errors.append("src-tauri/Cargo.toml: workspace.package must be a table")
+        workspace_package = {}
+
     cargo_package = cargo.get("package", {})
     if not isinstance(cargo_package, dict):
         errors.append("src-tauri/Cargo.toml: package must be a table")
         cargo_package = {}
 
     product_name = str(tauri.get("productName", ""))
-    version = str(tauri.get("version", ""))
+    workspace_version = workspace_package.get("version", "")
+    version = workspace_version if isinstance(workspace_version, str) else ""
     identifier = str(tauri.get("identifier", ""))
     binary_name = str(cargo_package.get("name", ""))
     minimum_system_version = str(macos.get("minimumSystemVersion", ""))
@@ -183,23 +194,30 @@ def inspect_project(root: Path) -> Inspection:
             f"rust-toolchain channel must resolve to {EXPECTED_RUST_VERSION}; found {rust_channel!r}"
         )
 
-    versions = {
-        "tauri.conf.json": version,
-        "package.json": str(package.get("version", "")),
-        "src-tauri/Cargo.toml": str(cargo_package.get("version", "")),
-    }
-    if len(set(versions.values())) != 1 or not version:
+    workspace_members = workspace.get("members")
+    if workspace_members != EXPECTED_WORKSPACE_MEMBERS:
         errors.append(
-            "project version mismatch: "
-            + ", ".join(f"{source}={value!r}" for source, value in versions.items())
+            "src-tauri/Cargo.toml workspace.members must be "
+            f"{EXPECTED_WORKSPACE_MEMBERS!r}; found {workspace_members!r}"
         )
+    if workspace.get("resolver") != "2":
+        errors.append("src-tauri/Cargo.toml workspace.resolver must be '2'")
+    if not version:
+        errors.append(
+            "src-tauri/Cargo.toml workspace.package.version must be a non-empty string"
+        )
+    if cargo_package.get("version") != {"workspace": True}:
+        errors.append(
+            "src-tauri/Cargo.toml package.version must inherit workspace = true"
+        )
+
     cargo_lock_app_version = _cargo_lock_version(
         required_paths["src-tauri/Cargo.lock"], binary_name
     )
     if cargo_lock_app_version != version:
         errors.append(
-            "project version mismatch: "
-            f"src-tauri/Cargo.lock={cargo_lock_app_version!r}, expected {version!r}"
+            "src-tauri/Cargo.lock application version mismatch: "
+            f"found {cargo_lock_app_version!r}, expected workspace {version!r}"
         )
 
     tools = mise.get("tools", {})

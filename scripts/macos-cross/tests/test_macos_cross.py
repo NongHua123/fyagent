@@ -125,6 +125,7 @@ class ProjectFixture:
             "rust-toolchain.toml",
             "src-tauri/Cargo.toml",
             "src-tauri/Cargo.lock",
+            "src-tauri/installer-actions/Cargo.toml",
             "src-tauri/tauri.conf.json",
             "src-tauri/icons/icon.icns",
         ):
@@ -146,6 +147,69 @@ class ProjectMetadataTests(unittest.TestCase):
         self.assertEqual(inspection.metadata.product_name, "FyAgent")
         self.assertEqual(inspection.metadata.deep_link_schemes, ("fyagent",))
         self.assertEqual(inspection.metadata.tauri_cli_lock_version, "2.8.1")
+        self.assertEqual(
+            inspection.metadata.version,
+            project_metadata.read_toml(
+                PROJECT_ROOT / "src-tauri" / "Cargo.toml"
+            )["workspace"]["package"]["version"],
+        )
+
+    def test_metadata_and_preflight_ignore_package_and_tauri_version_fields(self) -> None:
+        fixture = ProjectFixture()
+        self.addCleanup(fixture.close)
+
+        package_path = fixture.root / "package.json"
+        package = json.loads(package_path.read_text(encoding="utf-8"))
+        package["version"] = "9.9.9"
+        package_path.write_text(json.dumps(package), encoding="utf-8")
+
+        tauri_path = fixture.root / "src-tauri" / "tauri.conf.json"
+        tauri = json.loads(tauri_path.read_text(encoding="utf-8"))
+        tauri["version"] = "8.8.8"
+        tauri_path.write_text(json.dumps(tauri), encoding="utf-8")
+
+        inspection = project_metadata.inspect_project(fixture.root)
+        self.assertEqual(inspection.errors, ())
+        self.assertIsNotNone(inspection.metadata)
+        assert inspection.metadata is not None
+        expected = project_metadata.read_toml(
+            fixture.root / "src-tauri" / "Cargo.toml"
+        )["workspace"]["package"]["version"]
+        self.assertEqual(inspection.metadata.version, expected)
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_DIR / "preflight.py"),
+                str(fixture.root),
+                "--field",
+                "version",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, f"{expected}\n")
+
+    def test_metadata_requires_workspace_version_inheritance(self) -> None:
+        fixture = ProjectFixture()
+        self.addCleanup(fixture.close)
+        cargo_path = fixture.root / "src-tauri" / "Cargo.toml"
+        cargo = cargo_path.read_text(encoding="utf-8")
+        cargo_path.write_text(
+            cargo.replace("version.workspace = true", 'version = "9.9.9"', 1),
+            encoding="utf-8",
+        )
+
+        inspection = project_metadata.inspect_project(fixture.root)
+        self.assertTrue(
+            any(
+                "package.version must inherit workspace = true" in error
+                for error in inspection.errors
+            ),
+            inspection.errors,
+        )
 
     def test_manual_bundle_rejects_every_unhandled_tauri_field(self) -> None:
         cases = {
@@ -191,12 +255,15 @@ class ProjectMetadataTests(unittest.TestCase):
             any("explicit [[bin]] targets are unsupported" in error for error in inspection.errors)
         )
 
-    def test_project_version_must_match_cargo_lock(self) -> None:
+    def test_workspace_version_must_match_cargo_lock(self) -> None:
         fixture = ProjectFixture()
         self.addCleanup(fixture.close)
         lock_path = fixture.root / "src-tauri" / "Cargo.lock"
         lock_text = lock_path.read_text(encoding="utf-8")
-        old = 'name = "fyagent"\nversion = "0.2.0"'
+        workspace_version = project_metadata.read_toml(
+            fixture.root / "src-tauri" / "Cargo.toml"
+        )["workspace"]["package"]["version"]
+        old = f'name = "fyagent"\nversion = "{workspace_version}"'
         self.assertIn(old, lock_text)
         lock_path.write_text(
             lock_text.replace(old, 'name = "fyagent"\nversion = "9.9.9"', 1),
@@ -205,7 +272,12 @@ class ProjectMetadataTests(unittest.TestCase):
 
         inspection = project_metadata.inspect_project(fixture.root)
         self.assertTrue(
-            any("src-tauri/Cargo.lock='9.9.9'" in error for error in inspection.errors)
+            any(
+                "Cargo.lock application version mismatch" in error
+                and "'9.9.9'" in error
+                for error in inspection.errors
+            ),
+            inspection.errors,
         )
 
     def test_custom_info_plist_overrides_tauri_defaults(self) -> None:

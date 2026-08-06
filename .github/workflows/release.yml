@@ -14,10 +14,61 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  version-contract:
+    name: Freeze version and source contract
+    runs-on: ubuntu-22.04
+    outputs:
+      app_version: ${{ steps.contract.outputs.app_version }}
+      release_tag: ${{ steps.contract.outputs.release_tag }}
+      source_sha: ${{ steps.contract.outputs.source_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.3
+          run_install: false
+
+      - name: Install frontend deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate and freeze release contract
+        id: contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm run version:check
+          app_version="$(pnpm --silent run version:get)"
+          release_tag="v${app_version}"
+
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            pnpm run version:check -- --tag "${GITHUB_REF_NAME}"
+            if [ "${GITHUB_REF_NAME}" != "$release_tag" ]; then
+              echo "Release tag must exactly match ${release_tag}; got ${GITHUB_REF_NAME}" >&2
+              exit 1
+            fi
+          fi
+
+          printf 'app_version=%s\n' "$app_version" >> "$GITHUB_OUTPUT"
+          printf 'release_tag=%s\n' "$release_tag" >> "$GITHUB_OUTPUT"
+          printf 'source_sha=%s\n' "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
   release:
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch')
+    needs: version-contract
     runs-on: ${{ matrix.os }}
     environment: release
+    env:
+      APP_VERSION: ${{ needs.version-contract.outputs.app_version }}
+      RELEASE_TAG: ${{ needs.version-contract.outputs.release_tag }}
+      SOURCE_SHA: ${{ needs.version-contract.outputs.source_sha }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(github.ref_type == 'tag' && '{"include":[{"os":"windows-2022"},{"os":"windows-11-arm","arch":"arm64"},{"os":"ubuntu-22.04"},{"os":"ubuntu-22.04-arm","arch":"arm64"},{"os":"macos-14"}]}' || '{"include":[{"os":"macos-14"}]}') }}
@@ -124,6 +175,18 @@ jobs:
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
 
+      - name: Verify checked-out version contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "$RELEASE_TAG" = "v$APP_VERSION" ]
+          [ "$SOURCE_SHA" = "$GITHUB_SHA" ]
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            pnpm run version:check -- --tag "$RELEASE_TAG"
+          else
+            pnpm run version:check
+          fi
+
       - name: Import Apple signing certificate
         if: runner.os == 'macOS' && github.ref_type == 'tag'
         shell: bash
@@ -204,6 +267,29 @@ jobs:
           pnpm tauri build --target universal-apple-darwin --bundles app
           echo "Unsigned macOS branch app build succeeded; no signing or notarization was requested."
 
+      - name: Verify macOS embedded application version
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH=""
+          for path in \
+            "src-tauri/target/universal-apple-darwin/release/bundle/macos" \
+            "src-tauri/target/aarch64-apple-darwin/release/bundle/macos" \
+            "src-tauri/target/x86_64-apple-darwin/release/bundle/macos" \
+            "src-tauri/target/release/bundle/macos"; do
+            if [ -d "$path" ]; then
+              APP_PATH="$(find "$path" -maxdepth 1 -name "*.app" -type d | head -1 || true)"
+              [ -n "$APP_PATH" ] && break
+            fi
+          done
+          [ -n "$APP_PATH" ] || { echo "No macOS app found for version verification" >&2; exit 1; }
+          BUNDLE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")"
+          [ "$BUNDLE_VERSION" = "$APP_VERSION" ] || {
+            echo "CFBundleShortVersionString $BUNDLE_VERSION does not match APP_VERSION $APP_VERSION" >&2
+            exit 1
+          }
+
       - name: Build Tauri App (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -233,6 +319,11 @@ jobs:
           $exePath = Join-Path $targetRoot 'fyagent.exe'
           if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
             throw "Windows release executable not found: $exePath"
+          }
+          $versionInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($exePath)
+          if ([string]::IsNullOrWhiteSpace($versionInfo.ProductVersion) -or
+              -not $versionInfo.ProductVersion.StartsWith($env:APP_VERSION, [StringComparison]::Ordinal)) {
+            throw "Windows executable ProductVersion does not match frozen APP_VERSION $env:APP_VERSION: $($versionInfo.ProductVersion)"
           }
 
           $manifestPath = Join-Path $env:RUNNER_TEMP 'fyagent-release-before-exe-sign.manifest'
@@ -270,6 +361,46 @@ jobs:
           ) {
             throw 'Embedded RT_MANIFEST must contain exactly one requestedExecutionLevel level="requireAdministrator" uiAccess="false"'
           }
+
+      - name: Build and verify Windows installer-actions DLL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installerActionsTarget = Join-Path $PWD 'src-tauri/target/installer-actions'
+          $env:CARGO_TARGET_DIR = $installerActionsTarget
+          if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') {
+            cargo build --locked --manifest-path src-tauri/Cargo.toml --package fyagent-installer-actions --target aarch64-pc-windows-msvc --release
+            $dllPath = Join-Path $installerActionsTarget 'aarch64-pc-windows-msvc/release/fyagent_installer_actions.dll'
+            [uint16]$expectedMachine = 0xAA64
+            $expectedMachineName = 'ARM64'
+          } else {
+            cargo build --locked --manifest-path src-tauri/Cargo.toml --package fyagent-installer-actions --release
+            $dllPath = Join-Path $installerActionsTarget 'release/fyagent_installer_actions.dll'
+            [uint16]$expectedMachine = 0x8664
+            $expectedMachineName = 'x64'
+          }
+
+          $dll = Get-Item -LiteralPath $dllPath -ErrorAction Stop
+          $bytes = [IO.File]::ReadAllBytes($dll.FullName)
+          if ($bytes.Length -lt 0x40 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {
+            throw "installer-actions output is not a PE DLL: $($dll.FullName)"
+          }
+          $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+          if ($peOffset -lt 0x40 -or $peOffset + 6 -gt $bytes.Length -or
+              $bytes[$peOffset] -ne 0x50 -or $bytes[$peOffset + 1] -ne 0x45) {
+            throw "installer-actions output has no valid PE header: $($dll.FullName)"
+          }
+          [uint16]$machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+          if ($machine -ne $expectedMachine) {
+            throw "installer-actions DLL machine is 0x$($machine.ToString('X4')); expected $expectedMachineName"
+          }
+          "FYAGENT_INSTALLER_ACTIONS_DLL=$($dll.FullName)" |
+            Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "TAURI_FYAGENT_INSTALLER_ACTIONS_DLL=$($dll.FullName)" |
+            Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Import Windows Authenticode certificate
         if: runner.os == 'Windows'
@@ -426,6 +557,204 @@ jobs:
             throw 'Embedded RT_MANIFEST must contain exactly one requestedExecutionLevel level="requireAdministrator" uiAccess="false"'
           }
 
+      - name: Verify Windows MSI native directory validator structure
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $targetRoot = if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') {
+            'src-tauri/target/aarch64-pc-windows-msvc/release'
+          } else {
+            'src-tauri/target/release'
+          }
+          $msis = @(
+            Get-ChildItem -Path (Join-Path $targetRoot 'bundle/msi') -Recurse -Filter *.msi -File -ErrorAction Stop
+          )
+          if ($msis.Count -ne 1) {
+            throw "Expected exactly one Windows MSI to inspect, found $($msis.Count)"
+          }
+
+          $installer = New-Object -ComObject WindowsInstaller.Installer
+          $database = $installer.OpenDatabase($msis[0].FullName, 0)
+          function Get-MsiRecord([string]$query) {
+            $view = $database.OpenView($query)
+            $view.Execute()
+            return $view.Fetch()
+          }
+          function Get-MsiRecords([string]$query) {
+            $view = $database.OpenView($query)
+            $view.Execute()
+            while ($record = $view.Fetch()) {
+              $record
+            }
+          }
+          function Require-MsiRecord([string]$query, [string]$description) {
+            if ($null -eq (Get-MsiRecord $query)) {
+              throw "MSI contract is missing: $description"
+            }
+          }
+          function Get-MsiSequenceRow([string]$table, [string]$action) {
+            $record = Get-MsiRecord "SELECT ``Condition``, ``Sequence`` FROM ``$table`` WHERE ``Action``='$action'"
+            if ($null -eq $record) {
+              throw "MSI contract is missing sequence action $action in $table"
+            }
+            return [PSCustomObject]@{
+              Action = $action
+              Condition = [string]$record.StringData(1)
+              Sequence = [int]$record.IntegerData(2)
+            }
+          }
+          function Assert-MsiSequenceCondition([string]$table, [string]$action, [string]$expectedCondition) {
+            $row = Get-MsiSequenceRow $table $action
+            if ($row.Condition -cne $expectedCondition) {
+              throw "MSI $table condition drifted for $action: '$($row.Condition)'"
+            }
+            return $row
+          }
+          function Assert-MsiSequenceBefore($earlier, $later, [string]$description) {
+            if ($earlier.Sequence -ge $later.Sequence) {
+              throw "MSI sequence order failed: $description ($($earlier.Sequence) >= $($later.Sequence))"
+            }
+          }
+          function Assert-MsiCustomAction([string]$action, [int]$expectedType, [string]$expectedSource, [string]$expectedTarget) {
+            $record = Get-MsiRecord "SELECT ``Type``, ``Source``, ``Target`` FROM ``CustomAction`` WHERE ``Action``='$action'"
+            if ($null -eq $record -or $record.IntegerData(1) -ne $expectedType -or
+                [string]$record.StringData(2) -cne $expectedSource -or
+                [string]$record.StringData(3) -cne $expectedTarget) {
+              throw "MSI custom action contract drifted for $action"
+            }
+            return $record
+          }
+
+          Require-MsiRecord 'SELECT `Name` FROM `Binary` WHERE `Name`=''FyAgentInstallerActions''' 'architecture-matched installer-actions Binary row'
+          if ($null -ne (Get-MsiRecord 'SELECT `File` FROM `File` WHERE `FileName` LIKE ''%fyagent_installer_actions.dll%''')) {
+            throw 'MSI must not install the custom-action DLL as an application payload'
+          }
+          $productVersion = Get-MsiRecord 'SELECT `Value` FROM `Property` WHERE `Property`=''ProductVersion'''
+          if ($null -eq $productVersion -or $productVersion.StringData(1) -ne $env:APP_VERSION) {
+            throw "MSI ProductVersion does not match frozen APP_VERSION $env:APP_VERSION"
+          }
+          $uiAction = Get-MsiRecord 'SELECT `Type`, `Source`, `Target` FROM `CustomAction` WHERE `Action`=''ValidateFyAgentInstallDirUi'''
+          if ($null -eq $uiAction -or $uiAction.IntegerData(1) -ne 1 -or
+              $uiAction.StringData(2) -ne 'FyAgentInstallerActions' -or
+              $uiAction.StringData(3) -ne 'ValidateFyAgentInstallDirUi') {
+            throw 'MSI UI directory action is not the expected Type 1 DLL entry'
+          }
+          $executeAction = Get-MsiRecord 'SELECT `Type`, `Source`, `Target` FROM `CustomAction` WHERE `Action`=''ValidateFyAgentInstallDirExecute'''
+          if ($null -eq $executeAction -or $executeAction.IntegerData(1) -ne 1 -or
+              $executeAction.StringData(2) -ne 'FyAgentInstallerActions' -or
+              $executeAction.StringData(3) -ne 'ValidateFyAgentInstallDirExecute') {
+            throw 'MSI execute directory action is not the expected Type 1 DLL entry'
+          }
+          Assert-MsiCustomAction 'ClearFyAgentPreviousInstallDir' 307 'FYAGENT_PREVIOUS_INSTALLDIR' ''
+          Assert-MsiCustomAction 'ClearMaintenanceInstallDir' 307 'INSTALLDIR' ''
+          Assert-MsiCustomAction 'RestoreInstallDirFromPrevious' 51 'INSTALLDIR' '[FYAGENT_PREVIOUS_INSTALLDIR]'
+          Assert-MsiCustomAction 'AbortUnsafeFyAgentInstallDir' 19 '' '[FYAGENT_INSTALLDIR_ERROR_MESSAGE]'
+          $missingAnchorAction = Get-MsiRecord 'SELECT `Type` FROM `CustomAction` WHERE `Action`=''AbortUntrustedFyAgentMaintenance'''
+          if ($null -eq $missingAnchorAction -or $missingAnchorAction.IntegerData(1) -ne 19) {
+            throw 'MSI missing-InstallDir-anchor action is not Type 19'
+          }
+          Require-MsiRecord 'SELECT `Property` FROM `AppSearch` WHERE `Property`=''FYAGENT_PREVIOUS_INSTALLDIR'' AND `Signature_`=''FyAgentPreviousInstallDir''' 'HKLM InstallDir AppSearch contract'
+          Require-MsiRecord 'SELECT `Signature_` FROM `RegLocator` WHERE `Signature_`=''FyAgentPreviousInstallDir'' AND `Root`=2 AND `Key`=''Software\fyagent\FyAgent'' AND `Name`=''InstallDir'' AND `Type`=18' 'HKLM InstallDir registry locator'
+          $installDirLock = Get-MsiRecord 'SELECT `SDDLText` FROM `MsiLockPermissionsEx` WHERE `LockObject`=''INSTALLDIR'''
+          if ($null -eq $installDirLock -or
+              $installDirLock.StringData(1) -cne 'O:SYD:P(A;OICI;0x1200a9;;;BU)(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)') {
+            throw 'MSI INSTALLDIR protected DACL contract drifted'
+          }
+
+          # The pure-uninstall predicate in WiX must name every rendered
+          # component rooted at INSTALLDIR. Recompute the directory closure
+          # from the MSI tables so a template addition cannot make a mixed
+          # remove/add transaction skip admission.
+          $directoryParents = @{}
+          foreach ($row in @(Get-MsiRecords 'SELECT `Directory`, `Directory_Parent` FROM `Directory`')) {
+            $directoryParents[[string]$row.StringData(1)] = [string]$row.StringData(2)
+          }
+          function Test-InstallDirDescendant([string]$directory) {
+            $visited = @{}
+            while (-not [string]::IsNullOrWhiteSpace($directory) -and -not $visited.ContainsKey($directory)) {
+              if ($directory -eq 'INSTALLDIR') {
+                return $true
+              }
+              $visited[$directory] = $true
+              if (-not $directoryParents.ContainsKey($directory)) {
+                return $false
+              }
+              $directory = $directoryParents[$directory]
+            }
+            return $false
+          }
+          $expectedInstallDirComponents = @(
+            'CMP_UninstallShortcut',
+            'InstallDirectoryAcl',
+            'Path',
+            'RegistryEntries'
+          )
+          $actualInstallDirComponents = @(
+            foreach ($row in @(Get-MsiRecords 'SELECT `Component`, `Directory_` FROM `Component`')) {
+              if (Test-InstallDirDescendant ([string]$row.StringData(2))) {
+                [string]$row.StringData(1)
+              }
+            }
+          ) | Sort-Object
+          $componentDifference = @(
+            Compare-Object -ReferenceObject $expectedInstallDirComponents -DifferenceObject $actualInstallDirComponents
+          )
+          if ($componentDifference.Count -ne 0) {
+            throw "MSI INSTALLDIR component guard drifted: $($componentDifference | Out-String)"
+          }
+
+          $maintenanceCondition = 'Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE'
+          $pureUninstallCondition = '$CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2'
+          $missingAnchorCondition = "(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND NOT FYAGENT_PREVIOUS_INSTALLDIR AND NOT ($pureUninstallCondition)"
+          $restoreDirectoryCondition = '(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND FYAGENT_PREVIOUS_INSTALLDIR'
+          $activeDirectoryCondition = "NOT ($pureUninstallCondition)"
+          $allowedDirectoryCondition = "$activeDirectoryCondition AND FYAGENT_INSTALLDIR_VALID = \"1\""
+          $rejectedDirectoryCondition = "$activeDirectoryCondition AND FYAGENT_INSTALLDIR_VALID <> \"1\""
+          foreach ($table in @('InstallUISequence', 'InstallExecuteSequence')) {
+            $clearAnchor = Assert-MsiSequenceCondition $table 'ClearFyAgentPreviousInstallDir' $maintenanceCondition
+            $clearInstallDir = Assert-MsiSequenceCondition $table 'ClearMaintenanceInstallDir' $maintenanceCondition
+            $missingAnchor = Assert-MsiSequenceCondition $table 'AbortUntrustedFyAgentMaintenance' $missingAnchorCondition
+            $restoreInstallDir = Assert-MsiSequenceCondition $table 'RestoreInstallDirFromPrevious' $restoreDirectoryCondition
+            $appSearch = Get-MsiSequenceRow $table 'AppSearch'
+            $costFinalize = Get-MsiSequenceRow $table 'CostFinalize'
+            Assert-MsiSequenceBefore $clearAnchor $appSearch "$table clear anchor before AppSearch"
+            Assert-MsiSequenceBefore $clearInstallDir $appSearch "$table clear INSTALLDIR before AppSearch"
+            Assert-MsiSequenceBefore $appSearch $restoreInstallDir "$table AppSearch before InstallDir restore"
+            Assert-MsiSequenceBefore $restoreInstallDir $costFinalize "$table InstallDir restore before CostFinalize"
+            Assert-MsiSequenceBefore $costFinalize $missingAnchor "$table CostFinalize before missing-anchor abort"
+            if ($table -eq 'InstallUISequence') {
+              $validator = Assert-MsiSequenceCondition $table 'ValidateFyAgentInstallDirUi' $activeDirectoryCondition
+            } else {
+              $validator = Assert-MsiSequenceCondition $table 'ValidateFyAgentInstallDirExecute' $activeDirectoryCondition
+            }
+            $apply = Assert-MsiSequenceCondition $table 'ApplyValidatedFyAgentInstallDir' $allowedDirectoryCondition
+            Assert-MsiSequenceBefore $missingAnchor $validator "$table missing-anchor abort before validator"
+            Assert-MsiSequenceBefore $validator $apply "$table validator before normalized-directory apply"
+            if ($table -eq 'InstallExecuteSequence') {
+              $reject = Assert-MsiSequenceCondition $table 'AbortUnsafeFyAgentInstallDir' $rejectedDirectoryCondition
+              $installValidate = Get-MsiSequenceRow $table 'InstallValidate'
+              $installFiles = Get-MsiSequenceRow $table 'InstallFiles'
+              Assert-MsiSequenceBefore $apply $reject "$table normalized-directory apply before unsafe-directory abort"
+              Assert-MsiSequenceBefore $reject $installValidate "$table unsafe-directory abort before InstallValidate"
+              Assert-MsiSequenceBefore $installValidate $installFiles "$table InstallValidate before InstallFiles"
+            }
+          }
+          Require-MsiRecord 'SELECT `Dialog` FROM `Dialog` WHERE `Dialog`=''FyAgentUnsafeInstallDirDlg''' 'unsafe-directory dialog'
+          Require-MsiRecord 'SELECT `Event` FROM `ControlEvent` WHERE `Dialog_`=''InstallDirDlg'' AND `Control_`=''Next'' AND `Event`=''DoAction'' AND `Argument`=''ValidateFyAgentInstallDirUi''' 'InstallDir Next native validator event'
+          Require-MsiRecord 'SELECT `Event` FROM `ControlEvent` WHERE `Dialog_`=''InstallDirDlg'' AND `Control_`=''Next'' AND `Event`=''SpawnDialog'' AND `Argument`=''FyAgentUnsafeInstallDirDlg''' 'InstallDir unsafe-directory dialog event'
+          if ($null -ne (Get-MsiRecord 'SELECT `Action` FROM `CustomAction` WHERE `Action`=''ValidateInstallDirectory''')) {
+            throw 'MSI still contains the legacy scripted directory action'
+          }
+
+          $template = [string]$database.SummaryInformation(0).Property(7)
+          $expectedArchitecture = if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') { 'arm64' } else { 'x64' }
+          if ($template -notmatch "(?i)$expectedArchitecture") {
+            throw "MSI summary template does not match $expectedArchitecture: $template"
+          }
+
       - name: Sign and verify Windows MSI
         if: runner.os == 'Windows'
         shell: pwsh
@@ -481,17 +810,44 @@ jobs:
         if: runner.os == 'Linux'
         run: pnpm tauri build --bundles appimage,deb,rpm
 
+      - name: Verify Linux bundle metadata uses frozen application version
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APPIMAGE="$(find src-tauri/target/release/bundle -name '*.AppImage' -type f | head -1 || true)"
+          DEB="$(find src-tauri/target/release/bundle -name '*.deb' -type f | head -1 || true)"
+          RPM="$(find src-tauri/target/release/bundle -name '*.rpm' -type f | head -1 || true)"
+          [ -n "$APPIMAGE" ] && [ -n "$DEB" ] && [ -n "$RPM" ] || {
+            echo "Expected AppImage, DEB, and RPM bundle outputs" >&2
+            exit 1
+          }
+          case "$(basename "$APPIMAGE")" in
+            *"$APP_VERSION"*) ;;
+            *) echo "AppImage filename does not contain APP_VERSION $APP_VERSION" >&2; exit 1 ;;
+          esac
+          DEB_VERSION="$(dpkg-deb -f "$DEB" Version)"
+          case "$DEB_VERSION" in
+            "$APP_VERSION"|"$APP_VERSION"-*|"$APP_VERSION"+*) ;;
+            *) echo "DEB version $DEB_VERSION does not contain APP_VERSION $APP_VERSION" >&2; exit 1 ;;
+          esac
+          RPM_VERSION="$(rpm -qp --qf '%{VERSION}' "$RPM")"
+          [ "$RPM_VERSION" = "$APP_VERSION" ] || {
+            echo "RPM version $RPM_VERSION does not match APP_VERSION $APP_VERSION" >&2
+            exit 1
+          }
+
       - name: Prepare macOS Assets
         if: runner.os == 'macOS' && github.ref_type == 'tag'
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p release-assets
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            VERSION="${GITHUB_REF_NAME}"  # e.g., v3.5.0
-          else
-            VERSION=$(printf '%s' "${GITHUB_REF_NAME}" | sed 's/[^A-Za-z0-9._-]/-/g')
-          fi
+          VERSION="$APP_VERSION"
+          [ "$RELEASE_TAG" = "v$VERSION" ] || {
+            echo "Frozen release tag does not match the application version" >&2
+            exit 1
+          }
 
           # Locate bundle artifacts
           APP_PATH=""
@@ -556,9 +912,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          VERSION=$(printf '%s' "${GITHUB_REF_NAME}" | sed 's/[^A-Za-z0-9._-]/-/g')
+          VERSION="$APP_VERSION"
           if [ -z "$VERSION" ]; then
-            echo "Unable to derive a safe branch asset name" >&2
+            echo "Frozen application version is missing" >&2
             exit 1
           fi
 
@@ -708,7 +1064,10 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
-          $VERSION = $env:GITHUB_REF_NAME  # e.g., v3.5.0
+          $VERSION = $env:APP_VERSION
+          if ([string]::IsNullOrWhiteSpace($VERSION)) {
+            throw 'Frozen application version is missing'
+          }
           $isArm64 = $env:WINDOWS_RELEASE_ARCH -eq 'arm64'
           $targetRoot = if ($isArm64) { 'src-tauri/target/aarch64-pc-windows-msvc/release' } else { 'src-tauri/target/release' }
           $assetSuffix = if ($isArm64) { '-arm64' } else { '' }
@@ -749,7 +1108,8 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p release-assets
-          VERSION="${GITHUB_REF_NAME}"  # e.g., v3.5.0
+          VERSION="$APP_VERSION"
+          [ -n "$VERSION" ] || { echo "Frozen application version is missing" >&2; exit 1; }
           ARCH="${{ matrix.arch || 'x86_64' }}"
           # 手动安装 AppImage。
           APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" | head -1 || true)
@@ -811,16 +1171,35 @@ jobs:
     name: Publish GitHub Release
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
-    needs: release
+    needs: [version-contract, release]
+    env:
+      APP_VERSION: ${{ needs.version-contract.outputs.app_version }}
+      RELEASE_TAG: ${{ needs.version-contract.outputs.release_tag }}
+      SOURCE_SHA: ${{ needs.version-contract.outputs.source_sha }}
     permissions:
       contents: write
     steps:
+      - name: Checkout manifest generator
+        uses: actions/checkout@v6
+
       - name: Download built release artifacts
         uses: actions/download-artifact@v8
         with:
           pattern: release-assets-*
           path: release-assets
           merge-multiple: true
+
+      - name: Generate frozen download manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/generate-download-manifest.mjs \
+            release-assets \
+            "$APP_VERSION" \
+            "$RELEASE_TAG" \
+            "$SOURCE_SHA" \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download" \
+            release-assets/download-manifest.json
 
       - name: List downloaded release artifacts
         shell: bash
@@ -831,21 +1210,23 @@ jobs:
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.ref_name }}
-          name: FyAgent ${{ github.ref_name }}
+          tag_name: ${{ needs.version-contract.outputs.release_tag }}
+          name: FyAgent ${{ needs.version-contract.outputs.release_tag }}
           prerelease: true
           body: |
-            ## FyAgent ${{ github.ref_name }}
+            ## FyAgent ${{ needs.version-contract.outputs.release_tag }}
 
             Claude Code 供应商切换工具
 
+            Source SHA: `${{ needs.version-contract.outputs.source_sha }}`
+
             ### 下载
 
-            - **macOS**: `FyAgent-${{ github.ref_name }}-macOS.dmg`（推荐）或 `FyAgent-${{ github.ref_name }}-macOS.zip`（解压即用）
-            - **Windows (x86_64)**: `FyAgent-${{ github.ref_name }}-Windows.msi`（签名安装版）
-            - **Windows (ARM64)**: `FyAgent-${{ github.ref_name }}-Windows-arm64.msi`（签名安装版）
-            - **Linux (x86_64)**: `FyAgent-${{ github.ref_name }}-Linux-x86_64.AppImage` / `.deb` / `.rpm`
-            - **Linux (ARM64)**: `FyAgent-${{ github.ref_name }}-Linux-arm64.AppImage` / `.deb` / `.rpm`
+            - **macOS**: `FyAgent-${{ needs.version-contract.outputs.app_version }}-macOS.dmg`（推荐）或 `FyAgent-${{ needs.version-contract.outputs.app_version }}-macOS.zip`（解压即用）
+            - **Windows (x86_64)**: `FyAgent-${{ needs.version-contract.outputs.app_version }}-Windows.msi`（签名安装版）
+            - **Windows (ARM64)**: `FyAgent-${{ needs.version-contract.outputs.app_version }}-Windows-arm64.msi`（签名安装版）
+            - **Linux (x86_64)**: `FyAgent-${{ needs.version-contract.outputs.app_version }}-Linux-x86_64.AppImage` / `.deb` / `.rpm`
+            - **Linux (ARM64)**: `FyAgent-${{ needs.version-contract.outputs.app_version }}-Linux-arm64.AppImage` / `.deb` / `.rpm`
 
             ---
             macOS 版本已通过 Apple 代码签名和公证，可直接安装使用。
