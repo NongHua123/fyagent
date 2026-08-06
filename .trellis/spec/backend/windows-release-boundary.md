@@ -2,11 +2,12 @@
 
 ## 1. Scope / Trigger
 
-This contract applies to the Windows formal release build, MSI packaging,
-early startup, single-instance activation forwarding, and all renderer-facing
-commands that could probe or invoke user CLI tools. It is mandatory because a
-manifest selection, elevation decision, named-pipe endpoint, and pre-Tauri
-startup path form one cross-layer privilege boundary.
+This contract applies to the Windows formal release build, MSI packaging and
+directory admission, early startup, single-instance activation forwarding, and
+all renderer-facing commands that could probe or invoke user CLI tools. It is
+mandatory because a manifest selection, MSI directory policy, elevation
+decision, named-pipe endpoint, and pre-Tauri startup path form one cross-layer
+privilege boundary.
 
 It also applies when `scripts/windows-cross/build-windows-msi.sh` produces a
 Linux-built Windows MSI candidate. Cross-compilation changes the host tools,
@@ -21,6 +22,8 @@ may require elevation.
 
 ```text
 FYAGENT_WINDOWS_MANIFEST = release | test | dev
+FYAGENT_INSTALLER_ACTIONS_DLL = target-specific installer-actions DLL
+TAURI_FYAGENT_INSTALLER_ACTIONS_DLL = WiX/Tauri-visible form of that DLL path
 ```
 
 ```text
@@ -45,6 +48,15 @@ pub(crate) fn install_activation_handler<F>(handler: F)
     -> Result<(), WindowsStartupErrorCode>;
 
 fn elevated_windows_cli_boundary_active_for(formal_windows_build: bool) -> bool;
+```
+
+```rust
+pub unsafe extern "system" fn ValidateFyAgentInstallDirUi(
+    install: MSIHANDLE,
+) -> u32;
+pub unsafe extern "system" fn ValidateFyAgentInstallDirExecute(
+    install: MSIHANDLE,
+) -> u32;
 ```
 
 `early_windows_startup_gate` returns exactly one of:
@@ -75,6 +87,34 @@ or an unbounded argv payload.
   version under `dist-bundle/windows/<version>/`; `--output-dir` is the
   explicit local override. Only `build:cross-windows` builds and atomically
   publishes both architectures as one version tree.
+- Application version resolution and the MSI helper's workspace/package
+  relationship are defined by
+  [FyAgent 0.2.1 Version and Installer Contract](./fyagent-version-contract.md).
+  The cross-build script obtains the candidate version through version:get; it
+  must not recover it from a tag, package.json, or tauri.conf.json.
+- installer-actions is an independent Windows cdylib using the locked
+  windows-sys dependency family. Build it separately for each target before
+  Tauri bundling, pass the same verified file through both helper environment
+  variables, and verify PE Machine, MSI summary architecture, and embedded
+  Binary-stream bytes. Do not make the main application crate a cdylib or add
+  Tauri to the helper.
+- WiX calls the two Type 1 actions above. They share one native, fail-closed
+  policy for normalized fixed local paths, reparse traversal, system/user/temp/
+  ProgramData exclusions, trusted ancestors, owner/DACL/effective rights, and
+  non-empty directory/product-marker admission. The policy must not depend on
+  WMI, PowerShell, VBScript, JScript, or a target-machine script, and must not
+  create files or modify an ACL while validating.
+- A UI policy denial populates the stable FYAGENT_INSTALLDIR result properties
+  and returns success so the user can choose another directory. Execute
+  revalidates the same path and a following Type 19 action blocks file writes
+  when invalid. Do not collapse this into a UI-only check or surface expected
+  denial as Error 1720.
+- Repair/upgrade clears public directory inputs, restores only the HKLM
+  InstallDir anchor, and fails closed before file writes if that trusted anchor
+  is unavailable. Directory validation may be skipped only for a strict pure
+  uninstall whose exact INSTALLDIR component closure is validated from the
+  rendered MSI tables. At this baseline the closure is
+  CMP_UninstallShortcut, InstallDirectoryAcl, Path, and RegistryEntries.
 - `mise run` does not auto-install missing tools before this workflow starts;
   the cross-build script's preflight requires the Windows toolchain to be
   prepared explicitly rather than treating task execution as provisioning.
@@ -86,8 +126,10 @@ or an unbounded argv payload.
   by `tauri-build`.
 - The release manifest is `requireAdministrator`; the test manifest is
   `asInvoker`. The signed release workflow explicitly selects `release` and
-  verifies the embedded application manifest before signing, after signing,
-  and for the final release artifact.
+  verifies the embedded application manifest in the target release executable
+  before signing and again after MSI bundling. The post-bundle check deliberately
+  rereads that executable rather than extracting or installing the MSI payload;
+  it is not proof that the final signed MSI contains the expected manifest.
 - `main` calls `early_windows_startup_gate` before creating the Tauri runtime.
   A formal release continues only when privilege status is available, elevated,
   locally administrative, and proven to match the interactive user. Any
@@ -131,7 +173,11 @@ or an unbounded argv payload.
 | Descriptor references a running owner but pipe open/handshake/proof fails                                                           | Do not send argv; return the activation-forward failure outcome.                                                                |
 | Authentication HMAC, frame shape, client identity, or bounds check fails                                                            | Reject the connection without invoking the activation handler.                                                                  |
 | Formal release reaches a user CLI command                                                                                           | Return the elevated-boundary message before probing or running the CLI.                                                         |
-| Manifest inspection/signing validation fails in release workflow                                                                    | Fail the workflow before publishing the artifact.                                                                               |
+| Target executable manifest inspection or signing validation fails in release workflow                                               | Fail the workflow before publishing the artifact.                                                                               |
+| Final signed MSI payload has not been extracted and inspected                                                                       | Keep final MSI-payload manifest acceptance pending; do not claim it was verified by the target-executable check.                |
+| Helper architecture, MSI Binary bytes, custom-action table, or INSTALLDIR component closure drifts                                  | Fail cross-build/release structure verification before candidate publication or signing.                                        |
+| UI validator rejects a path                                                                                                         | Show the recoverable policy dialog; do not raise Error 1720.                                                                    |
+| Execute validator rejects a path or repair/upgrade lacks its HKLM anchor                                                            | Type 19 aborts before InstallValidate/InstallFiles.                                                                             |
 
 ## 5. Good / Base / Bad Cases
 
@@ -159,21 +205,38 @@ or an unbounded argv payload.
 - `tests/desktopSecurityBoundary.test.ts` must assert the narrow renderer
   capability/CSP boundary, absence of portable Windows distribution claims,
   visual-baseline LFS policy, and pre-probe formal-release CLI guard.
-- `tests/releaseWorkflow.test.ts` must assert explicit release manifest
-  selection and manifest/signing verification steps in the release workflow.
+- `tests/releaseWorkflow.test.ts` currently asserts explicit release
+  manifest selection and target-executable manifest/signing verification steps
+  in the release workflow. Before treating this boundary as fully
+  test-enforced, extend it to distinguish the post-bundle target-executable
+  inspection from verification of the final MSI payload.
   It must also bind the Linux cross-build export to the actual architecture
   build environment, require `cargo:rustc-link-arg-tests` for the test manifest,
   and reject all-target manifest arguments and `/MANIFEST:NO` cancellation.
-- The cross-build quality gate must run strict Windows-target Clippy with
-  `FYAGENT_WINDOWS_MANIFEST=release`, link a release-profile Windows library
-  test harness with `FYAGENT_WINDOWS_MANIFEST=test --no-run`, and complete at
-  least the requested MSI architecture build plus Linux-side structure and
-  checksum checks. These checks do not replace native Windows validation.
+- It must also assert the native helper build precedes bundling, architecture
+  bridge variables and MSI Binary checks are present, UI/Execute Type 1 plus
+  Type 19 paths are scheduled, protected HKLM maintenance restoration is
+  present, the rendered INSTALLDIR closure is exact, and the retired
+  script/WMI validator is absent.
+- The current Linux cross-build gate completes the requested MSI architecture
+  build plus Linux-side structure and checksum checks. It does not itself run
+  strict Windows-target Clippy with `FYAGENT_WINDOWS_MANIFEST=release` or link a
+  release-profile Windows library test harness with
+  `FYAGENT_WINDOWS_MANIFEST=test --no-run`. Those are required Windows
+  release validations to add to a named gate or run explicitly before release;
+  do not report them as passed merely because local workspace or cross-build
+  checks pass. None of these static checks replace native Windows validation.
 - Run the declared safe checks through mise, including Rust format/clippy and
   the targeted/unit frontend suite. Native UAC, registry, MSI, PackageManager,
   signing, and live named-pipe validation are separate Windows release
   validation and require explicit authorization; do not fabricate them from a
   non-Windows host.
+- Native Windows acceptance additionally covers the default directory, a safe
+  custom directory, an unsafe directory, /qn INSTALLDIR, repair, upgrade,
+  uninstall, verbose MSI logging, and ICE validation for x64 and ARM64. Linux
+  table checks are necessary structure evidence, not an equivalent lifecycle
+  result. It must also extract and inspect the embedded executable manifest
+  from the final signed MSI before treating that payload as release-validated.
 
 ## 7. Wrong vs Correct
 

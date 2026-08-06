@@ -79,6 +79,25 @@ rather than a separately managed global tool.
 - GitHub Actions CI and release jobs are not local onboarding paths. Preserve
   their explicit runner setup, caching, signing, and target provisioning until
   a dedicated migration validates every runner architecture and release path.
+- Local mise currently provides Node 22.12.0, while CI/release version commands
+  must remain compatible with Node 20. Treat that as a compatibility contract,
+  not permission to align or upgrade either runtime as part of a FyAgent
+  application-version bump.
+- Run version commands through the local command boundary:
+
+  ```bash
+  mise exec -- pnpm run version:get
+  mise exec -- pnpm run version:check
+  mise exec -- pnpm run version:set X.Y.Z -- --dry-run
+  mise exec -- pnpm run version:bump patch -- --dry-run
+  ```
+
+  The commands' canonical metadata, allowed Cargo.lock writes, preflight, and
+  rollback behavior are defined by
+  [FyAgent 0.2.1 Version and Installer Contract](./fyagent-version-contract.md).
+  A version bump must not refresh Node, Rust, pnpm, WiX, or unrelated
+  dependencies.
+
 - Filesystem tests that require a write to fail must create a deterministic
   invalid shape inside the isolated test root, such as using a regular file as
   the requested target's parent. Do not infer failure from a fixed absolute
@@ -90,16 +109,17 @@ rather than a separately managed global tool.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                       | Required result                                                                        |
-| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Global mise is missing or older than 2026.8.0                                   | Stop before installing project dependencies or running development commands            |
-| A managed command resolves outside mise in a non-activated shell                | Re-run through `mise exec` or correctly activate mise                                  |
-| A WSL managed command resolves under `/mnt`                                     | Stop and repair PATH; never invoke the Windows shim                                     |
-| `mise.toml` differs from `.node-version`, packageManager, or Rust toolchain     | Fail the consistency test                                                              |
-| A configured platform is absent from all applicable `mise.lock` tool entries    | Regenerate the full target list; document any backend artifact gap before claiming support |
-| A native library is unavailable through mise                                    | Install and document the minimum host package; do not add another runtime manager       |
-| Existing global mise has different tools installed                              | Project `mise.toml` wins; no globally selected tool version is assumed                  |
-| A project script downloads mise or configures private mise/Cargo/rustup homes    | Reject the change and reuse the user-installed global mise                              |
+| Condition                                                                     | Required result                                                                            |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Global mise is missing or older than 2026.8.0                                 | Stop before installing project dependencies or running development commands                |
+| A managed command resolves outside mise in a non-activated shell              | Re-run through `mise exec` or correctly activate mise                                      |
+| A WSL managed command resolves under `/mnt`                                   | Stop and repair PATH; never invoke the Windows shim                                        |
+| `mise.toml` differs from `.node-version`, packageManager, or Rust toolchain   | Fail the consistency test                                                                  |
+| A configured platform is absent from all applicable `mise.lock` tool entries  | Regenerate the full target list; document any backend artifact gap before claiming support |
+| A native library is unavailable through mise                                  | Install and document the minimum host package; do not add another runtime manager          |
+| Existing global mise has different tools installed                            | Project `mise.toml` wins; no globally selected tool version is assumed                     |
+| A project script downloads mise or configures private mise/Cargo/rustup homes | Reject the change and reuse the user-installed global mise                                 |
+| A version bump changes toolchains or non-local Cargo.lock dependencies        | Reject it as scope drift; use the version command's narrow write set                       |
 
 ## 5. Good / Base / Bad Cases
 
@@ -127,6 +147,9 @@ rather than a separately managed global tool.
   if a managed command differs or resolves below `/mnt`.
 - Assert WSL macOS scripts contain no mise download URL/checksum and do not
   export private mise, Cargo, or rustup home variables.
+- Run the version command tests through Node and assert release CI's Node 20
+  compatibility without treating the local Node 22 declaration as a required
+  CI upgrade.
 - Run filesystem failure-path integration tests under an elevated/root context
   as well as an ordinary user context; both must fail at the intended path
   shape boundary without creating an absolute host directory, and a deliberately
