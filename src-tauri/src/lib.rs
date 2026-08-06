@@ -40,6 +40,7 @@ mod store;
 mod tray;
 mod usage_events;
 mod usage_script;
+mod window_layout;
 mod windows_runtime;
 
 use crate::codex_desktop::types::JobStage;
@@ -76,13 +77,20 @@ use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 pub use windows_runtime::{early_windows_startup_gate, WindowsStartupDisposition};
 
-use std::{fmt, sync::Arc};
+use std::{
+    fmt,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 #[cfg(target_os = "macos")]
 use tauri::image::Image;
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::RunEvent;
 use tauri::{Emitter, Manager};
-use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+use tauri_plugin_window_state::{AppHandleExt, StateFlags, WindowExt};
 
 /// Handles the two reserved experimental all-users installer flags before the
 /// Tauri runtime exists.  This public binary-facing shim deliberately exposes
@@ -241,6 +249,146 @@ pub(crate) fn redact_url_origin_for_log(url_str: &str) -> String {
 
 fn runtime_log_level_allows(level: log::Level, max_level: log::LevelFilter) -> bool {
     max_level.to_level().is_some_and(|maximum| level <= maximum)
+}
+
+const WINDOW_LAYOUT_EVENT: &str = "layout-mode-changed";
+const WINDOW_LAYOUT_DEBOUNCE: Duration = Duration::from_millis(150);
+
+fn layout_mode_label(mode: window_layout::LayoutMode) -> &'static str {
+    match mode {
+        window_layout::LayoutMode::Normal => "normal",
+        window_layout::LayoutMode::Constrained => "constrained",
+    }
+}
+
+/// Converts the monitor work area to logical pixels before the layout policy
+/// sees it. The policy is deliberately independent of monitor identity so the
+/// diagnostic path never needs to retain a display name or serial number.
+fn current_logical_work_area(
+    window: &tauri::WebviewWindow,
+) -> Option<(window_layout::LogicalWorkArea, f64)> {
+    let monitor = match window.current_monitor() {
+        Ok(Some(monitor)) => monitor,
+        Ok(None) => return None,
+        Err(error) => {
+            log::debug!("Unable to read main-window monitor for layout policy: {error}");
+            return None;
+        }
+    };
+    let scale_factor = monitor.scale_factor();
+    if !scale_factor.is_finite() || scale_factor <= 0.0 {
+        log::debug!("Ignoring invalid main-window scale factor for layout policy");
+        return None;
+    }
+
+    let work_area = monitor.work_area();
+    Some((
+        window_layout::LogicalWorkArea {
+            x: f64::from(work_area.position.x) / scale_factor,
+            y: f64::from(work_area.position.y) / scale_factor,
+            width: f64::from(work_area.size.width) / scale_factor,
+            height: f64::from(work_area.size.height) / scale_factor,
+        },
+        scale_factor,
+    ))
+}
+
+fn emit_main_window_layout_mode(
+    window: &tauri::WebviewWindow,
+    work_area: window_layout::LogicalWorkArea,
+    scale_factor: f64,
+) -> tauri::Result<()> {
+    let mode = window_layout::layout_mode(work_area.width);
+    window.emit(WINDOW_LAYOUT_EVENT, layout_mode_label(mode))?;
+    log::debug!(
+        "Main window layout policy v{} updated: logical_work_area_width={:.0}, scale_factor={scale_factor:.2}, mode={}",
+        window_layout::LAYOUT_VERSION,
+        work_area.width,
+        layout_mode_label(mode),
+    );
+    Ok(())
+}
+
+/// Re-evaluates only the current monitor constraint. It intentionally does not
+/// reset size or position: after returning to a large work area a legal user
+/// size stays untouched, while the product minimum becomes available again.
+fn refresh_main_window_layout(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    let Some((work_area, scale_factor)) = current_logical_work_area(window) else {
+        return Ok(());
+    };
+    let minimum = window_layout::effective_minimum_size(work_area);
+    window.set_min_size(Some(tauri::LogicalSize::new(minimum.width, minimum.height)))?;
+    emit_main_window_layout_mode(window, work_area, scale_factor)
+}
+
+/// Restores the main window while it is still hidden, normalizes legacy saved
+/// geometry, and only then restores maximization. `window-state` continues to
+/// own persistence; this is a controlled migration layer above its raw state.
+fn restore_hidden_main_window_layout(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    if let Err(error) = window.restore_state(window_state_flags()) {
+        // A corrupt or unavailable persisted state must not block startup.
+        log::warn!("Unable to restore saved main-window state; using current geometry: {error}");
+    }
+
+    let Some((work_area, scale_factor)) = current_logical_work_area(window) else {
+        return Ok(());
+    };
+
+    let was_maximized = window.is_maximized().unwrap_or(false);
+    if was_maximized {
+        window.unmaximize()?;
+    }
+
+    let size = window.inner_size()?;
+    let position = window.outer_position()?;
+    let geometry = window_layout::clamp_window_geometry(
+        window_layout::WindowGeometry {
+            x: f64::from(position.x) / scale_factor,
+            y: f64::from(position.y) / scale_factor,
+            width: f64::from(size.width) / scale_factor,
+            height: f64::from(size.height) / scale_factor,
+            maximized: was_maximized,
+        },
+        work_area,
+    );
+    let minimum = window_layout::effective_minimum_size(work_area);
+
+    window.set_min_size(Some(tauri::LogicalSize::new(minimum.width, minimum.height)))?;
+    window.set_size(tauri::LogicalSize::new(geometry.width, geometry.height))?;
+    window.set_position(tauri::LogicalPosition::new(geometry.x, geometry.y))?;
+    if geometry.maximized {
+        window.maximize()?;
+    }
+    emit_main_window_layout_mode(window, work_area, scale_factor)
+}
+
+/// Coalesces monitor/DPI changes so transient move events cannot repeatedly
+/// apply constraints or flood the renderer with layout-mode notifications.
+fn install_main_window_layout_listener(window: &tauri::WebviewWindow) {
+    let generation = Arc::new(AtomicU64::new(0));
+    let window_for_events = window.clone();
+
+    window.on_window_event(move |event| {
+        if !matches!(
+            event,
+            tauri::WindowEvent::Moved(_) | tauri::WindowEvent::ScaleFactorChanged { .. }
+        ) {
+            return;
+        }
+
+        let revision = generation.fetch_add(1, Ordering::AcqRel).wrapping_add(1);
+        let generation = generation.clone();
+        let window = window_for_events.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(WINDOW_LAYOUT_DEBOUNCE).await;
+            if generation.load(Ordering::Acquire) != revision {
+                return;
+            }
+            if let Err(error) = refresh_main_window_layout(&window) {
+                log::debug!("Unable to refresh main-window layout after display change: {error}");
+            }
+        });
+    });
 }
 
 fn emit_safe_deeplink_error(app: &tauri::AppHandle) {
@@ -475,6 +623,7 @@ pub fn run() {
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(window_state_flags())
+                .skip_initial_state("main")
                 .build(),
         )
         .setup(|app| {
@@ -1404,6 +1553,14 @@ pub fn run() {
             // 静默启动：根据设置决定是否显示主窗口
             let settings = crate::settings::get_settings();
             if let Some(window) = app.get_webview_window("main") {
+                // The configured window begins hidden. Restore, clamp and
+                // reapply maximization before either normal or silent startup
+                // decides its visibility, avoiding off-screen/legacy flashes.
+                if let Err(error) = restore_hidden_main_window_layout(&window) {
+                    log::warn!("Unable to apply main-window layout policy: {error}");
+                }
+                install_main_window_layout_listener(&window);
+
                 // 在窗口首次显示前同步装饰状态，避免前端加载后再切换导致标题栏闪烁
                 // 仅 Linux 生效：解决 Wayland 下系统窗口按钮不可用的问题
                 #[cfg(target_os = "linux")]
