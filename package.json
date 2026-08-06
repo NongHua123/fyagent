@@ -14,7 +14,11 @@
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
     "test:unit": "vitest run",
-    "test:unit:watch": "vitest watch"
+    "test:unit:watch": "vitest watch",
+    "test:i18n": "vitest run tests/config/localeKeyParity.test.ts",
+    "test:desktop:mock": "vitest run tests/desktop-acceptance && node scripts/desktop-acceptance/verify-mock-contract.mjs",
+    "test:desktop:visual:preflight": "node scripts/desktop-acceptance/verify-visual-baseline-manifest.mjs",
+    "test:desktop:visual:update": "node scripts/desktop-acceptance/review-visual-baseline-update.mjs"
   },
   "keywords": [],
   "author": "Jason Young",

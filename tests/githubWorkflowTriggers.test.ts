@@ -26,6 +26,15 @@ describe("GitHub workflow trigger policy", () => {
     );
   });
 
+  it("keeps desktop acceptance in the manual CI path and mock-only boundary", () => {
+    const source = readWorkflow("ci.yml");
+
+    expect(source).toContain("desktop-acceptance-contract:");
+    expect(source).toContain("run: pnpm test:desktop:mock");
+    expect(source).toContain("run: pnpm test:desktop:visual:preflight");
+    expect(source).not.toContain("run: pnpm test:e2e");
+  });
+
   it("labels a selected pull request only by manual dispatch", () => {
     const source = readWorkflow("labeler.yml");
     const triggerSection = readHeaderBefore(source, "\npermissions:");

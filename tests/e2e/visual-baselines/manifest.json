@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "captureMode": "candidate-only",
+  "stabilitySamples": 2,
+  "platforms": ["windows", "macos", "linux"],
+  "scales": [100, 125, 150],
+  "locales": ["en", "ja", "zh", "zh-TW"],
+  "regions": [
+    {
+      "id": "top-level-header",
+      "requirements": [
+        "UI-E01",
+        "UI-E02",
+        "UI-E03",
+        "UI-E04",
+        "UI-E05",
+        "UI-E07",
+        "UI-E08",
+        "I18N-T02"
+      ],
+      "pathTemplate": "{platform}/{scale}/{locale}/top-level-header.png"
+    },
+    {
+      "id": "workbuddy-page",
+      "requirements": [
+        "UI-E06",
+        "WB-E01",
+        "WB-E02",
+        "WB-E03",
+        "WB-E04",
+        "I18N-T02"
+      ],
+      "pathTemplate": "{platform}/{scale}/{locale}/workbuddy-page.png"
+    }
+  ]
+}
