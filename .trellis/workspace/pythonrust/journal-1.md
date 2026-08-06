@@ -263,3 +263,24 @@ Merged upstream v3.19.1 while preserving FyAgent boundaries, resolved conflicts 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 9: Restore Windows cross-built MSI packaging
+
+**Date**: 2026-08-06
+**Task**: Restore Windows cross-built MSI packaging
+**Branch**: `feature/fyagent-v1`
+
+### Summary
+
+Fixed explicit release-manifest selection, test-only manifest linker scope, windows 0.61 API compatibility, and strict cross-target Rust lint failures. Verified fmt, host and Windows Clippy with warnings denied, the full Rust suite, Windows test-harness linking, release workflow regressions, and complete x64 plus ARM64 MSI cross-builds with Linux structural checks.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `09042531` | (see git log) |
+
+### Status
+
+[OK] **Completed**
