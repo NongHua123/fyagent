@@ -25,8 +25,8 @@
     "test:desktop:visual:update": "node scripts/desktop-acceptance/review-visual-baseline-update.mjs"
   },
   "keywords": [],
-  "author": "Jason Young",
-  "license": "MIT",
+  "author": "NongHua123",
+  "license": "SEE LICENSE IN LICENSE",
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.0",
     "@testing-library/jest-dom": "^6.6.3",

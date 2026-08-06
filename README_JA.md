@@ -4,15 +4,14 @@
 
 ### Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw、Hermes Agent のオールインワン管理ツール
 
-[![Version](https://img.shields.io/github/v/release/NongHua123/cc-switch?color=blue&label=version)](https://github.com/NongHua123/cc-switch/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/NongHua123/cc-switch/releases)
+[![Version](https://img.shields.io/github/v/release/NongHua123/fyagent?color=blue&label=version)](https://github.com/NongHua123/fyagent/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/NongHua123/fyagent/releases)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
-[![Downloads](https://img.shields.io/github/downloads/NongHua123/cc-switch/total)](https://github.com/NongHua123/cc-switch/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/NongHua123/fyagent/total)](https://github.com/NongHua123/fyagent/releases/latest)
 
-<a href="https://trendshift.io/repositories/15372" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15372" alt="farion1231%2Fcc-switch | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-<a href="https://www.star-history.com/#NongHua123/cc-switch&Date"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=NongHua123/cc-switch&theme=dark" /><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=NongHua123/cc-switch" width="196" height="55" /></picture></a>
+<a href="https://www.star-history.com/#NongHua123/fyagent&Date"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=NongHua123/fyagent&theme=dark" /><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=NongHua123/fyagent" width="196" height="55" /></picture></a>
 
-### 🌐 プロジェクトリポジトリ：**[GitHub](https://github.com/NongHua123/cc-switch)**
+### 🌐 プロジェクトリポジトリ：**[GitHub](https://github.com/NongHua123/fyagent)**
 
 [English](README.md) | [中文](README_ZH.md) | 日本語 | [Deutsch](README_DE.md) | [Changelog](CHANGELOG.md)
 
@@ -176,17 +175,17 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 
 ### Windows ユーザー
 
-[Releases](https://github.com/NongHua123/cc-switch/releases) ページから最新版の `FyAgent-v{version}-Windows.msi` インストーラーをダウンロードしてください。FyAgent は Windows ポータブル ZIP を今後配布せず、サポート対象の全マシン インストール パスには MSI を使用します。
+[Releases](https://github.com/NongHua123/fyagent/releases) ページから最新版の `FyAgent-v{version}-Windows.msi` インストーラーをダウンロードしてください。FyAgent は Windows ポータブル ZIP を今後配布せず、サポート対象の全マシン インストール パスには MSI を使用します。
 
 ### macOS ユーザー
 
-[Releases](https://github.com/NongHua123/cc-switch/releases) から `FyAgent-v{version}-macOS.dmg`（推奨）または `.zip` をダウンロード。
+[Releases](https://github.com/NongHua123/fyagent/releases) から `FyAgent-v{version}-macOS.dmg`（推奨）または `.zip` をダウンロード。
 
 > **注意**: コード署名と公証の状態は、対象リリースで公開された証拠を確認してください。インストール前に、ダウンロードした FyAgent ビルドのリリースノートを確認してください。
 
 ### Linux ユーザー
 
-[Releases](https://github.com/NongHua123/cc-switch/releases) から、Arch Linux でも利用できる最新版の Linux ビルドをダウンロード：
+[Releases](https://github.com/NongHua123/fyagent/releases) から、Arch Linux でも利用できる最新版の Linux ビルドをダウンロード：
 
 - `FyAgent-v{version}-Linux-{arch}.deb`（Debian/Ubuntu）
 - `FyAgent-v{version}-Linux-{arch}.rpm`（Fedora/RHEL/openSUSE）
@@ -423,8 +422,13 @@ PR を送る前に以下をご確認ください：
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=NongHua123/cc-switch&type=Date)](https://www.star-history.com/#NongHua123/cc-switch&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=NongHua123/fyagent&type=Date)](https://www.star-history.com/#NongHua123/fyagent&Date)
 
 ## ライセンス
 
-MIT © Jason Young
+FyAgent はソースを利用可能なソフトウェアであり、OSI が定義するオープンソースではありません。
+FyAgent に帰属するコンポーネントおよび変更部分には
+[PolyForm Noncommercial License 1.0.0](LICENSES/PolyForm-Noncommercial-1.0.0.txt)
+が適用されます。商用利用には別途書面による許可が必要です。CC Switch 由来の部分は
+MIT ライセンスのままです。詳しくは [LICENSE](LICENSE)、[LICENSING.md](LICENSING.md)、
+および [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) を参照してください。

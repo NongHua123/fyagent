@@ -9,8 +9,8 @@ version = "0.2.1"
 name = "fyagent"
 version.workspace = true
 description = "All-in-One Assistant for Claude Code, Codex & Gemini CLI"
-authors = ["Jason Young"]
-license = "MIT"
+authors = ["NongHua123"]
+license-file = "../LICENSE"
 edition = "2021"
 rust-version = "1.85.0"
 

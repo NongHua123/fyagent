@@ -4,15 +4,14 @@
 
 ### Der All-in-One-Manager für Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw & Hermes Agent
 
-[![Version](https://img.shields.io/github/v/release/NongHua123/cc-switch?color=blue&label=version)](https://github.com/NongHua123/cc-switch/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/NongHua123/cc-switch/releases)
+[![Version](https://img.shields.io/github/v/release/NongHua123/fyagent?color=blue&label=version)](https://github.com/NongHua123/fyagent/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/NongHua123/fyagent/releases)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
-[![Downloads](https://img.shields.io/github/downloads/NongHua123/cc-switch/total)](https://github.com/NongHua123/cc-switch/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/NongHua123/fyagent/total)](https://github.com/NongHua123/fyagent/releases/latest)
 
-<a href="https://trendshift.io/repositories/15372" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15372" alt="farion1231%2Fcc-switch | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-<a href="https://www.star-history.com/#NongHua123/cc-switch&Date"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=NongHua123/cc-switch&theme=dark" /><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=NongHua123/cc-switch" width="196" height="55" /></picture></a>
+<a href="https://www.star-history.com/#NongHua123/fyagent&Date"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=NongHua123/fyagent&theme=dark" /><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=NongHua123/fyagent" width="196" height="55" /></picture></a>
 
-### 🌐 Projekt-Repository: **[GitHub](https://github.com/NongHua123/cc-switch)**
+### 🌐 Projekt-Repository: **[GitHub](https://github.com/NongHua123/fyagent)**
 
 [English](README.md) | [中文](README_ZH.md) | [日本語](README_JA.md) | Deutsch | [Changelog](CHANGELOG.md)
 
@@ -176,17 +175,17 @@ Ausführliche Anleitungen zu jeder Funktion finden Sie im **[Benutzerhandbuch](d
 
 ### Windows-Nutzer
 
-Laden Sie das neueste Installationsprogramm `FyAgent-v{version}-Windows.msi` von der Seite [Releases](https://github.com/NongHua123/cc-switch/releases) herunter. FyAgent veröffentlicht kein portables Windows-ZIP mehr; verwenden Sie den MSI-Installer für den unterstützten installationsweiten Pfad.
+Laden Sie das neueste Installationsprogramm `FyAgent-v{version}-Windows.msi` von der Seite [Releases](https://github.com/NongHua123/fyagent/releases) herunter. FyAgent veröffentlicht kein portables Windows-ZIP mehr; verwenden Sie den MSI-Installer für den unterstützten installationsweiten Pfad.
 
 ### macOS-Nutzer
 
-Laden Sie `FyAgent-v{version}-macOS.dmg` (empfohlen) oder `.zip` von der Seite [Releases](https://github.com/NongHua123/cc-switch/releases) herunter.
+Laden Sie `FyAgent-v{version}-macOS.dmg` (empfohlen) oder `.zip` von der Seite [Releases](https://github.com/NongHua123/fyagent/releases) herunter.
 
 > **Hinweis**: Der Status von Codesignatur und Notarisierung ist releasespezifisch. Prüfen Sie vor der Installation die für den heruntergeladenen FyAgent-Build veröffentlichten Nachweise.
 
 ### Linux-Nutzer
 
-Laden Sie den neuesten Linux-Build, einschließlich der unter Arch Linux nutzbaren Builds, von der Seite [Releases](https://github.com/NongHua123/cc-switch/releases) herunter:
+Laden Sie den neuesten Linux-Build, einschließlich der unter Arch Linux nutzbaren Builds, von der Seite [Releases](https://github.com/NongHua123/fyagent/releases) herunter:
 
 - `FyAgent-v{version}-Linux-{arch}.deb` (Debian/Ubuntu)
 - `FyAgent-v{version}-Linux-{arch}.rpm` (Fedora/RHEL/openSUSE)
@@ -429,8 +428,14 @@ Eröffnen Sie für neue Funktionen bitte vor dem Einreichen eines PR ein Issue z
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=NongHua123/cc-switch&type=Date)](https://www.star-history.com/#NongHua123/cc-switch&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=NongHua123/fyagent&type=Date)](https://www.star-history.com/#NongHua123/fyagent&Date)
 
 ## Lizenz
 
-MIT © Jason Young
+FyAgent ist quellverfügbar, aber nicht im Sinne der Open Source Initiative
+Open Source. Für FyAgent-eigene Komponenten und Änderungen gilt die
+[PolyForm Noncommercial License 1.0.0](LICENSES/PolyForm-Noncommercial-1.0.0.txt).
+Für die kommerzielle Nutzung ist eine gesonderte schriftliche Genehmigung
+erforderlich. Von CC Switch abgeleitete Teile bleiben unter der MIT-Lizenz.
+Details finden sich in [LICENSE](LICENSE), [LICENSING.md](LICENSING.md) und
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

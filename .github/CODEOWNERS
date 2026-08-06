@@ -1,4 +1,4 @@
-# Code owners for cc-switch
+# Code owners for FyAgent
 #
 # Branch protection on `main` has "Require review from Code Owners" enabled.
 # With this file present, a PR cannot merge to `main` without an approval from

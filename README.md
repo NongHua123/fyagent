@@ -168,17 +168,17 @@ For detailed guides on every feature, check out the **[User Manual](docs/user-ma
 
 ### Windows Users
 
-Download the latest `FyAgent-{version}-Windows.msi` installer from the [Releases](https://github.com/NongHua123/cc-switch/releases) page. FyAgent no longer publishes a Windows Portable ZIP because the supported Windows application runs through the protected per-machine installation path.
+Download the latest `FyAgent-{version}-Windows.msi` installer from the [Releases](https://github.com/NongHua123/fyagent/releases) page. FyAgent no longer publishes a Windows Portable ZIP because the supported Windows application runs through the protected per-machine installation path.
 
 ### macOS Users
 
-Download `FyAgent-{version}-macOS.dmg` (recommended) or `.zip` from the [Releases](https://github.com/NongHua123/cc-switch/releases) page.
+Download `FyAgent-{version}-macOS.dmg` (recommended) or `.zip` from the [Releases](https://github.com/NongHua123/fyagent/releases) page.
 
 > **Note**: Signing and notarization are release-specific. Check the evidence published with the exact FyAgent build before expecting macOS to allow a direct install.
 
 ### Linux Users
 
-Download the latest Linux build, including builds usable on Arch Linux, from the [Releases](https://github.com/NongHua123/cc-switch/releases) page:
+Download the latest Linux build, including builds usable on Arch Linux, from the [Releases](https://github.com/NongHua123/fyagent/releases) page:
 
 - `FyAgent-{version}-Linux-{arch}.deb` (Debian/Ubuntu)
 - `FyAgent-{version}-Linux-{arch}.rpm` (Fedora/RHEL/openSUSE)
@@ -419,4 +419,9 @@ For new features, please open an issue for discussion before submitting a PR. PR
 
 ## License
 
-MIT © Jason Young
+FyAgent is source-available software, not open source as defined by the Open
+Source Initiative. FyAgent-owned components and modifications are licensed
+under the [PolyForm Noncommercial License 1.0.0](LICENSES/PolyForm-Noncommercial-1.0.0.txt).
+Commercial use requires separate written authorization. CC Switch-derived
+portions remain under the MIT License. See [LICENSE](LICENSE),
+[LICENSING.md](LICENSING.md), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

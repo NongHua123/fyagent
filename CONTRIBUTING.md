@@ -8,9 +8,9 @@ Thank you for your interest in contributing to FyAgent! Please read our [Code of
 
 There are many ways to contribute:
 
-- **Report bugs** — Found something broken? [Open a bug report](https://github.com/NongHua123/cc-switch/issues/new?template=bug_report.yml).
-- **Suggest features** — Have an idea? [Submit a feature request](https://github.com/NongHua123/cc-switch/issues/new?template=feature_request.yml).
-- **Improve docs** — Spot a typo or missing info? [Report a doc issue](https://github.com/NongHua123/cc-switch/issues/new?template=doc_issue.yml).
+- **Report bugs** — Found something broken? [Open a bug report](https://github.com/NongHua123/fyagent/issues/new?template=bug_report.yml).
+- **Suggest features** — Have an idea? [Submit a feature request](https://github.com/NongHua123/fyagent/issues/new?template=feature_request.yml).
+- **Improve docs** — Spot a typo or missing info? [Report a doc issue](https://github.com/NongHua123/fyagent/issues/new?template=doc_issue.yml).
 - **Contribute code** — Fix bugs or implement features via pull requests.
 - **Translate** — Help us improve English, Simplified Chinese, Traditional Chinese, and Japanese translations.
 
@@ -122,6 +122,22 @@ By submitting a PR, you agree to the following:
 
 **In short**: AI is a tool, not a substitute for understanding. Use it to help you contribute better, not to shift work onto maintainers.
 
+## Licensing and contribution rights
+
+By submitting a contribution, you represent that you have the right to
+authorize your own contribution under this repository's licensing model. Do
+not submit code, assets, or data under incompatible terms. Identify the source
+and license of any third-party material included with a contribution.
+
+FyAgent plans to offer commercial licensing for FyAgent-owned code. Until a
+legally reviewed and deployed contributor license agreement or explicit
+relicensing process exists, a pull request does not automatically transfer
+copyright. Maintainers should not merge substantial external contributions
+that would affect commercial licensing capacity until that process exists.
+
+These requirements do not remove or alter the attribution or MIT licensing of
+CC Switch-derived portions, including the original attribution to Jason Young.
+
 ## Internationalization (i18n)
 
 FyAgent maintains four locale resources. When modifying user-facing text:
@@ -136,8 +152,8 @@ FyAgent maintains four locale resources. When modifying user-facing text:
 
 ## Questions?
 
-- [Open a question](https://github.com/NongHua123/cc-switch/issues/new?template=question.yml)
-- [GitHub Discussions](https://github.com/NongHua123/cc-switch/discussions)
+- [Open a question](https://github.com/NongHua123/fyagent/issues/new?template=question.yml)
+- [GitHub Discussions](https://github.com/NongHua123/fyagent/discussions)
 
 ---
 
@@ -151,9 +167,9 @@ FyAgent maintains four locale resources. When modifying user-facing text:
 
 你可以通过多种方式参与贡献：
 
-- **报告 Bug** — 发现问题？[提交 Bug 报告](https://github.com/NongHua123/cc-switch/issues/new?template=bug_report.yml)。
-- **建议功能** — 有想法？[提交功能请求](https://github.com/NongHua123/cc-switch/issues/new?template=feature_request.yml)。
-- **改进文档** — 发现错误或缺失？[报告文档问题](https://github.com/NongHua123/cc-switch/issues/new?template=doc_issue.yml)。
+- **报告 Bug** — 发现问题？[提交 Bug 报告](https://github.com/NongHua123/fyagent/issues/new?template=bug_report.yml)。
+- **建议功能** — 有想法？[提交功能请求](https://github.com/NongHua123/fyagent/issues/new?template=feature_request.yml)。
+- **改进文档** — 发现错误或缺失？[报告文档问题](https://github.com/NongHua123/fyagent/issues/new?template=doc_issue.yml)。
 - **贡献代码** — 通过 Pull Request 修复 Bug 或实现新功能。
 - **翻译** — 帮助改进英文、简体中文、繁体中文和日文翻译。
 
@@ -263,6 +279,18 @@ chore(deps): update dependencies
 
 **一句话总结**：AI 是工具，不是理解力的替代品。用它来帮助你更好地贡献，而不是把工作转移给维护者。
 
+## 许可与贡献权利
+
+提交贡献即表示你确认有权按本仓库的许可模式授权你自己的贡献。请勿提交采用不兼容条款的
+代码、资产或数据；贡献中包含第三方材料时，请说明其来源和许可证。
+
+FyAgent 计划为 FyAgent 自有代码提供商业许可。在经过法律审查并部署贡献者许可协议或明确的
+再许可流程之前，Pull Request 不会自动转让版权。维护者在该流程建立前不应合并会影响商业许可
+能力的重大外部贡献。
+
+这些要求不会移除或改变 CC Switch 衍生部分的署名或 MIT 许可，包括对原作者 Jason Young 的
+署名。
+
 ## 国际化（i18n）
 
 FyAgent 维护四份 locale 资源。修改用户可见文本时：
@@ -277,5 +305,5 @@ FyAgent 维护四份 locale 资源。修改用户可见文本时：
 
 ## 有疑问？
 
-- [提问](https://github.com/NongHua123/cc-switch/issues/new?template=question.yml)
-- [GitHub 讨论区](https://github.com/NongHua123/cc-switch/discussions)
+- [提问](https://github.com/NongHua123/fyagent/issues/new?template=question.yml)
+- [GitHub 讨论区](https://github.com/NongHua123/fyagent/discussions)
