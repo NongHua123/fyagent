@@ -1,6 +1,11 @@
 node_modules/
 dist/
+/dist-macos/
+/dist-bundle/
+__pycache__/
+*.py[cod]
 release/
+/artifacts/
 .DS_Store
 *.log
 .env

@@ -22,8 +22,8 @@ use std::{
 use futures::future::BoxFuture;
 
 use super::{
-    CodexDesktopPlatform, PlatformInstallPlan, PlatformProgressSink, VerifiedPackage,
-    MACOS_CODEX_STABLE_IDENTITY,
+    CodexDesktopPlatform, PlatformInstallPlan, PlatformProgressSink, RestartCandidateInspection,
+    RuntimeInspection, TrustedRuntimeInstance, VerifiedPackage, MACOS_CODEX_STABLE_IDENTITY,
 };
 use crate::codex_desktop::{
     download::DownloadedArtifact,
@@ -501,14 +501,14 @@ impl MacosHost {
 /// host facts, command execution, and filesystem capabilities; this keeps all
 /// macOS tests entirely fake and gives platform root a side-effect-free object
 /// to construct during application setup.
-pub struct MacosPlatformAdapter {
+pub(crate) struct MacosPlatformAdapter {
     runner: Arc<dyn CommandRunner>,
     filesystem: Arc<dyn MacosFilesystem>,
     host: MacosHost,
 }
 
 impl MacosPlatformAdapter {
-    pub fn new(
+    pub(crate) fn new(
         runner: Arc<dyn CommandRunner>,
         filesystem: Arc<dyn MacosFilesystem>,
         host: MacosHost,
@@ -521,7 +521,7 @@ impl MacosPlatformAdapter {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn for_current_host() -> Result<Self, InstallerError> {
+    pub(crate) fn for_current_host() -> Result<Self, InstallerError> {
         Ok(Self::new(
             Arc::new(SystemCommandRunner),
             Arc::new(StdMacosFilesystem),
@@ -576,6 +576,18 @@ impl CodexDesktopPlatform for MacosPlatformAdapter {
             run_blocking(move || bundle::inspect_local(runner.as_ref(), filesystem.as_ref(), &host))
                 .await
         })
+    }
+
+    fn inspect_restart_candidates(
+        &self,
+    ) -> BoxFuture<'_, Result<RestartCandidateInspection, InstallerError>> {
+        // v1.0.2 deliberately does not reuse the legacy macOS bundle-path
+        // inspection as lifecycle authority. The target Bundle ID has not
+        // received the required independent production evidence, so any
+        // restart request must fail closed before it can enumerate a process,
+        // send a close message, or launch an app. This also prevents a path,
+        // display-name, or title fallback from creeping into the adapter.
+        Box::pin(async { Ok(RestartCandidateInspection::UntrustedTarget) })
     }
 
     fn preflight<'a>(
@@ -680,6 +692,72 @@ impl CodexDesktopPlatform for MacosPlatformAdapter {
             .await
         })
     }
+
+    fn inspect_runtime<'a>(
+        &'a self,
+        installed: &'a InstalledApplication,
+    ) -> BoxFuture<'a, Result<RuntimeInspection, InstallerError>> {
+        let runner = self.runner.clone();
+        let filesystem = self.filesystem.clone();
+        let installed = installed.clone();
+        let host_error = self.host_support_error();
+        Box::pin(async move {
+            if let Some(error) = host_error {
+                return Err(error);
+            }
+            run_blocking(move || {
+                bundle::inspect_runtime(runner.as_ref(), filesystem.as_ref(), &installed)
+            })
+            .await
+        })
+    }
+
+    fn force_shutdown<'a>(
+        &'a self,
+        installed: &'a InstalledApplication,
+        instances: &'a [TrustedRuntimeInstance],
+    ) -> BoxFuture<'a, Result<(), InstallerError>> {
+        let runner = self.runner.clone();
+        let filesystem = self.filesystem.clone();
+        let installed = installed.clone();
+        let instances = instances.to_vec();
+        let host_error = self.host_support_error();
+        Box::pin(async move {
+            if let Some(error) = host_error {
+                return Err(error);
+            }
+            run_blocking(move || {
+                bundle::force_shutdown(runner.as_ref(), filesystem.as_ref(), &installed, &instances)
+            })
+            .await
+        })
+    }
+
+    fn is_runtime_instance_running<'a>(
+        &'a self,
+        installed: &'a InstalledApplication,
+        instances: &'a [TrustedRuntimeInstance],
+    ) -> BoxFuture<'a, Result<bool, InstallerError>> {
+        let runner = self.runner.clone();
+        let filesystem = self.filesystem.clone();
+        let installed = installed.clone();
+        let instances = instances.to_vec();
+        let host_error = self.host_support_error();
+        Box::pin(async move {
+            if let Some(error) = host_error {
+                return Err(error);
+            }
+            run_blocking(move || {
+                bundle::is_runtime_instance_running(
+                    runner.as_ref(),
+                    filesystem.as_ref(),
+                    &installed,
+                    &instances,
+                )
+            })
+            .await
+        })
+    }
 }
 
 async fn run_blocking<T: Send + 'static>(
@@ -728,9 +806,8 @@ pub(super) mod test_support {
     };
 
     use super::{
-        CommandInvocation, CommandOutput, CommandRunner, CommandRunnerError,
-        CommandRunnerErrorKind, MacosFileKind, MacosFilesystem, MacosFilesystemError,
-        MacosFilesystemErrorKind,
+        CommandInvocation, CommandOutput, CommandRunner, CommandRunnerError, MacosFileKind,
+        MacosFilesystem, MacosFilesystemError, MacosFilesystemErrorKind,
     };
 
     #[derive(Clone)]
@@ -743,7 +820,6 @@ pub(super) mod test_support {
     struct FakeFilesystemState {
         entries: BTreeMap<PathBuf, FakeEntry>,
         create_dir_failures: HashMap<PathBuf, MacosFilesystemErrorKind>,
-        rename_failures: HashMap<(PathBuf, PathBuf), MacosFilesystemErrorKind>,
     }
 
     /// An in-memory filesystem with component-aware directory moves. Tests
@@ -805,21 +881,6 @@ pub(super) mod test_support {
             self.lock()
                 .create_dir_failures
                 .insert(path.as_ref().to_path_buf(), kind);
-        }
-
-        pub fn fail_rename(
-            &self,
-            source: impl AsRef<Path>,
-            destination: impl AsRef<Path>,
-            kind: MacosFilesystemErrorKind,
-        ) {
-            self.lock().rename_failures.insert(
-                (
-                    source.as_ref().to_path_buf(),
-                    destination.as_ref().to_path_buf(),
-                ),
-                kind,
-            );
         }
 
         /// Model a successful `ditto` without involving the host filesystem.
@@ -891,13 +952,6 @@ pub(super) mod test_support {
 
         fn rename(&self, source: &Path, destination: &Path) -> Result<(), MacosFilesystemError> {
             let mut state = self.lock();
-            if let Some(kind) = state
-                .rename_failures
-                .get(&(source.to_path_buf(), destination.to_path_buf()))
-                .copied()
-            {
-                return Err(filesystem_error(kind));
-            }
             move_tree(&mut state.entries, source, destination)
         }
 
@@ -1009,15 +1063,9 @@ pub(super) mod test_support {
     }
 
     #[derive(Clone)]
-    enum QueuedCommandResult {
-        Output(CommandOutput),
-        Error(CommandRunnerError),
-    }
-
-    #[derive(Clone)]
     struct QueuedCommand {
         program: &'static str,
-        result: QueuedCommandResult,
+        result: CommandOutput,
     }
 
     type CommandHook = Arc<dyn Fn(&CommandInvocation) + Send + Sync>;
@@ -1037,10 +1085,7 @@ pub(super) mod test_support {
         }
 
         pub fn queue_success(&self, program: &'static str, stdout: impl Into<Vec<u8>>) {
-            self.queue(
-                program,
-                QueuedCommandResult::Output(CommandOutput::success(stdout)),
-            );
+            self.queue(program, CommandOutput::success(stdout));
         }
 
         pub fn queue_failure(
@@ -1049,17 +1094,7 @@ pub(super) mod test_support {
             status_code: Option<i32>,
             stderr: impl Into<Vec<u8>>,
         ) {
-            self.queue(
-                program,
-                QueuedCommandResult::Output(CommandOutput::failure(status_code, stderr)),
-            );
-        }
-
-        pub fn queue_error(&self, program: &'static str, kind: CommandRunnerErrorKind) {
-            self.queue(
-                program,
-                QueuedCommandResult::Error(CommandRunnerError { kind }),
-            );
+            self.queue(program, CommandOutput::failure(status_code, stderr));
         }
 
         pub fn set_hook(&self, hook: CommandHook) {
@@ -1084,7 +1119,7 @@ pub(super) mod test_support {
             assert!(queued.is_empty(), "unused fake command responses remain");
         }
 
-        fn queue(&self, program: &'static str, result: QueuedCommandResult) {
+        fn queue(&self, program: &'static str, result: CommandOutput) {
             self.queued
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -1113,10 +1148,7 @@ pub(super) mod test_support {
             {
                 hook(invocation);
             }
-            match queued.result {
-                QueuedCommandResult::Output(output) => Ok(output),
-                QueuedCommandResult::Error(error) => Err(error),
-            }
+            Ok(queued.result)
         }
     }
 }

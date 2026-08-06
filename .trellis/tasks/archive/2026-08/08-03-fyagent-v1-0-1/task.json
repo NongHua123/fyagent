@@ -1,0 +1,32 @@
+{
+  "id": "fyagent-v1-0-1",
+  "name": "fyagent-v1-0-1",
+  "title": "实现 FyAgent v1-0.1",
+  "description": "按 docs/fyagent/dev/v1-0.1 实现 Codex 原生能力、可信重启、WorkBuddy 独立配置域，并将 FyAgent 应用版本独立为 0.1.0。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-03",
+  "completedAt": "2026-08-03",
+  "branch": "feature/fyagent-v1",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "docs/fyagent/dev/v1-0.1/README.md",
+    "docs/fyagent/dev/v1-0.1/01-需求规格说明.md",
+    "docs/fyagent/dev/v1-0.1/02-系统架构与详细设计.md",
+    "docs/fyagent/dev/v1-0.1/03-配置数据模型与安全设计.md",
+    "docs/fyagent/dev/v1-0.1/04-验收标准与测试场景.md"
+  ],
+  "notes": "",
+  "meta": {}
+}

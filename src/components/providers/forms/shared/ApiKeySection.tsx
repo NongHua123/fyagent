@@ -15,8 +15,6 @@ interface ApiKeySectionProps {
     thirdParty: string;
   };
   disabled?: boolean;
-  isPartner?: boolean;
-  partnerPromotionKey?: string;
 }
 
 export function ApiKeySection({
@@ -29,7 +27,6 @@ export function ApiKeySection({
   websiteUrl,
   placeholder,
   disabled,
-  partnerPromotionKey,
 }: ApiKeySectionProps) {
   const { t } = useTranslation();
 
@@ -71,18 +68,6 @@ export function ApiKeySection({
               defaultValue: "获取 API Key",
             })}
           </a>
-
-          {/* 促销信息（与 isPartner 解耦：仅凭 partnerPromotionKey 即可展示，星标仍由 isPartner 控制） */}
-          {partnerPromotionKey && (
-            <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 p-2.5 border border-blue-200 dark:border-blue-800">
-              <p className="text-xs leading-relaxed text-blue-700 dark:text-blue-300">
-                💡{" "}
-                {t(`providerForm.partnerPromotion.${partnerPromotionKey}`, {
-                  defaultValue: "",
-                })}
-              </p>
-            </div>
-          )}
         </div>
       )}
     </div>

@@ -43,6 +43,28 @@ pub struct Provider {
     pub in_failover_queue: bool,
 }
 
+/// Backward-compatible envelope for provider mutations that need to report a
+/// non-sensitive live-config summary. The existing commands retain their
+/// original return values; new `*_with_result` commands use this envelope.
+///
+/// `live_config_changed` is derived from the final bytes of Codex's live
+/// `config.toml`, never from a database mutation or an intended provider
+/// switch. It deliberately carries neither a path nor a digest, both of which
+/// could disclose local state without helping the renderer decide whether to
+/// offer a restart.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderMutationResult<T> {
+    pub value: T,
+    pub live_config_changed: bool,
+    pub app: String,
+    /// Stable, non-sensitive warning codes derived from the provider that was
+    /// successfully written. Older renderer versions ignore this optional
+    /// field, while current versions localize and combine the warnings.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warning_codes: Vec<String>,
+}
+
 impl Provider {
     /// 从现有ID创建供应商
     pub fn with_id(
@@ -169,11 +191,23 @@ impl Provider {
                 let api_key = first_non_empty(env, &["GEMINI_API_KEY", "GOOGLE_API_KEY"]);
                 (base_url, api_key)
             }
-            AppType::GrokBuild => settings
-                .get("config")
-                .and_then(Value::as_str)
-                .and_then(crate::grok_config::extract_credentials)
-                .unwrap_or_default(),
+            // GrokBuild 的 base_url 与 api_key 必须各自解析：extract_credentials 在
+            // 凭据缺失时整个 Option 变 None，一并 unwrap_or_default 会把明明写在
+            // 配置里的 base_url 也清成空串。凭据缺失是常态（env_key 指向的变量在
+            // GUI 进程里读不到），端点不该被连坐——否则用量脚本的 {{baseUrl}} 变成
+            // 相对路径、余额查询只报「API key is empty」掩盖真因。
+            // 与上面 Codex 分支的写法保持一致。
+            AppType::GrokBuild => {
+                let config_text = settings.get("config").and_then(Value::as_str);
+                let base_url = config_text
+                    .and_then(crate::grok_config::extract_base_url)
+                    .unwrap_or_default();
+                let api_key = config_text
+                    .and_then(crate::grok_config::extract_credentials)
+                    .map(|(_, api_key)| api_key)
+                    .unwrap_or_default();
+                (base_url, api_key)
+            }
             // Hermes (config.yaml) flattens credentials at the top level, snake_case.
             AppType::Hermes => (
                 str_at(settings.get("base_url")),
@@ -423,15 +457,6 @@ pub struct ProviderMeta {
     /// 请求地址管理：测速后自动选择最佳端点
     #[serde(rename = "endpointAutoSelect", skip_serializing_if = "Option::is_none")]
     pub endpoint_auto_select: Option<bool>,
-    /// 合作伙伴标记（前端使用 isPartner，保持字段名一致）
-    #[serde(rename = "isPartner", skip_serializing_if = "Option::is_none")]
-    pub is_partner: Option<bool>,
-    /// 合作伙伴促销 key，用于识别 PackyCode 等特殊供应商
-    #[serde(
-        rename = "partnerPromotionKey",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub partner_promotion_key: Option<String>,
     /// 成本倍数（用于计算实际成本）
     #[serde(rename = "costMultiplier", skip_serializing_if = "Option::is_none")]
     pub cost_multiplier: Option<String>,
@@ -518,6 +543,44 @@ pub struct ProviderMeta {
     /// 用于多账号支持，关联到特定的 GitHub 账号
     #[serde(rename = "githubAccountId", skip_serializing_if = "Option::is_none")]
     pub github_account_id: Option<String>,
+    /// Whether the user has explicitly saved the Codex image-extension choice.
+    ///
+    /// This is a migration discriminator only. The effective state continues
+    /// to come from the provider TOML header, so a missing marker on legacy
+    /// records can default to the non-persistent "pending on" draft state.
+    /// Only `Some(true)` is a completed migration; legacy `false` is
+    /// normalized to missing at the persistence boundary.
+    #[serde(
+        rename = "imageExtensionConfigured",
+        default,
+        deserialize_with = "deserialize_image_extension_configured",
+        skip_serializing_if = "image_extension_marker_is_unfinished"
+    )]
+    pub image_extension_configured: Option<bool>,
+    /// Whether FyAgent created the minimal `custom` provider table used to
+    /// attach native capabilities to the built-in Codex ChatGPT login.
+    ///
+    /// The marker is private provider metadata, never written to Codex live
+    /// configuration. Cleanup additionally verifies the exact generated table
+    /// shape before removing anything, so this marker alone is not authority
+    /// to delete user-owned TOML.
+    #[serde(
+        rename = "codexNativeCapabilitiesGeneratedProvider",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub codex_native_capabilities_generated_provider: Option<bool>,
+}
+
+fn image_extension_marker_is_unfinished(marker: &Option<bool>) -> bool {
+    *marker != Some(true)
+}
+
+fn deserialize_image_extension_configured<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let marker = Option::<bool>::deserialize(deserializer)?;
+    Ok((marker == Some(true)).then_some(true))
 }
 
 /// 解析 Provider 级自定义 User-Agent 字符串（单一真理来源）。
@@ -973,7 +1036,8 @@ pub struct OpenCodeModelLimit {
 mod tests {
     use super::{
         ClaudeModelConfig, CodexModelConfig, GeminiModelConfig, LocalProxyRequestOverrides,
-        OpenCodeProviderConfig, Provider, ProviderManager, ProviderMeta, UniversalProvider,
+        OpenCodeProviderConfig, Provider, ProviderManager, ProviderMeta, ProviderMutationResult,
+        UniversalProvider,
     };
     use serde_json::json;
     use std::collections::HashMap;
@@ -1002,6 +1066,81 @@ mod tests {
         let value = serde_json::to_value(&meta).expect("serialize ProviderMeta");
 
         assert!(value.get("pricingModelSource").is_none());
+    }
+
+    #[test]
+    fn provider_meta_normalizes_false_image_extension_marker_to_missing() {
+        let parsed: ProviderMeta = serde_json::from_value(json!({
+            "imageExtensionConfigured": false,
+        }))
+        .expect("deserialize legacy marker");
+        assert_eq!(parsed.image_extension_configured, None);
+
+        let serialized_false = serde_json::to_value(ProviderMeta {
+            image_extension_configured: Some(false),
+            ..ProviderMeta::default()
+        })
+        .expect("serialize unfinished marker");
+        assert!(serialized_false.get("imageExtensionConfigured").is_none());
+
+        let serialized_true = serde_json::to_value(ProviderMeta {
+            image_extension_configured: Some(true),
+            ..ProviderMeta::default()
+        })
+        .expect("serialize completed marker");
+        assert_eq!(
+            serialized_true
+                .get("imageExtensionConfigured")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn provider_meta_roundtrips_codex_native_capability_provider_marker() {
+        let serialized = serde_json::to_value(ProviderMeta {
+            codex_native_capabilities_generated_provider: Some(true),
+            ..ProviderMeta::default()
+        })
+        .expect("serialize generated-provider marker");
+        assert_eq!(
+            serialized
+                .get("codexNativeCapabilitiesGeneratedProvider")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+
+        let parsed: ProviderMeta =
+            serde_json::from_value(serialized).expect("deserialize generated-provider marker");
+        assert_eq!(
+            parsed.codex_native_capabilities_generated_provider,
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn provider_mutation_result_serializes_optional_warning_codes_compatibly() {
+        let without_warning = serde_json::to_value(ProviderMutationResult {
+            value: true,
+            live_config_changed: false,
+            app: "codex".to_owned(),
+            warning_codes: Vec::new(),
+        })
+        .expect("serialize mutation result");
+        assert!(without_warning.get("warningCodes").is_none());
+
+        let with_warning = serde_json::to_value(ProviderMutationResult {
+            value: true,
+            live_config_changed: false,
+            app: "codex".to_owned(),
+            warning_codes: vec!["CODEX_WEBSOCKET_NON_GPT_MODEL".to_owned()],
+        })
+        .expect("serialize warning result");
+        assert_eq!(
+            with_warning["warningCodes"][0].as_str(),
+            Some("CODEX_WEBSOCKET_NON_GPT_MODEL")
+        );
+        assert_eq!(with_warning["liveConfigChanged"].as_bool(), Some(false));
     }
 
     #[test]

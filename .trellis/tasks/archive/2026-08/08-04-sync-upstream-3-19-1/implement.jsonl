@@ -1,0 +1,10 @@
+{"file":".trellis/spec/backend/application-identity.md","reason":"Preserve FyAgent clean-break identity while classifying former-name and provenance hits."}
+{"file":".trellis/spec/backend/fyagent-v1-0-1-config-domains.md","reason":"Preserve independent 0.1.0 version, Codex native capabilities, trusted restart, and WorkBuddy isolation."}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Preserve installer IPC, package verification, job lifecycle, and platform security boundaries."}
+{"file":".trellis/spec/backend/github-release-workflow.md","reason":"Preserve manual branch artifact and tag-only signed release behavior without restoring updater publication."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Use the repository-owned mise toolchain and avoid Windows shims from WSL."}
+{"file":".trellis/spec/backend/application-brand-assets.md","reason":"Protect approved FyAgent application assets and unrelated artwork during upstream asset changes."}
+{"file":".trellis/spec/backend/wsl-macos-cross-build.md","reason":"Preserve experimental cross-build boundaries and native validation disclaimers."}
+{"file":".trellis/spec/frontend/index.md","reason":"Apply renderer facade, state, accessibility, locale, identity, and quality pre-development checks."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Use the authoritative frontend checks and nearby test conventions."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Audit backend/frontend/config/workflow contracts across clean and textual merges."}

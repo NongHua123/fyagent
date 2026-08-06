@@ -30,7 +30,7 @@ FyAgent では、Codex が常にローカルルートへ接続し、Responses AP
 Kimi の API Key には 2 つの取得元があり、FyAgent の 2 つの内蔵プリセットに対応します：
 
 - **Kimi オープンプラットフォーム**（platform.kimi.com）: トークン使用量に応じた従量課金の API Key。プリセット `Kimi` に対応し、OpenAI 互換 base URL は `https://api.moonshot.cn/v1`、デフォルトモデルは `kimi-k2.7-code` です。
-- **Kimi For Coding**（kimi.com/code）: Kimi メンバーシップの Kimi Code 特典から生成する専用 Key。プリセット `Kimi For Coding` に対応し、base URL は `https://api.kimi.com/coding/v1`、モデルは `kimi-for-coding` に統一されています。
+- **Kimi For Coding**（kimi.com/code）: Kimi For Coding サービスから生成する専用 Key。プリセット `Kimi For Coding` に対応し、base URL は `https://api.kimi.com/coding/v1`、モデルは `kimi-for-coding` に統一されています。
 
 どちらのプリセットにも公式情報に基づくエンドポイントとモデルがすでに設定されているため、まずはプリセットを使い、エンドポイントパスを手で組み立てる必要はありません。
 
@@ -38,7 +38,7 @@ Kimi の API Key には 2 つの取得元があり、FyAgent の 2 つの内蔵�
 
 FyAgent を開き、上部の `Codex` タブへ切り替え、右上のプラスボタンからプロバイダーを追加します。
 
-手元の Key の種類に応じて、内蔵プリセットの `Kimi`（オープンプラットフォーム・従量課金）または `Kimi For Coding`（メンバーシップ）を選びます。必要なのは次の 2 つだけです：
+手元の Key の種類に応じて、内蔵プリセットの `Kimi`（オープンプラットフォーム）または `Kimi For Coding` を選びます。必要なのは次の 2 つだけです：
 
 - 対応する Kimi API Key を入力する。
 - プロバイダーを保存する。
@@ -83,7 +83,7 @@ Kimi、DeepSeek、MiniMax、SiliconFlow など一般的な Chat 形式プロバ�
 
 **Kimi 上流が 401 または 403 を返す**
 
-まず Key とプリセットの組み合わせを確認してください。オープンプラットフォームの Key はプリセット `Kimi` 専用、Kimi Code 特典の Key はプリセット `Kimi For Coding` 専用で、2 種類の Key は相互に使えません。
+まず Key とプリセットの組み合わせを確認してください。オープンプラットフォームの Key はプリセット `Kimi` 専用、Kimi For Coding の Key はプリセット `Kimi For Coding` 専用で、2 種類の Key は相互に使えません。
 
 **Kimi 上流が 404 を返す**
 

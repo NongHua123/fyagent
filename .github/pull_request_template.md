@@ -19,7 +19,7 @@ Fixes #
 
 ## Checklist / 检查清单
 
-- [ ] `pnpm typecheck` passes / 通过 TypeScript 类型检查
-- [ ] `pnpm format:check` passes / 通过代码格式检查
-- [ ] `cargo clippy` passes (if Rust code changed) / 通过 Clippy 检查（如修改了 Rust 代码）
+- [ ] `mise exec -- pnpm typecheck` passes / 通过 TypeScript 类型检查
+- [ ] `mise exec -- pnpm format:check` passes / 通过代码格式检查
+- [ ] `mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings` passes (if Rust code changed) / 通过 Clippy 检查（如修改了 Rust 代码）
 - [ ] Updated i18n files if user-facing text changed / 如修改了用户可见文本，已更新国际化文件

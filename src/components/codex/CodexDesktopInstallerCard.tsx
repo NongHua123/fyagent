@@ -22,31 +22,18 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useCodexDesktopInstaller } from "@/hooks/useCodexDesktopInstaller";
-import type {
-  InstallerPrimaryAction,
-  InstallerViewState,
-} from "@/types/codexDesktop";
+import type { InstallerPrimaryAction } from "@/types/codexDesktop";
 
-const stateMessageKeys: Record<InstallerViewState, string> = {
-  hidden: "codexDesktop.state.hidden",
-  checking: "codexDesktop.state.checking",
-  unsupported_architecture: "codexDesktop.state.unsupportedArchitecture",
-  ambiguous: "codexDesktop.state.ambiguous",
-  ready_install: "codexDesktop.state.readyInstall",
-  ready_update: "codexDesktop.state.updateAvailable",
-  ready_launch: "codexDesktop.state.upToDate",
-  local_newer: "codexDesktop.state.localNewer",
-  remote_unavailable: "codexDesktop.state.remoteUnavailable",
-  remote_unavailable_installed: "codexDesktop.state.remoteUnavailableInstalled",
-  job_checking: "codexDesktop.state.checking",
-  job_preflight: "codexDesktop.state.preflight",
-  job_downloading: "codexDesktop.state.downloading",
-  job_verifying_download: "codexDesktop.state.verifyingDownload",
-  job_installing: "codexDesktop.state.installing",
-  job_verifying_installation: "codexDesktop.state.verifyingInstallation",
-  succeeded: "codexDesktop.state.succeeded",
-  failed: "codexDesktop.state.failed",
-  cancelled: "codexDesktop.state.cancelled",
+const versionStatusDefaultValues: Record<string, string> = {
+  "codexDesktop.version.localLoading": "正在检测本地版本",
+  "codexDesktop.version.localError": "本地版本检测失败",
+  "codexDesktop.version.remoteLoading": "正在获取最新版本号",
+  "codexDesktop.version.refreshing": "正在刷新最新版本",
+  "codexDesktop.version.refreshNetworkFailed":
+    "获取最新版本失败，请检查网络是否正常",
+  "codexDesktop.version.fetchFailed": "获取失败",
+  "codexDesktop.version.platformUnavailable": "当前平台暂无可用版本",
+  "codexDesktop.version.metadataInvalid": "版本信息异常",
 };
 
 const primaryActionKeys: Record<
@@ -121,7 +108,27 @@ export function CodexDesktopInstallerCard() {
   const speedText = showDownloadBytes
     ? formatBytes(progress?.bytesPerSecond)
     : null;
-  const primaryPending = installer.primaryDisabled && Boolean(primaryAction);
+  const primaryPending = installer.isActing && Boolean(primaryAction);
+  const remoteDisplayVersion =
+    remoteVersion.kind === "available" ||
+    remoteVersion.kind === "refreshing" ||
+    remoteVersion.kind === "refetch_error"
+      ? remoteVersion.version
+      : undefined;
+  const remoteHasTransientStatus =
+    remoteVersion.kind === "loading" ||
+    remoteVersion.kind === "refreshing" ||
+    remoteVersion.kind === "refetch_error";
+  const showFallbackLaunch =
+    !isWorking &&
+    installer.canLaunch &&
+    primaryAction !== "launch" &&
+    remoteHasTransientStatus;
+  const isVersionError =
+    remoteVersion.kind === "refetch_error" ||
+    remoteVersion.kind === "initial_network_error" ||
+    remoteVersion.kind === "platform_unavailable" ||
+    remoteVersion.kind === "metadata_error";
   const errorMessage =
     error &&
     t(error.messageKey, {
@@ -187,15 +194,53 @@ export function CodexDesktopInstallerCard() {
               {t("codexDesktop.details.localVersion")}
             </dt>
             <dd className="truncate font-medium tabular-nums">
-              {localVersion ?? t("common.notInstalled")}
+              {localVersion.kind === "loading"
+                ? t("codexDesktop.version.localLoading", {
+                    defaultValue: "正在检测本地版本",
+                  })
+                : localVersion.kind === "installed"
+                  ? localVersion.version
+                  : localVersion.kind === "not_installed"
+                    ? t("common.notInstalled")
+                    : t("codexDesktop.version.localError", {
+                        defaultValue: "本地版本检测失败",
+                      })}
             </dd>
           </div>
           <div className="flex min-w-0 items-center justify-between gap-3 rounded-md bg-muted/40 px-3 py-2">
             <dt className="text-muted-foreground">
               {t("codexDesktop.details.latestVersion")}
             </dt>
-            <dd className="truncate font-medium tabular-nums">
-              {remoteVersion ?? t("codexDesktop.details.unavailable")}
+            <dd className="flex min-w-0 items-center gap-1 truncate font-medium tabular-nums">
+              {remoteVersion.kind === "loading" ? (
+                t("codexDesktop.version.remoteLoading", {
+                  defaultValue: "正在获取最新版本号",
+                })
+              ) : remoteVersion.kind === "available" ? (
+                remoteVersion.version
+              ) : remoteVersion.kind === "refreshing" ? (
+                <>
+                  <span className="truncate">{remoteVersion.version}</span>
+                  <Loader2
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 shrink-0 animate-spin"
+                  />
+                </>
+              ) : remoteVersion.kind === "refetch_error" ? (
+                remoteVersion.version
+              ) : remoteVersion.kind === "initial_network_error" ? (
+                t("codexDesktop.version.fetchFailed", {
+                  defaultValue: "获取失败",
+                })
+              ) : remoteVersion.kind === "platform_unavailable" ? (
+                t("codexDesktop.version.platformUnavailable", {
+                  defaultValue: "当前平台暂无可用版本",
+                })
+              ) : (
+                t("codexDesktop.version.metadataInvalid", {
+                  defaultValue: "版本信息异常",
+                })
+              )}
             </dd>
           </div>
         </dl>
@@ -208,15 +253,16 @@ export function CodexDesktopInstallerCard() {
             <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
           ) : state === "succeeded" ? (
             <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-          ) : state === "failed" || state === "ambiguous" ? (
+          ) : state === "failed" || state === "ambiguous" || isVersionError ? (
             <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
           ) : (
             <ShieldCheck className="h-4 w-4 shrink-0" />
           )}
           <span>
-            {t(stateMessageKeys[state], {
-              version: remoteVersion,
-              defaultValue: state,
+            {t(installer.statusMessageKey, {
+              version: remoteDisplayVersion,
+              defaultValue:
+                versionStatusDefaultValues[installer.statusMessageKey] ?? state,
             })}
           </span>
         </div>
@@ -287,6 +333,17 @@ export function CodexDesktopInstallerCard() {
               pending={primaryPending}
             />
             {t(primaryActionKeys[primaryAction])}
+          </Button>
+        )}
+        {showFallbackLaunch && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={installer.isActing}
+            onClick={() => void installer.launch()}
+          >
+            <Play className="h-4 w-4" />
+            {t("codexDesktop.actions.launch")}
           </Button>
         )}
         {installer.canCancel && (

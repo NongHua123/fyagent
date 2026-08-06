@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, LockResult, Mutex, MutexGuard, OnceLock};
 
 use fyagent_lib::{update_settings, AppSettings, AppState, Database, MultiAppConfig};
 
@@ -62,9 +62,42 @@ pub fn enable_codex_official_auth_preservation() {
 }
 
 /// 全局互斥锁，避免多测试并发写入相同的 HOME 目录。
-pub fn test_mutex() -> &'static Mutex<()> {
-    static MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-    MUTEX.get_or_init(|| Mutex::new(()))
+///
+/// 每个持锁测试都会在获锁后重置共享 fixture；因此某个测试断言
+/// panic 时，恢复 poisoned guard 比让后续整个集成套件级联失败更能
+/// 保留首个真实根因。
+pub struct RecoveringTestMutex {
+    inner: Mutex<()>,
+}
+
+impl RecoveringTestMutex {
+    pub fn new() -> Self {
+        Self {
+            inner: Mutex::new(()),
+        }
+    }
+
+    pub fn lock(&self) -> LockResult<MutexGuard<'_, ()>> {
+        match self.inner.lock() {
+            Ok(guard) => Ok(guard),
+            Err(poisoned) => {
+                let guard = poisoned.into_inner();
+                self.inner.clear_poison();
+                Ok(guard)
+            }
+        }
+    }
+}
+
+impl Default for RecoveringTestMutex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub fn test_mutex() -> &'static RecoveringTestMutex {
+    static MUTEX: OnceLock<RecoveringTestMutex> = OnceLock::new();
+    MUTEX.get_or_init(RecoveringTestMutex::new)
 }
 
 /// 创建测试用的 AppState，包含一个空的数据库

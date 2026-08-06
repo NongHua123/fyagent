@@ -14,11 +14,34 @@ export { openclawApi } from "./openclaw";
 export { sessionsApi } from "./sessions";
 export { workspaceApi } from "./workspace";
 export { codexDesktopApi } from "./codex-desktop";
+export { getWorkBuddyError, workBuddyApi } from "./workbuddy";
 export * as configApi from "./config";
 export * as authApi from "./auth";
 export * as copilotApi from "./copilot";
-export type { ProviderSwitchEvent } from "./providers";
+export type {
+  CodexConfigDiagnostic,
+  CodexImageExtensionState,
+  CodexProviderFeatureIntent,
+  CodexProviderFeaturePatchResult,
+  CodexProviderFeatureState,
+  ProviderMutationResult,
+  ProviderSwitchEvent,
+} from "./providers";
 export type { Prompt } from "./prompts";
+export type {
+  WorkBuddyDuplicateId,
+  WorkBuddyError,
+  WorkBuddyErrorCode,
+  WorkBuddyFetchModelsRequest,
+  WorkBuddyFetchModelsResult,
+  WorkBuddyModelIds,
+  WorkBuddyConcurrentModificationResult,
+  WorkBuddyOverwriteConfirmationRequiredResult,
+  WorkBuddySaveModelsRequest,
+  WorkBuddySaveModelsResult,
+  WorkBuddySaveModelsSavedResult,
+  WorkBuddyStatus,
+} from "./workbuddy";
 export type { Profile, ProfilePayload, ProfilesResponse } from "./profiles";
 export type {
   CopilotDeviceCodeResponse,

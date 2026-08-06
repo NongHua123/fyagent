@@ -41,7 +41,7 @@ from pathlib import Path
 # Force UTF-8 on stdin/stdout/stderr on Windows. Default codepage there is
 # cp936 / cp1252 / etc. — non-ASCII content (Chinese task names, prd snippets)
 # both in stdin (hook payload from host CLI) and stdout (our emitted blocks)
-# raises UnicodeDecodeError / UnicodeEncodeError. Equivalent to `python -X utf8`
+# raises UnicodeDecodeError / UnicodeEncodeError. Equivalent to `python3 -X utf8`
 # but applied per-stream so we don't depend on host CLI's command wiring.
 if sys.platform.startswith("win"):
     import io as _io
@@ -228,6 +228,38 @@ def _read_trellis_config(root: Path) -> dict:
         return {}
 
 
+DEFAULT_PROMPT_INJECTION_SKIP_KEYWORD = "no-trellis"
+
+
+def _resolve_skip_keyword(config: dict) -> str:
+    """Read `prompt_injection.skip_keyword` from parsed .trellis/config.yaml.
+
+    Mirrors `common.config.get_prompt_injection_config()`. Defaults to
+    "no-trellis"; "" disables the escape hatch entirely. A non-string value
+    falls back to the default.
+    """
+    if isinstance(config, dict):
+        section = config.get("prompt_injection")
+        if isinstance(section, dict):
+            raw = section.get("skip_keyword", DEFAULT_PROMPT_INJECTION_SKIP_KEYWORD)
+            if isinstance(raw, str):
+                return raw
+    return DEFAULT_PROMPT_INJECTION_SKIP_KEYWORD
+
+
+def prompt_has_skip_keyword(prompt: str, keyword: str) -> bool:
+    """Case-insensitive, word-boundary match of `keyword` in `prompt`.
+
+    Hyphen counts as a word char so "no-trellisx" / "xno-trellis" /
+    "foo-no-trellis" don't match, but punctuation/whitespace boundaries do.
+    Empty keyword never matches (disables the escape hatch).
+    """
+    if not keyword or not isinstance(prompt, str):
+        return False
+    pattern = r"(?<![\w-])" + re.escape(keyword) + r"(?![\w-])"
+    return re.search(pattern, prompt, re.IGNORECASE) is not None
+
+
 def _resolve_codex_dispatch_mode(config: dict) -> str:
     """Normalize `codex.dispatch_mode` from .trellis/config.yaml to "auto" or "inline".
 
@@ -375,9 +407,12 @@ def main() -> int:
     if root is None:
         return 0  # not a Trellis project
 
+    config = _read_trellis_config(root)
+    if prompt_has_skip_keyword(data.get("prompt", ""), _resolve_skip_keyword(config)):
+        return 0  # user opted out of the per-turn breadcrumb for this turn
+
     templates = load_breadcrumbs(root)
     platform = _detect_platform(data)
-    config = _read_trellis_config(root)
     task = get_active_task(root, data)
     if task is None:
         # No active task — still emit a breadcrumb nudging AI toward

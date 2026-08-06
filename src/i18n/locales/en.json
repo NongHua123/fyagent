@@ -23,7 +23,6 @@
     "unknown": "Unknown",
     "enterValidValue": "Please enter a valid value",
     "clear": "Clear",
-    "toggleTheme": "Toggle theme",
     "format": "Format",
     "formatSuccess": "Formatted successfully",
     "formatError": "Format failed: {{error}}",
@@ -143,7 +142,6 @@
     "duplicate": "Duplicate",
     "sortUpdateFailed": "Failed to update sort order",
     "configureUsage": "Configure usage query",
-    "officialPartner": "Official Partner",
     "managedByHermes": "Hermes Managed",
     "managedByHermesHint": "Defined in Hermes' providers: dict. Edit or remove it via Hermes Web UI.",
     "openTerminal": "Open Terminal",
@@ -173,7 +171,8 @@
         "oauthHint": "Google official uses OAuth personal authentication, no need to fill in API Key. The browser will automatically open for login on first use.",
         "apiKeyPlaceholder": "Enter Gemini API Key"
       }
-    }
+    },
+    "duplicateLiveIdsLoadFailed": "Failed to read provider identifiers from config, please fix the config and try again"
   },
   "claudeCode": {
     "needsRouting": "Needs Routing",
@@ -222,7 +221,8 @@
       "tooltip": {
         "active": "Claude Desktop local routing is running - {{address}}:{{port}}",
         "inactive": "Turn on Claude Desktop local routing for providers that need model mapping or format conversion. Configured address: {{address}}:{{port}}"
-      }
+      },
+      "stopBlockedByTakeover": "Another app is using proxy takeover. Please disable that app's takeover in settings before stopping local routing."
     }
   },
   "notifications": {
@@ -271,7 +271,8 @@
     "backfillWarning": "Switched successfully, but failed to save changes back to the previous provider",
     "windowControlFailed": "Window control failed: {{error}}",
     "officialBlockedByProxy": "Cannot switch to official provider while local routing is active. Using routing with official APIs may cause account bans.",
-    "proxyOfficialWarning": "Current provider {{name}} is official. Consider switching to a third-party provider before using local routing."
+    "proxyOfficialWarning": "Current provider {{name}} is official. Consider switching to a third-party provider before using local routing.",
+    "proxyReasonClaudeDesktop": "Using Claude Desktop local routing mode"
   },
   "confirm": {
     "deleteProvider": "Delete Provider",
@@ -779,6 +780,8 @@
     "resetDefault": "Reset to default directory (takes effect after saving)",
     "aboutHint": "View FyAgent version information and local tool status.",
     "portableMode": "Portable mode is enabled.",
+    "runtimePrivilegeAdministrator": "Runtime privilege: Administrator",
+    "runtimePrivilegeStandardUser": "Runtime privilege: Standard user",
     "manualInstallCommands": "Manual Install Commands",
     "oneClickInstallHint": "Install or upgrade Claude Code / Gemini CLI / Grok Build / OpenCode / OpenClaw / Hermes",
     "localEnvCheck": "Local environment check",
@@ -866,11 +869,199 @@
     "claudeDesktop": "Claude Desktop",
     "claude-desktop": "Claude Desktop",
     "codex": "Codex",
+    "workbuddy": "WorkBuddy",
     "gemini": "Gemini",
     "grokbuild": "Grok Build",
     "opencode": "OpenCode",
     "openclaw": "OpenClaw",
     "hermes": "Hermes"
+  },
+  "workbuddy": {
+    "title": "WorkBuddy",
+    "description": "Configure OpenAI-compatible models for WorkBuddy without reading saved credentials.",
+    "status": {
+      "title": "Configuration status",
+      "loading": "Loading configuration status...",
+      "path": "Configuration file",
+      "exists": "File status",
+      "existsYes": "Exists",
+      "existsNo": "Not created yet",
+      "modelCount": "Configured models",
+      "backup": "Backup file",
+      "backupYes": "Available",
+      "backupNo": "Not created",
+      "unavailable": "Configuration status is currently unavailable.",
+      "download": "Download WorkBuddy",
+      "downloadHint": "Open the WorkBuddy website in the default browser",
+      "downloadFailed": "Could not open the WorkBuddy website. Check your default browser settings."
+    },
+    "existingModels": {
+      "title": "Existing models ({{count}})",
+      "loading": "Loading existing models...",
+      "refresh": "Refresh",
+      "searchPlaceholder": "Search existing model IDs",
+      "clearSearch": "Clear existing model search",
+      "list": "Existing model IDs",
+      "empty": "No configured models yet.",
+      "noMatch": "No matching model IDs.",
+      "readFailed": "Could not read the existing model configuration. Check models.json."
+    },
+    "connection": { "title": "Connection" },
+    "baseUrl": "Base URL",
+    "apiKey": "API key",
+    "showApiKey": "Show API key",
+    "hideApiKey": "Hide API key",
+    "allowNoApiKey": "Allow no API key",
+    "allowNoApiKeyHint": "Use this only when the upstream endpoint does not require authentication.",
+    "clearExistingApiKeys": "Also clear existing API keys for selected models",
+    "clearExistingApiKeysHint": "When selected models already have API keys, checking this writes an empty key. Leave it unchecked to preserve each existing key.",
+    "fetchModels": "Fetch models",
+    "fetchFailed": "Could not fetch models",
+    "save": "Save configuration",
+    "saving": "Saving...",
+    "saveSuccess": "Configuration saved",
+    "saveFailed": "Could not save configuration",
+    "httpWarning": {
+      "title": "Unencrypted remote connection",
+      "description": "This remote endpoint uses HTTP. Your API key could be exposed in transit."
+    },
+    "models": {
+      "title": "Models",
+      "selectAll": "Select all",
+      "deselectAll": "Deselect all",
+      "truncatedTitle": "Model list was truncated",
+      "truncatedDescription": "Only the first 1,000 unique model IDs returned by the upstream service are available here. Add any remaining models manually.",
+      "fetchedList": "Fetched model list",
+      "emptyFetch": "The upstream service returned no usable model IDs.",
+      "notFetched": "Fetch models to select them, or add model IDs manually.",
+      "manual": "Manual model IDs",
+      "manualPlaceholder": "one-model-id-per-line",
+      "manualHint": "One model ID per line. Blank lines are ignored."
+    },
+    "remoteModels": {
+      "title": "Remote models",
+      "selectionSummary": "Selected {{selected}} / current results {{total}}",
+      "searchPlaceholder": "Search model ID, name, or vendor",
+      "clearSearch": "Clear remote model search",
+      "selectCurrent": "Select current results",
+      "deselectCurrent": "Deselect current results",
+      "noMatch": "No matching remote models.",
+      "existing": "Existing"
+    },
+    "validation": {
+      "apiKeyRequired": "An API key is required unless \"Allow no API key\" is enabled.",
+      "modelRequired": "Select or enter at least one model before saving."
+    },
+    "duplicateDialog": {
+      "title": "Overwrite existing models?",
+      "description": "These models already exist. Continuing updates their connection address and API key.",
+      "occurrences": "{{count}} occurrences",
+      "keepDuplicates": "Every configuration entry with the same ID is updated. No entries are removed or merged.",
+      "confirm": "Continue saving"
+    },
+    "error": {
+      "invalidUrl": "Enter a valid HTTP or HTTPS URL.",
+      "apiKeyRequired": "An API key is required for this request.",
+      "fetchHttp": "The model service returned an HTTP error.",
+      "fetchTimeout": "The model request timed out.",
+      "fetchRedirectRejected": "The model request was redirected to an untrusted origin.",
+      "fetchResponseTooLarge": "The model response was too large.",
+      "fetchInvalidSchema": "The model service returned an unsupported response. Add models manually instead.",
+      "configReadFailed": "The existing WorkBuddy configuration could not be read safely.",
+      "configInvalidJson": "The existing WorkBuddy configuration is not valid JSON.",
+      "configRootNotArray": "The existing WorkBuddy configuration must be a JSON array.",
+      "configUnsupportedRoot": "The WorkBuddy configuration structure is not recognized. Check models.json.",
+      "configModelsNotArray": "The WorkBuddy configuration structure is not recognized. Check models.json.",
+      "configInvalidEntry": "A model entry in the existing WorkBuddy configuration is invalid.",
+      "configNoTargetModels": "Select or enter at least one model before saving.",
+      "configConcurrentModification": "The WorkBuddy configuration changed outside FyAgent. Refresh and try again.",
+      "configDuplicateTarget": "Duplicate target model IDs require confirmation.",
+      "overwriteTokenInvalid": "The overwrite confirmation is no longer valid. Refresh and save again.",
+      "overwriteTokenExpired": "The overwrite confirmation expired. Refresh and save again.",
+      "configBackupFailed": "A backup could not be created, so the configuration was not changed.",
+      "configWriteFailed": "The configuration could not be written safely.",
+      "httpStatus": "HTTP status: {{status}}",
+      "redactedSummary": "Upstream summary: {{summary}}",
+      "invalidEntryIndex": "Invalid configuration item at index {{index}}",
+      "internal": "The WorkBuddy request could not be completed. Please try again."
+    }
+  },
+  "codexFeatures": {
+    "title": "Codex native capabilities",
+    "description": "These options are available for every Codex provider. They change only the current TOML draft and are written when you save.",
+    "analyzing": "Checking Codex native capabilities…",
+    "analysisFailed": "Could not analyze the Codex native capability draft. Check the TOML and try again.",
+    "patchFailed": "Could not update the Codex native capability draft. Check the TOML and try again.",
+    "savePreparationFailed": "Could not prepare Codex native capabilities. Check the TOML and try again.",
+    "imageExtension": {
+      "label": "Enable built-in image extension",
+      "description": "Writes a managed request header for this provider to enable Codex's built-in image extension.",
+      "legacyTitle": "Migration on save",
+      "legacyDescription": "This historical provider defaults to enabled until you save. Turning it off does not change the configuration until the provider is saved.",
+      "conflictTitle": "Image-extension header conflict",
+      "conflictDescription": "The TOML contains same-name or differently cased headers. Operating the switch overwrites those matching values.",
+      "invalidTitle": "Image-extension setting cannot be read",
+      "invalidDescription": "The request headers are not a string map. Operating the switch replaces or removes this field."
+    },
+    "websockets": {
+      "label": "Enable WebSocket transport",
+      "description": "Writes supports_websockets = true. The upstream model or proxy route may not support it; identified risks are shown after saving."
+    },
+    "saveWarnings": {
+      "added": "Provider added",
+      "saved": "Provider saved",
+      "nonGptModel": "WebSocket transport supports GPT-family models only",
+      "proxyMayBeUnsupported": "The current proxy takeover route may not support WebSocket",
+      "separator": "; "
+    },
+    "diagnostic": {
+      "invalidToml": "The Codex TOML draft is invalid. FyAgent will not rewrite it automatically.",
+      "invalidHeaders": "The Codex request-header structure is invalid. Operating the image switch repairs this field.",
+      "invalidWebsockets": "The WebSocket setting is invalid. Operating the WebSocket switch repairs this field.",
+      "generic": "The Codex native capability configuration is invalid. FyAgent will not rewrite this TOML draft automatically."
+    }
+  },
+  "codexRestart": {
+    "confirm": {
+      "title": "Restart Codex",
+      "saved": "Configuration saved.",
+      "uniqueRuntime": "Codex is running.",
+      "multipleInstances": "Multiple Codex instances are running.",
+      "multipleInstallations": "Multiple Codex installations are available.",
+      "identityAmbiguous": "The Codex instance could not be identified uniquely.",
+      "risk": "Continuing will force-close every matching Codex instance. Unsaved work may be lost, and only one instance will be started afterward.",
+      "manual": "Restart manually later",
+      "force": "Force close and restart"
+    },
+    "progress": "Restarting Codex…",
+    "progressDescription": "Please wait.",
+    "incomplete": {
+      "title": "Codex restart did not complete",
+      "body": "Configuration was saved, but Codex restart did not complete.",
+      "manual": "I will restart manually",
+      "retry": "Try restarting again"
+    },
+    "title": "Configuration updated",
+    "description": "Codex is currently running. Restart it to load the configuration you just saved.",
+    "restartAction": "Restart Codex",
+    "laterAction": "Restart manually later",
+    "forceTitle": "Codex did not exit normally",
+    "forceDescription": "The configuration was saved, but Codex did not exit in time. Confirm before FyAgent force-closes the verified instance and restarts it; you can also restart manually later.",
+    "forceAction": "Force quit and restart",
+    "restarted": "Codex was restarted and loaded the new configuration.",
+    "later": "Configuration saved. Restart Codex manually later.",
+    "manualRequired": "Configuration saved. Restart Codex manually to load the new configuration.",
+    "notInstalled": "Configuration saved, but no trusted Codex Desktop installation was found to restart.",
+    "ambiguous": "Configuration saved, but FyAgent could not uniquely identify the running Codex Desktop. Restart it manually.",
+    "unsupported": "Configuration saved. Automatic Codex restart is unsupported on this platform; restart it manually.",
+    "failed": "Configuration was saved, but Codex could not be restarted. Restart it manually before continuing.",
+    "phase": {
+      "detect": "Trusted desktop detection did not complete.",
+      "quit": "Codex did not exit normally.",
+      "forceQuit": "The verified Codex instance could not be force-closed.",
+      "launch": "Codex could not be launched from its trusted installation.",
+      "verify": "Codex was launched but a new trusted instance could not be verified."
+    }
   },
   "grokBuild": {
     "apiBackend": "API backend",
@@ -1004,45 +1195,6 @@
     "officialHint": "💡 Official provider uses browser login, no API Key needed",
     "providerKeyStatusLoading": "Provider identifier status is still loading. Please try again shortly.",
     "getApiKey": "Get API Key",
-    "partnerPromotion": {
-      "sudocode": "With one SudoCode key, Claude Code and Claude Desktop use Claude Opus 5, while Codex uses GPT-5.6. Sign up, join QQ group 726213516, and contact the group owner to claim CNY ¥10 in trial credit.",
-      "code0": "code0.ai is an AI coding service platform for developers, supporting Claude Code, Codex, and Gemini. Exclusive for FyAgent users: contact support via the official website to claim free trial credits!",
-      "nekocode": "NekoCode gives developers a stable, efficient, and reliable API relay for Claude, Codex, and other AI models, with transparent pay-as-you-go pricing. Exclusive 10% off for FyAgent users: register via the link above and enter promo code cc-switch at recharge to save 10%!",
-      "packycode": "PackyCode is an official partner of FyAgent. Register using this link and enter \"cc-switch\" promo code during recharge to get 10% off",
-      "apikeyfun": "APIKEY.FUN offers a special deal for FyAgent users. Register through the exclusive link to enjoy up to permanent 5% off top-ups.",
-      "apinebula": "APINEBULA offers FyAgent users a special discount: register using the link and enter the \"ccswitch\" promo code during your first top-up to get 10% off.",
-      "atlascloud": "Atlas Cloud is a full-modal AI inference platform that gives developers one API for video generation, image generation, and LLM access. Check out its new Coding Plan promotion for more budget-friendly API access.",
-      "patewayai": "PatewayAI offers special benefits for FyAgent users. Register via this link to receive $3 credit.",
-      "claudeapi": "ClaudeAPI offers special benefits for FyAgent users. Register via this link to claim test credits.",
-      "claudecn": "ClaudeCN is an enterprise-grade AI gateway operated by a registered company, supporting enterprise procurement processes with corporate payments, contracts, and compliance guarantees.",
-      "runapi": "RunAPI offers special benefits for FyAgent users. Register via this link and contact customer support to claim ¥14 free credit.",
-      "minimax_cn": "MiniMax Coding Plan Special Offer, Starter from ¥9.9",
-      "minimax_en": "MiniMax Coding Plan Black Friday, Starter is now $2/mo (80% OFF!)",
-      "opencode_go": "Subscribe to OpenCode Go via this link — only $5 for your first month, plus an extra $5 in credit!",
-      "dmxapi": "Claude Code exclusive model 66% OFF now!",
-      "cubence": "Cubence is an official partner of FyAgent. Register using this link and enter \"CCSWITCH\" promo code during recharge to get 10% off every top-up",
-      "aigocode": "AIGoCode is an official partner of FyAgent. Register using this link and get 10% bonus credit on your first top-up!",
-      "rightcode": "RightCode is an official partner of FyAgent. Register using this link and get 5% bonus credit on every top-up!",
-      "aicodemirror": "AICodeMirror is an official partner of FyAgent. Register using this link to get 20% off!",
-      "aicoding": "AI Coding offers an exclusive discount for FyAgent users — 10% off your first top-up!",
-      "crazyrouter": "CrazyRouter offers an exclusive bonus for FyAgent users — 30% extra credit on your first top-up!",
-      "sssaicode": "SSAI Code offers an exclusive bonus for FyAgent users — $10 extra credit on every top-up!",
-      "siliconflow": "SiliconFlow is an official partner of FyAgent",
-      "ucloud": "Compshare offers an exclusive bonus for FyAgent users — register via this link to get ¥5 platform trial credit!",
-      "micu": "Micu is an official partner of FyAgent",
-      "etok": "Join the ETok community on the official website and subscribe to a plan.",
-      "shengsuanyun": "Shengsuanyun offers exclusive benefits for FyAgent users. New users who register via this link get ¥10 free credits and 10% bonus on first top-up!",
-      "doubaoseed": "DouBao offers exclusive benefits for FyAgent users: register via this link to get 500K tokens of inference credits for all DouBao text models and 5M tokens of free Seedance 2.0 credits.",
-      "volcengine_agentplan": "Volcengine Ark Coding Plan offers exclusive benefits for FyAgent users: subscribe via this link and new customers get 75% off for the first two months, plus an extra 5% off with the exclusive invite code 6J6FV5N2 — as low as ¥9.4/month!",
-      "byteplus": "Register via this link to get 500,000 tokens of free inference quota per model.",
-      "ccsub": "CCSub is a stable, affordable AI API relay — a drop-in replacement for Claude.ai & OpenAI subscriptions, with one key for all models at ~30% of direct API cost.",
-      "subrouter": "SubRouter is an AI relay aggregator that lets one key access multiple models and providers.",
-      "qiniu": "Qiniu Cloud is a multi-protocol AI relay: one key for native Claude, GPT, and Gemini models, with the Anthropic, OpenAI, and Gemini APIs all supported.",
-      "fenno": "Fenno.ai is a stable, efficient API relay giving you access to a wide range of mainstream models. Exclusive FyAgent offer: subscribe via this link to the ¥9.9 Coding Plan worth $150 in credits!",
-      "zetaapi": "ZetaAPI delivers real, undegraded models at as low as 35% of official pricing. Exclusive FyAgent offer: register via this link and use promo code CC-SWITCH for 10% off your first top-up!",
-      "teamorouter": "TeamoRouter is an enterprise-grade Agentic LLM gateway with pricing up to 90% off. It offers exclusive benefits for FyAgent users: register via this link as a new user for 10% off your first top-up!",
-      "unity2": "Unity2.ai offers exclusive benefits for FyAgent users: register via this link to get $2 in credits, plus another $10 for joining the official group — up to $12 in free credits!"
-    },
     "presets": {
       "ucloud": "Compshare",
       "ucloudCoding": "Compshare Coding Plan",
@@ -1153,7 +1305,8 @@
     "fetchModelsAuthFailed": "API Key is invalid or lacks permission",
     "fetchModelsNotSupported": "This provider does not support fetching model list",
     "fetchModelsEndpointNotFound": "No reachable models endpoint found. Please check the Base URL or confirm whether the provider exposes this API.",
-    "fetchModelsTimeout": "Request timed out, please check network connection"
+    "fetchModelsTimeout": "Request timed out, please check network connection",
+    "requiredFields": "Please fill in provider name, API endpoint, API Key and model"
   },
   "copilot": {
     "authSection": "GitHub Copilot Authentication",
@@ -1350,7 +1503,9 @@
     "reasoningEffortHint": "Enable when the upstream supports thinking-depth control such as low/high/max. Enabling this also turns on thinking mode and converts Codex's reasoning.effort into the upstream Chat parameter.",
     "reasoningGroupTitle": "Reasoning Capability",
     "reasoningSectionHint": "Preset providers are configured automatically; custom providers are inferred from name/URL. Override manually only when auto-detection is wrong.",
-    "advancedSectionHint": "Includes upstream format, model mapping, reasoning overrides and custom User-Agent. Providers using the Chat Completions protocol require routing takeover to be enabled."
+    "advancedSectionHint": "Includes Codex native capabilities, upstream format, model mapping, reasoning overrides and custom User-Agent. Providers using Chat Completions require routing takeover.",
+    "officialAdvancedSectionHint": "Includes the built-in image extension and WebSocket transport switches.",
+    "noCommonConfigToApply": "The common config snippet is empty or contains nothing to write"
   },
   "geminiConfig": {
     "envFile": "Environment Variables (.env)",
@@ -1449,6 +1604,7 @@
     "totalRequests": "Total Requests",
     "totalCost": "Total Cost",
     "cost": "Cost",
+    "unpriced": "Unpriced",
     "perMillion": "(per million)",
     "trends": "Usage Trends",
     "rangeToday": "Last 24 hours (hourly)",
@@ -1491,24 +1647,6 @@
       "grokbuild": "Grok Build"
     },
     "rawInputLabel": "Raw",
-    "dataSources": "Data Sources",
-    "dataSource": {
-      "proxy": "Routing",
-      "session_log": "Session Log",
-      "codex_db": "Codex DB",
-      "codex_session": "Codex Session",
-      "gemini_session": "Gemini Session",
-      "opencode_session": "OpenCode Session",
-      "grok_session": "Grok Build Session"
-    },
-    "sessionSync": {
-      "trigger": "Sync session logs",
-      "import": "Import Sessions",
-      "resync": "Sync",
-      "imported": "Imported {{count}} records from session logs",
-      "upToDate": "Session logs are up to date",
-      "failed": "Session sync failed"
-    },
     "rebuildCodex": {
       "title": "Codex Usage Maintenance",
       "description": "Rebuild Codex session usage from local rollout logs",
@@ -1618,6 +1756,40 @@
     "modelsDevNoResults": "No matching models",
     "modelsDevTruncated": "Showing first {{shown}} of {{total}} results — refine your search",
     "modelsDevDefaultHint": "Showing the {{shown}} most recently released models (of {{total}}) — type to search all",
+    "modelsDevAutoSync": {
+      "title": "Automatic models.dev pricing sync",
+      "description": "When enabled, periodically fetch selected prices when FyAgent launches and keep them in your local pricing file.",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "enableConfirmTitle": "Enable automatic pricing sync?",
+      "enableConfirmMessage": "After enabling, FyAgent will periodically update prices for the selected models from models.dev when it launches (at most once every 6 hours). Built-in and manually configured prices with the same model ID will be overwritten.",
+      "enableConfirmAction": "Enable automatic sync",
+      "configure": "Choose models",
+      "configureTitle": "Choose models for automatic pricing sync",
+      "configureDescription": "Search and filter models to update automatically. Your choices are stored locally.",
+      "commonModels": "Automatically include common models",
+      "commonModelsDescription": "Selects {{count}} recent Claude, GPT, Gemini, Grok, DeepSeek, Qwen, MiMo, LongCat, Kimi, MiniMax, and GLM models.",
+      "selectFiltered": "Select filtered ({{count}})",
+      "clearFiltered": "Clear filtered",
+      "selectedCount": "{{count}} models selected",
+      "selectionHint": "Selections with the same normalized model ID are imported once.",
+      "commonBadge": "Common",
+      "selectionSaved": "Automatic pricing selection saved",
+      "syncSuccess": "Pricing sync complete: {{imported}} models checked, {{changed}} updated",
+      "syncFailed": "Pricing sync failed: {{error}}",
+      "configLoadFailed": "Failed to load local pricing configuration: {{error}}",
+      "neverSynced": "Never",
+      "lastSync": "Last sync",
+      "commonStatus": "Common models",
+      "lastError": "Last automatic sync failed: {{error}}",
+      "localFile": "Local pricing file",
+      "openFolder": "Open folder",
+      "openFolderFailed": "Failed to open the local pricing folder: {{error}}",
+      "reloadLocalFile": "Reload file",
+      "localFileReloaded": "Local pricing file reloaded",
+      "localFileReloadFailed": "Failed to reload local pricing file: {{error}}",
+      "syncNow": "Sync now"
+    },
     "cacheReadCostPerMillion": "Cache Read Cost (per million tokens, USD)",
     "cacheCreationCostPerMillion": "Cache Write Cost (per million tokens, USD)"
   },
@@ -2261,6 +2433,9 @@
       "skillDirNotFound": "Skill directory not found: {{path}}",
       "directoryConflict": "Skill directory '{{directory}}' is already occupied by {{existing_repo}}, cannot install from {{new_repo}}",
       "emptyArchive": "Downloaded archive is empty",
+      "invalidRepoRef": "Invalid repository reference: {{owner}}/{{name}}",
+      "archiveTooLarge": "Archive exceeds the {{limit_mb}} MB extraction limit; aborted",
+      "archiveTooManyEntries": "Archive has too many entries ({{count}}); the limit is {{limit}}",
       "downloadFailed": "Download failed: HTTP {{status}}",
       "allBranchesFailed": "All branches failed, tried: {{branches}}",
       "httpError": "HTTP error {{status}}",
@@ -2420,18 +2595,29 @@
     "configUrl": "Config File URL",
     "configMergeError": "Failed to merge configuration file",
     "primaryEndpoint": "Primary",
+    "providerActivation": "After import",
+    "providerActivationEnabled": "Set this provider as current and apply its configuration immediately",
+    "providerActivationPending": "This provider will be imported only until you explicitly approve activation",
+    "providerActivationDisabled": "Do not switch to this provider automatically",
+    "providerActivationWarning": "This link requests replacement of the current provider configuration. Continue only if you trust the source.",
+    "providerActivationApproval": "I approve setting this provider as current and writing its configuration to the target app.",
+    "importAndActivate": "Import and set as current",
     "mcp": {
       "title": "Batch Import MCP Servers",
       "targetApps": "Target Apps",
       "serverCount": "MCP Servers ({{count}})",
-      "enabledWarning": "After import, configurations will be written to all specified apps immediately"
+      "enabledWarning": "After import, configurations will be written to all specified apps immediately",
+      "command": "Command",
+      "args": "Args",
+      "env": "Env",
+      "url": "URL"
     },
     "prompt": {
       "title": "Import System Prompt",
       "app": "App",
       "name": "Name",
       "description": "Description",
-      "contentPreview": "Content Preview",
+      "contentPreview": "Content to import",
       "enabledWarning": "After import, this prompt will be enabled immediately and other prompts will be disabled"
     },
     "skill": {
@@ -2446,10 +2632,17 @@
     "usageScript": "Usage Query",
     "usageScriptEnabled": "Enabled",
     "usageScriptDisabled": "Disabled",
+    "usageScriptCode": "Script code",
+    "usageScriptWarning": "This is JavaScript that runs when usage is queried, once enabled. Import it only if you trust the source.",
     "usageApiKey": "Usage API Key",
     "usageBaseUrl": "Usage Query URL",
     "usageAutoInterval": "Auto Query",
-    "usageAutoIntervalValue": "Every {{minutes}} minutes"
+    "usageAutoIntervalValue": "Every {{minutes}} minutes",
+    "risk": {
+      "envHijack": "This config sets environment variables that change how processes load code (e.g. injecting libraries or replacing CA certificates). Import only from a source you trust.",
+      "privateEndpoint": "This address points at localhost or a private network. Do not import unless it is your own local service.",
+      "shellCommand": "This config runs a full command line through a shell — what actually executes is in the arguments. Review each line."
+    }
   },
   "iconPicker": {
     "search": "Search Icons",
@@ -2468,8 +2661,7 @@
     "selectIcon": "Select Icon",
     "preview": "Preview",
     "clickToChange": "Click to change icon",
-    "clickToSelect": "Click to select icon",
-    "color": "Icon Color"
+    "clickToSelect": "Click to select icon"
   },
   "migration": {
     "success": "Configuration migrated successfully",
@@ -2498,7 +2690,8 @@
     },
     "tooltip": {
       "enabled": "{{app}} failover enabled\nRequests follow queue priority (P1→P2→...)",
-      "disabled": "Enable {{app}} failover\nSwitches to queue P1 immediately, then falls back on failures"
+      "disabled": "Enable {{app}} failover\nSwitches to queue P1 immediately, then falls back on failures",
+      "takeoverRequired": "Take over {{app}} first, then enable failover"
     }
   },
   "proxy": {
@@ -2676,7 +2869,9 @@
     },
     "server": {
       "started": "Routing service started - {{address}}:{{port}}",
-      "startFailed": "Failed to start routing service: {{detail}}"
+      "startFailed": "Failed to start routing service: {{detail}}",
+      "stopped": "Routing service stopped",
+      "stopFailed": "Failed to stop routing service: {{detail}}"
     },
     "stoppedWithRestore": "Routing service stopped, all routing configs restored",
     "stopWithRestoreFailed": "Stop failed: {{detail}}"
@@ -2710,33 +2905,6 @@
     "streamingFirstByte": "Streaming First Byte Timeout",
     "streamingIdle": "Streaming Idle Timeout",
     "nonStreaming": "Non-Streaming Timeout"
-  },
-  "circuitBreaker": {
-    "failureThreshold": "Failure Threshold",
-    "successThreshold": "Success Threshold",
-    "timeoutSeconds": "Timeout (seconds)",
-    "errorRateThreshold": "Error Rate Threshold (%)",
-    "minRequests": "Minimum Requests",
-    "validationFailed": "The following fields are out of valid range: {{fields}}",
-    "configSaved": "Circuit breaker configuration saved",
-    "saveFailed": "Save failed",
-    "loading": "Loading...",
-    "title": "Circuit Breaker Configuration",
-    "description": "Adjust circuit breaker parameters to control fault detection and recovery behavior",
-    "failureThresholdHint": "How many consecutive failures trigger the circuit breaker",
-    "timeoutSecondsHint": "How long to wait before attempting recovery (half-open state)",
-    "successThresholdHint": "How many successes in half-open state to close the circuit breaker",
-    "errorRateThresholdHint": "Open circuit breaker when error rate exceeds this value",
-    "minRequestsHint": "Minimum requests before calculating error rate",
-    "saveConfig": "Save Configuration",
-    "instructionsTitle": "Configuration Instructions",
-    "instructions": {
-      "failureThreshold": "Circuit breaker opens when consecutive failures reach this count",
-      "timeout": "After circuit breaker opens, wait this time before attempting half-open",
-      "successThreshold": "In half-open state, close circuit breaker when successes reach this count",
-      "errorRate": "Circuit breaker opens when error rate exceeds this value",
-      "minRequests": "Error rate is only calculated after request count reaches this value"
-    }
   },
   "universalProvider": {
     "duplicate": "Duplicate",
@@ -3016,6 +3184,16 @@
       "latestVersion": "Latest version",
       "unavailable": "Unavailable",
       "progress": "Installation progress"
+    },
+    "version": {
+      "localLoading": "Checking local version",
+      "localError": "Could not check local version",
+      "remoteLoading": "Fetching latest version",
+      "refreshing": "Refreshing latest version",
+      "refreshNetworkFailed": "Could not fetch the latest version. Check your network connection.",
+      "fetchFailed": "Fetch failed",
+      "platformUnavailable": "No version is available for this platform",
+      "metadataInvalid": "Version information is invalid"
     },
     "state": {
       "hidden": "This feature is not supported on the current platform",

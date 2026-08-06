@@ -50,6 +50,33 @@ jobs:
       - name: Unit tests
         run: pnpm test:unit
 
+  desktop-acceptance-contract:
+    name: Desktop Acceptance Contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.3
+          run_install: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify mock-only desktop acceptance contract
+        run: pnpm test:desktop:mock
+
+      - name: Verify visual baseline capture policy
+        run: pnpm test:desktop:visual:preflight
+
   backend:
     name: Backend Checks
     runs-on: ${{ matrix.os }}
@@ -96,7 +123,13 @@ jobs:
         run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
 
       - name: Clippy
+        env:
+          # Keep all Windows CI artifacts in the ordinary-user test mode. A
+          # distributable administrator binary is built only by release.yml.
+          FYAGENT_WINDOWS_MANIFEST: test
         run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
       - name: Run tests
+        env:
+          FYAGENT_WINDOWS_MANIFEST: test
         run: cargo test --manifest-path src-tauri/Cargo.toml

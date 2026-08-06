@@ -367,7 +367,8 @@ mod tests {
 
     #[test]
     fn test_collect_gemini_session_files_nonexistent() {
-        let files = collect_gemini_session_files(Path::new("/nonexistent/path"));
+        let temp = tempfile::tempdir().expect("create isolated session root");
+        let files = collect_gemini_session_files(&temp.path().join("missing"));
         assert!(files.is_empty());
     }
 

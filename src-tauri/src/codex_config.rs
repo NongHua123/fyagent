@@ -7,11 +7,13 @@ use crate::config::{
 };
 use crate::error::AppError;
 use crate::model_capabilities::{image_input_capability_from_modalities, ImageInputCapability};
+use crate::provider::{Provider, ProviderMeta};
 use once_cell::sync::OnceCell;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
 use std::process::{Command, Stdio};
-use toml_edit::DocumentMut;
+use toml_edit::{DocumentMut, Item, TableLike};
 
 pub const FYAGENT_CODEX_MODEL_PROVIDER_ID: &str = "custom";
 /// Temporary model-provider id used while the built-in `codex-official`
@@ -21,6 +23,88 @@ pub const FYAGENT_CODEX_MODEL_PROVIDER_ID: &str = "custom";
 pub const FYAGENT_CODEX_OFFICIAL_PROXY_PROVIDER_ID: &str = "fyagent-official";
 pub const FYAGENT_CODEX_MODEL_CATALOG_FILENAME: &str = "fyagent-model-catalog.json";
 const CODEX_PROXY_AUTH_PLACEHOLDER: &str = "PROXY_MANAGED";
+
+/// The provider-scoped request header owned by the FyAgent image-extension
+/// feature. Header names are semantically case-insensitive, while TOML keys
+/// are not, so every read and mutation must use the helper below instead of a
+/// direct TOML key lookup.
+pub const CODEX_IMAGE_EXTENSION_HEADER: &str = "x-openai-actor-authorization";
+pub const CODEX_IMAGE_EXTENSION_VALUE: &str = "local-image-extension";
+const CODEX_FEATURE_INVALID_TOML: &str = "CODEX_FEATURE_INVALID_TOML";
+const CODEX_FEATURE_INVALID_HEADER: &str = "CODEX_FEATURE_INVALID_HEADER";
+const CODEX_FEATURE_INVALID_WEBSOCKET: &str = "CODEX_FEATURE_INVALID_WEBSOCKET";
+pub const CODEX_WEBSOCKET_NON_GPT_MODEL_WARNING: &str = "CODEX_WEBSOCKET_NON_GPT_MODEL";
+pub const CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED_WARNING: &str =
+    "CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED";
+
+/// Serializable, non-sensitive diagnostic for the feature-draft IPC. Never
+/// include a header value or a complete TOML fragment here: provider headers
+/// may themselves contain credentials.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexConfigDiagnostic {
+    pub code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
+}
+
+/// The effective image-extension state derived from the provider TOML plus
+/// the private migration marker. TOML remains the source of truth; the marker
+/// only distinguishes a historical missing header from an explicit disable.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum CodexImageExtensionState {
+    On,
+    Off,
+    LegacyPendingOn,
+    Conflict { key: String },
+    Invalid { code: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexWebsocketFeatureState {
+    pub enabled: bool,
+    pub compatible: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexProviderFeatureState {
+    pub applicable: bool,
+    pub image_extension: CodexImageExtensionState,
+    pub websockets: CodexWebsocketFeatureState,
+    pub provider_table_found: bool,
+    pub diagnostics: Vec<CodexConfigDiagnostic>,
+}
+
+/// Intent sent by the draft-only feature patch command. `None` means leave
+/// that capability unchanged. The command operates on form text only and
+/// never writes a user file or database row.
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CodexProviderFeatureIntent {
+    pub image_extension: Option<bool>,
+    pub websockets: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexProviderFeaturePatchResult {
+    pub toml_text: String,
+    pub state: CodexProviderFeatureState,
+    /// A proposed, private ProviderMeta update. The caller must persist this
+    /// only together with a successful provider save; cancelling a form must
+    /// therefore leave the migration marker absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_extension_configured: Option<bool>,
+    /// Form-local update for the private ownership marker of an official
+    /// capability-only provider table. `Some(false)` explicitly clears it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub codex_native_capabilities_generated_provider: Option<bool>,
+}
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -312,6 +396,664 @@ pub(crate) fn is_custom_codex_model_provider_id(id: &str) -> bool {
             .any(|reserved| reserved.eq_ignore_ascii_case(id))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ManagedHeaderInspection {
+    Missing,
+    Controlled { key: String },
+    Conflict { key: String },
+    Invalid,
+}
+
+fn codex_feature_error(code: &'static str, zh: &'static str, en: &'static str) -> AppError {
+    AppError::localized(code, zh, en)
+}
+
+fn codex_feature_diagnostic(code: &'static str, field: &'static str) -> CodexConfigDiagnostic {
+    CodexConfigDiagnostic {
+        code: code.to_owned(),
+        field: Some(field.to_owned()),
+    }
+}
+
+fn codex_provider_config_text(provider: &Provider) -> &str {
+    provider
+        .settings_config
+        .get("config")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+}
+
+fn active_codex_provider_table(doc: &DocumentMut) -> Option<(String, &dyn TableLike)> {
+    let provider_id = active_codex_model_provider_id(doc)?;
+    let table = doc
+        .get("model_providers")
+        .and_then(Item::as_table_like)?
+        .get(&provider_id)
+        .and_then(Item::as_table_like)?;
+    Some((provider_id, table))
+}
+
+fn active_codex_provider_table_mut<'a>(
+    doc: &'a mut DocumentMut,
+    provider_id: &str,
+) -> Option<&'a mut dyn TableLike> {
+    doc.get_mut("model_providers")
+        .and_then(Item::as_table_like_mut)?
+        .get_mut(provider_id)
+        .and_then(Item::as_table_like_mut)
+}
+
+fn is_fixed_official_codex_provider(provider: &Provider) -> bool {
+    provider
+        .id
+        .eq_ignore_ascii_case(crate::database::CODEX_OFFICIAL_PROVIDER_ID)
+        || provider
+            .category
+            .as_deref()
+            .is_some_and(|category| category.eq_ignore_ascii_case("official"))
+}
+
+fn generated_official_provider_marker(provider: &Provider) -> bool {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.codex_native_capabilities_generated_provider)
+        == Some(true)
+}
+
+fn inspect_managed_image_header(provider_table: &dyn TableLike) -> ManagedHeaderInspection {
+    let Some(headers_item) = provider_table.get("http_headers") else {
+        return ManagedHeaderInspection::Missing;
+    };
+    let Some(headers) = headers_item.as_table_like() else {
+        return ManagedHeaderInspection::Invalid;
+    };
+
+    let mut matching_keys = Vec::new();
+    for (key, value) in headers.iter() {
+        // Codex http_headers must be a string map. Returning a generic
+        // diagnostic rather than attempting a conversion preserves both the
+        // invalid value and any user-owned formatting.
+        let Some(header_value) = value.as_str() else {
+            return ManagedHeaderInspection::Invalid;
+        };
+        if key.eq_ignore_ascii_case(CODEX_IMAGE_EXTENSION_HEADER) {
+            matching_keys.push((key.to_owned(), header_value == CODEX_IMAGE_EXTENSION_VALUE));
+        }
+    }
+
+    match matching_keys.as_slice() {
+        [] => ManagedHeaderInspection::Missing,
+        [(key, true)] => ManagedHeaderInspection::Controlled { key: key.clone() },
+        [(key, false)] => ManagedHeaderInspection::Conflict { key: key.clone() },
+        // Multiple case variants must never be normalized automatically, even
+        // when their values currently happen to agree.
+        [(key, _), ..] => ManagedHeaderInspection::Conflict { key: key.clone() },
+    }
+}
+
+fn websocket_state(provider_table: &dyn TableLike) -> (bool, Option<CodexConfigDiagnostic>) {
+    let Some(item) = provider_table.get("supports_websockets") else {
+        return (false, None);
+    };
+    match item.as_bool() {
+        Some(enabled) => (enabled, None),
+        None => (
+            false,
+            Some(codex_feature_diagnostic(
+                CODEX_FEATURE_INVALID_WEBSOCKET,
+                "supportsWebsockets",
+            )),
+        ),
+    }
+}
+
+fn image_extension_marker_is_complete(provider: &Provider) -> bool {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.image_extension_configured)
+        == Some(true)
+}
+
+fn normalize_unfinished_image_extension_marker(provider: &mut Provider) {
+    if let Some(meta) = provider.meta.as_mut() {
+        if meta.image_extension_configured == Some(false) {
+            meta.image_extension_configured = None;
+        }
+    }
+}
+
+fn analyze_codex_provider_features_from_document(
+    provider: &Provider,
+    doc: &DocumentMut,
+    is_new: bool,
+) -> CodexProviderFeatureState {
+    let is_official = is_fixed_official_codex_provider(provider);
+    let image_extension_configured = image_extension_marker_is_complete(provider);
+    let missing_image_state = || {
+        if is_official {
+            CodexImageExtensionState::Off
+        } else if is_new && !image_extension_configured {
+            CodexImageExtensionState::On
+        } else if !image_extension_configured {
+            CodexImageExtensionState::LegacyPendingOn
+        } else {
+            CodexImageExtensionState::Off
+        }
+    };
+
+    let Some((_provider_id, provider_table)) = active_codex_provider_table(doc) else {
+        return CodexProviderFeatureState {
+            applicable: true,
+            image_extension: missing_image_state(),
+            websockets: CodexWebsocketFeatureState {
+                enabled: false,
+                compatible: true,
+                reason: None,
+            },
+            provider_table_found: false,
+            diagnostics: Vec::new(),
+        };
+    };
+
+    let header = inspect_managed_image_header(provider_table);
+    let (websocket_enabled, websocket_diagnostic) = websocket_state(provider_table);
+    let mut diagnostics = Vec::new();
+    if matches!(header, ManagedHeaderInspection::Invalid) {
+        diagnostics.push(codex_feature_diagnostic(
+            CODEX_FEATURE_INVALID_HEADER,
+            "httpHeaders",
+        ));
+    }
+    if let Some(diagnostic) = websocket_diagnostic {
+        diagnostics.push(diagnostic);
+    }
+
+    let image_extension = match header {
+        ManagedHeaderInspection::Missing => missing_image_state(),
+        ManagedHeaderInspection::Controlled { .. } => CodexImageExtensionState::On,
+        ManagedHeaderInspection::Conflict { key } => CodexImageExtensionState::Conflict { key },
+        ManagedHeaderInspection::Invalid => CodexImageExtensionState::Invalid {
+            code: CODEX_FEATURE_INVALID_HEADER.to_owned(),
+        },
+    };
+
+    CodexProviderFeatureState {
+        applicable: true,
+        image_extension,
+        websockets: CodexWebsocketFeatureState {
+            enabled: websocket_enabled,
+            compatible: true,
+            reason: None,
+        },
+        provider_table_found: true,
+        diagnostics,
+    }
+}
+
+/// Derive the Codex native-capability UI state from a provider draft. This is
+/// intentionally read-only and does not persist a migration marker or touch a
+/// user configuration file.
+pub fn analyze_codex_provider_features(
+    provider: &Provider,
+    is_new: bool,
+) -> CodexProviderFeatureState {
+    let config = codex_provider_config_text(provider);
+    match config.parse::<DocumentMut>() {
+        Ok(doc) => analyze_codex_provider_features_from_document(provider, &doc, is_new),
+        Err(_) => CodexProviderFeatureState {
+            applicable: false,
+            image_extension: CodexImageExtensionState::Invalid {
+                code: CODEX_FEATURE_INVALID_TOML.to_owned(),
+            },
+            websockets: CodexWebsocketFeatureState {
+                enabled: false,
+                compatible: false,
+                reason: None,
+            },
+            provider_table_found: false,
+            diagnostics: vec![codex_feature_diagnostic(
+                CODEX_FEATURE_INVALID_TOML,
+                "config",
+            )],
+        },
+    }
+}
+
+fn set_managed_image_header(provider_table: &mut dyn TableLike, enabled: bool) {
+    // An invalid header field cannot be preserved while applying an explicit
+    // image-toggle intent. The user chose this destructive repair boundary:
+    // enabling replaces it with the managed map, disabling removes it.
+    if matches!(
+        inspect_managed_image_header(provider_table),
+        ManagedHeaderInspection::Invalid
+    ) {
+        provider_table.remove("http_headers");
+    }
+
+    if provider_table.get("http_headers").is_none() {
+        if enabled {
+            let mut headers = toml_edit::InlineTable::new();
+            headers.insert(
+                CODEX_IMAGE_EXTENSION_HEADER,
+                CODEX_IMAGE_EXTENSION_VALUE.into(),
+            );
+            provider_table.insert(
+                "http_headers",
+                Item::Value(toml_edit::Value::InlineTable(headers)),
+            );
+        }
+        return;
+    }
+
+    let headers_empty = {
+        let Some(headers) = provider_table
+            .get_mut("http_headers")
+            .and_then(Item::as_table_like_mut)
+        else {
+            // The invalid case was removed above. Keep this defensive branch
+            // no-write instead of replacing an unexpected toml_edit shape.
+            return;
+        };
+        let matching_keys = headers
+            .iter()
+            .filter(|(key, _)| key.eq_ignore_ascii_case(CODEX_IMAGE_EXTENSION_HEADER))
+            .map(|(key, _)| key.to_owned())
+            .collect::<Vec<_>>();
+        for key in matching_keys {
+            headers.remove(&key);
+        }
+        if enabled {
+            headers.insert(
+                CODEX_IMAGE_EXTENSION_HEADER,
+                toml_edit::value(CODEX_IMAGE_EXTENSION_VALUE),
+            );
+        }
+        headers.is_empty()
+    };
+
+    if headers_empty {
+        provider_table.remove("http_headers");
+    }
+}
+
+fn set_provider_config_text(provider: &mut Provider, config_text: String) -> Result<(), AppError> {
+    let settings = provider.settings_config.as_object_mut().ok_or_else(|| {
+        AppError::localized(
+            "provider.codex.settings.not_object",
+            "Codex 配置必须是 JSON 对象",
+            "Codex configuration must be a JSON object",
+        )
+    })?;
+    settings.insert("config".to_owned(), Value::String(config_text));
+    Ok(())
+}
+
+fn feature_state_error(state: &CodexProviderFeatureState) -> Option<AppError> {
+    if state
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == CODEX_FEATURE_INVALID_TOML)
+    {
+        return Some(codex_feature_error(
+            CODEX_FEATURE_INVALID_TOML,
+            "Codex TOML 配置无效，无法保存原生能力设置",
+            "The Codex TOML configuration is invalid and native capabilities cannot be saved",
+        ));
+    }
+    None
+}
+
+/// Whole-document TOML failure is the only native-capability patch blocker.
+/// Field-level diagnostics remain visible but are repaired only when the user
+/// explicitly operates the corresponding switch.
+fn feature_state_error_for_patch(
+    state: &CodexProviderFeatureState,
+    _intent: &CodexProviderFeatureIntent,
+) -> Option<AppError> {
+    feature_state_error(state)
+}
+
+fn ensure_codex_feature_provider_table(
+    doc: &mut DocumentMut,
+    provider: &Provider,
+) -> Result<(String, bool), AppError> {
+    if let Some((provider_id, _)) = active_codex_provider_table(doc) {
+        return Ok((provider_id, false));
+    }
+
+    let is_official = is_fixed_official_codex_provider(provider);
+    let provider_id = if is_official {
+        FYAGENT_CODEX_MODEL_PROVIDER_ID.to_owned()
+    } else {
+        active_codex_model_provider_id(doc)
+            .unwrap_or_else(|| FYAGENT_CODEX_MODEL_PROVIDER_ID.to_owned())
+    };
+
+    if doc.get("model_providers").is_none() {
+        let mut providers = toml_edit::Table::new();
+        providers.set_implicit(true);
+        doc["model_providers"] = Item::Table(providers);
+    }
+    let providers = doc
+        .get_mut("model_providers")
+        .and_then(Item::as_table_like_mut)
+        .ok_or_else(|| {
+            codex_feature_error(
+                CODEX_FEATURE_INVALID_TOML,
+                "Codex model_providers 必须是可编辑的表",
+                "Codex model_providers must be an editable table",
+            )
+        })?;
+
+    let created_provider_table = providers.get(&provider_id).is_none();
+    if created_provider_table {
+        let mut table = toml_edit::Table::new();
+        table["name"] = toml_edit::value(if is_official {
+            "OpenAI"
+        } else {
+            provider.name.trim()
+        });
+        if is_official {
+            table["requires_openai_auth"] = toml_edit::value(true);
+        }
+        table["wire_api"] = toml_edit::value("responses");
+        providers.insert(&provider_id, Item::Table(table));
+    }
+
+    doc["model_provider"] = toml_edit::value(&provider_id);
+    Ok((provider_id, is_official && created_provider_table))
+}
+
+fn generated_official_provider_table_is_safe_to_remove(doc: &DocumentMut) -> bool {
+    if active_codex_model_provider_id(doc).as_deref() != Some(FYAGENT_CODEX_MODEL_PROVIDER_ID) {
+        return false;
+    }
+    let Some((_, table)) = active_codex_provider_table(doc) else {
+        return false;
+    };
+    for (key, _) in table.iter() {
+        if !matches!(key, "name" | "requires_openai_auth" | "wire_api") {
+            return false;
+        }
+    }
+    table.get("name").and_then(Item::as_str) == Some("OpenAI")
+        && table.get("requires_openai_auth").and_then(Item::as_bool) == Some(true)
+        && table.get("wire_api").and_then(Item::as_str) == Some("responses")
+}
+
+fn remove_generated_official_provider_table(doc: &mut DocumentMut) -> bool {
+    if !generated_official_provider_table_is_safe_to_remove(doc) {
+        return false;
+    }
+
+    doc.as_table_mut().remove("model_provider");
+    let providers_empty = doc
+        .get_mut("model_providers")
+        .and_then(Item::as_table_like_mut)
+        .is_some_and(|providers| {
+            providers.remove(FYAGENT_CODEX_MODEL_PROVIDER_ID);
+            providers.is_empty()
+        });
+    if providers_empty {
+        doc.as_table_mut().remove("model_providers");
+    }
+    true
+}
+
+/// Patch a form-only Codex provider TOML draft without rewriting unrelated
+/// formatting. The returned TOML must be persisted by the caller through the
+/// normal provider save path; this function never writes a live config file.
+pub fn patch_codex_provider_features(
+    provider: &Provider,
+    intent: &CodexProviderFeatureIntent,
+    is_new: bool,
+) -> Result<CodexProviderFeaturePatchResult, AppError> {
+    let config = codex_provider_config_text(provider);
+    let mut doc = config.parse::<DocumentMut>().map_err(|_| {
+        codex_feature_error(
+            CODEX_FEATURE_INVALID_TOML,
+            "Codex TOML 配置无效，无法修改原生能力设置",
+            "The Codex TOML configuration is invalid and native capabilities cannot be changed",
+        )
+    })?;
+    let state = analyze_codex_provider_features_from_document(provider, &doc, is_new);
+    if let Some(error) = feature_state_error_for_patch(&state, intent) {
+        return Err(error);
+    }
+
+    let needs_provider_table = intent.image_extension == Some(true)
+        || intent.websockets == Some(true)
+        || active_codex_provider_table(&doc).is_some();
+    let mut generated_provider_marker = None;
+    let provider_id = if needs_provider_table {
+        let (provider_id, generated_official) =
+            ensure_codex_feature_provider_table(&mut doc, provider)?;
+        if generated_official {
+            generated_provider_marker = Some(true);
+        }
+        Some(provider_id)
+    } else {
+        None
+    };
+
+    let is_official = is_fixed_official_codex_provider(provider);
+    let image_extension_configured =
+        (intent.image_extension.is_some() && !is_official).then_some(true);
+    if let Some(provider_id) = provider_id.as_deref() {
+        let provider_table =
+            active_codex_provider_table_mut(&mut doc, provider_id).ok_or_else(|| {
+                codex_feature_error(
+                    CODEX_FEATURE_INVALID_TOML,
+                    "Codex Provider 表不可编辑",
+                    "The Codex provider table is not editable",
+                )
+            })?;
+        if let Some(enabled) = intent.image_extension {
+            set_managed_image_header(provider_table, enabled);
+        }
+        if let Some(enabled) = intent.websockets {
+            if enabled {
+                provider_table.insert("supports_websockets", toml_edit::value(true));
+            } else {
+                provider_table.remove("supports_websockets");
+            }
+        }
+    }
+
+    let owns_generated_official_table = is_official
+        && (generated_official_provider_marker(provider)
+            || generated_provider_marker == Some(true));
+    if owns_generated_official_table && remove_generated_official_provider_table(&mut doc) {
+        generated_provider_marker = Some(false);
+    }
+
+    let toml_text = doc.to_string();
+    // Reparse before reporting a successful patch. This catches an unexpected
+    // toml_edit construction defect without serializing or logging the draft.
+    let parsed = toml_text.parse::<DocumentMut>().map_err(|_| {
+        codex_feature_error(
+            CODEX_FEATURE_INVALID_TOML,
+            "Codex TOML 配置无效，无法修改原生能力设置",
+            "The Codex TOML configuration is invalid and native capabilities cannot be changed",
+        )
+    })?;
+    let mut patched_provider = provider.clone();
+    set_provider_config_text(&mut patched_provider, toml_text.clone())?;
+    if image_extension_configured.is_some() {
+        // This is a form-only clone. It lets the returned state describe the
+        // explicit user action without persisting the marker before save.
+        patched_provider
+            .meta
+            .get_or_insert_with(ProviderMeta::default)
+            .image_extension_configured = Some(true);
+    }
+    if let Some(generated) = generated_provider_marker {
+        patched_provider
+            .meta
+            .get_or_insert_with(ProviderMeta::default)
+            .codex_native_capabilities_generated_provider = generated.then_some(true);
+    }
+    Ok(CodexProviderFeaturePatchResult {
+        state: analyze_codex_provider_features_from_document(&patched_provider, &parsed, is_new),
+        toml_text,
+        image_extension_configured,
+        codex_native_capabilities_generated_provider: generated_provider_marker,
+    })
+}
+
+/// Enforce only the whole-document editability invariant on Codex provider
+/// write paths. Field-level native-capability diagnostics are deliberately
+/// non-blocking until the user operates the corresponding switch.
+pub fn validate_codex_provider_features(provider: &Provider) -> Result<(), AppError> {
+    let state = analyze_codex_provider_features(provider, false);
+    if let Some(error) = feature_state_error(&state) {
+        return Err(error);
+    }
+    Ok(())
+}
+
+/// Apply the small, deferred image default at the moment a non-official
+/// provider is actually saved. Historical records are never rewritten merely
+/// because they are listed or opened. Conflicting or invalid header fields are
+/// preserved by an unrelated save and repaired only by an explicit toggle.
+pub fn prepare_codex_provider_features_for_save(
+    provider: &mut Provider,
+    is_new: bool,
+) -> Result<(), AppError> {
+    // `false` was never a completed choice. Normalize manually constructed
+    // drafts as well as historical records before all feature decisions, so
+    // a successful save cannot preserve the stale completion marker.
+    normalize_unfinished_image_extension_marker(provider);
+    if let Some(meta) = provider.meta.as_mut() {
+        if meta.codex_native_capabilities_generated_provider == Some(false) {
+            meta.codex_native_capabilities_generated_provider = None;
+        }
+    }
+    validate_codex_provider_features(provider)?;
+    let state = analyze_codex_provider_features(provider, is_new);
+    if !state.applicable {
+        return Ok(());
+    }
+    if matches!(
+        state.image_extension,
+        CodexImageExtensionState::Conflict { .. } | CodexImageExtensionState::Invalid { .. }
+    ) {
+        return Ok(());
+    }
+
+    // A newly created eligible provider starts with the feature logically on,
+    // but the renderer records an explicit first-save choice before it calls
+    // this function.  Do not let the default overwrite an explicit off choice
+    // simply because the provider has not been persisted yet.
+    let has_image_extension_marker = image_extension_marker_is_complete(provider);
+    let should_apply_default = !is_fixed_official_codex_provider(provider)
+        && ((is_new && !has_image_extension_marker)
+            || matches!(
+                state.image_extension,
+                CodexImageExtensionState::LegacyPendingOn
+            ));
+    if should_apply_default {
+        let result = patch_codex_provider_features(
+            provider,
+            &CodexProviderFeatureIntent {
+                image_extension: Some(true),
+                websockets: None,
+            },
+            false,
+        )?;
+        set_provider_config_text(provider, result.toml_text)?;
+        provider
+            .meta
+            .get_or_insert_with(ProviderMeta::default)
+            .image_extension_configured = Some(true);
+        return Ok(());
+    }
+
+    if !is_fixed_official_codex_provider(provider)
+        && matches!(state.image_extension, CodexImageExtensionState::On)
+        && provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.image_extension_configured)
+            != Some(true)
+    {
+        provider
+            .meta
+            .get_or_insert_with(ProviderMeta::default)
+            .image_extension_configured = Some(true);
+    }
+    Ok(())
+}
+
+fn codex_provider_websocket_enabled(provider: &Provider) -> bool {
+    codex_provider_config_text(provider)
+        .parse::<DocumentMut>()
+        .ok()
+        .and_then(|doc| {
+            active_codex_provider_table(&doc)
+                .and_then(|(_, table)| table.get("supports_websockets").and_then(Item::as_bool))
+        })
+        == Some(true)
+}
+
+fn is_gpt_model_id(model: &str) -> Option<bool> {
+    let model = model.trim();
+    if model.is_empty() {
+        return None;
+    }
+    let basename = model.rsplit('/').next().unwrap_or_default().trim();
+    Some(basename.to_ascii_lowercase().starts_with("gpt-"))
+}
+
+/// Derive non-sensitive warnings for a successful Codex provider add/update.
+/// The caller supplies the current takeover state so this pure classifier is
+/// shared by commands and directly testable without touching user files.
+pub fn codex_provider_save_warning_codes(
+    provider: &Provider,
+    proxy_takeover_active: bool,
+) -> Vec<String> {
+    if !codex_provider_websocket_enabled(provider) {
+        return Vec::new();
+    }
+
+    let mut has_non_gpt_model = false;
+    if let Ok(doc) = codex_provider_config_text(provider).parse::<DocumentMut>() {
+        has_non_gpt_model = ["model", "review_model"].into_iter().any(|field| {
+            doc.get(field)
+                .and_then(Item::as_str)
+                .and_then(is_gpt_model_id)
+                == Some(false)
+        });
+    }
+    if !has_non_gpt_model {
+        has_non_gpt_model = provider
+            .settings_config
+            .get("modelCatalog")
+            .and_then(|catalog| catalog.get("models"))
+            .and_then(Value::as_array)
+            .is_some_and(|models| {
+                models.iter().any(|entry| {
+                    entry
+                        .get("model")
+                        .and_then(Value::as_str)
+                        .and_then(is_gpt_model_id)
+                        == Some(false)
+                })
+            });
+    }
+
+    let mut warnings = Vec::new();
+    if has_non_gpt_model {
+        warnings.push(CODEX_WEBSOCKET_NON_GPT_MODEL_WARNING.to_owned());
+    }
+    if proxy_takeover_active {
+        warnings.push(CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED_WARNING.to_owned());
+    }
+    warnings
+}
+
 /// Write only Codex `config.toml` for provider switching.
 ///
 /// Codex login state lives in `auth.json`; provider routing, endpoint, model,
@@ -417,6 +1159,93 @@ pub fn codex_auth_has_oauth_login_material(auth: &Value) -> bool {
     })
 }
 
+/// True only when the auth carries material Codex itself authenticates with
+/// ahead of the API-key fallback: OAuth tokens or another first-class login
+/// carrier. Unlike `codex_auth_has_oauth_login_material`, pure metadata such
+/// as `last_refresh` or `tokens.account_id` does NOT count — metadata must not
+/// shield a stale third-party `OPENAI_API_KEY` from post-switch cleanup.
+pub fn codex_auth_has_credential_login_material(auth: &Value) -> bool {
+    let Some(obj) = auth.as_object() else {
+        return false;
+    };
+
+    let value_present = |value: &Value| match value {
+        Value::Null => false,
+        Value::String(text) => !text.trim().is_empty(),
+        Value::Array(items) => !items.is_empty(),
+        Value::Object(map) => !map.is_empty(),
+        _ => true,
+    };
+
+    if ["personal_access_token", "agent_identity", "bedrock_api_key"]
+        .iter()
+        .any(|key| obj.get(*key).is_some_and(value_present))
+    {
+        return true;
+    }
+
+    obj.get("tokens")
+        .and_then(Value::as_object)
+        .is_some_and(|tokens| {
+            ["id_token", "access_token", "refresh_token"]
+                .iter()
+                .any(|key| tokens.get(*key).is_some_and(value_present))
+        })
+}
+
+/// True when live `auth.json` is the shape a preserve-off third-party switch
+/// leaves behind: an `OPENAI_API_KEY` (possibly alongside metadata like
+/// `auth_mode` / `last_refresh`) with no real login credential next to it.
+pub fn codex_live_auth_is_stale_third_party_residue(live_auth: &Value) -> bool {
+    if codex_auth_has_credential_login_material(live_auth) {
+        return false;
+    }
+    live_auth
+        .get("OPENAI_API_KEY")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|key| !key.is_empty())
+}
+
+/// After a normal switch to an official provider that carries no login
+/// material of its own, delete a live `auth.json` that only holds a stale
+/// third-party API key, so Codex shows its login screen instead of sending
+/// the wrong key to the official endpoint (401 with no way to re-login).
+///
+/// Deleting the file — not writing `{}` — is deliberate: Codex resolves an
+/// empty object to ChatGPT mode without tokens and errors at bootstrap,
+/// while a missing file yields NotAuthenticated and the login screen,
+/// matching Codex's own logout.
+///
+/// Callers must only invoke this after the outgoing provider was
+/// successfully backfilled into the DB — that backfill holds the only other
+/// copy of the third-party key. The switch backfill intentionally lacks the
+/// proxy-side "no credentials in the builtin official row" guard
+/// (`services/proxy.rs` `sync_live_config_to_provider`): that asymmetry is
+/// what heals official API-key logins into the DB row, and this cleanup's
+/// safety depends on it — do not align the two guards.
+///
+/// Returns Ok(true) when the file was deleted.
+pub fn clear_stale_codex_live_auth_after_official_switch(
+    db_auth: &Value,
+) -> Result<bool, AppError> {
+    if codex_auth_has_login_material(db_auth) {
+        // A material-carrying official provider gets a full auth write;
+        // nothing stale can remain.
+        return Ok(false);
+    }
+    let auth_path = get_codex_auth_path();
+    if !auth_path.exists() {
+        return Ok(false);
+    }
+    let live_auth: Value = read_json_file(&auth_path)?;
+    if !codex_live_auth_is_stale_third_party_residue(&live_auth) {
+        return Ok(false);
+    }
+    delete_file(&auth_path)?;
+    Ok(true)
+}
+
 pub fn should_restore_codex_provider_token_for_backfill(
     category: Option<&str>,
     template_settings: &Value,
@@ -466,17 +1295,20 @@ fn codex_catalog_model_entry(
     spec: &CodexCatalogModelSpec,
     priority: usize,
     profile: CodexCatalogToolProfile,
+    default_context_window: u64,
 ) -> Value {
     let mut entry = template.clone();
     let Some(entry_obj) = entry.as_object_mut() else {
         return json!({});
     };
 
+    let display_name = spec.display_name.as_deref().unwrap_or(&spec.model);
+    let context_window = spec.context_window.unwrap_or(default_context_window);
     entry_obj.insert("slug".to_string(), json!(spec.model));
-    entry_obj.insert("display_name".to_string(), json!(spec.display_name));
-    entry_obj.insert("description".to_string(), json!(spec.display_name));
-    entry_obj.insert("context_window".to_string(), json!(spec.context_window));
-    entry_obj.insert("max_context_window".to_string(), json!(spec.context_window));
+    entry_obj.insert("display_name".to_string(), json!(display_name));
+    entry_obj.insert("description".to_string(), json!(display_name));
+    entry_obj.insert("context_window".to_string(), json!(context_window));
+    entry_obj.insert("max_context_window".to_string(), json!(context_window));
     entry_obj.insert("priority".to_string(), json!(1000 + priority));
     entry_obj.insert("additional_speed_tiers".to_string(), json!([]));
     entry_obj.insert("service_tiers".to_string(), json!([]));
@@ -535,8 +1367,13 @@ fn codex_catalog_model_entry(
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CodexCatalogModelSpec {
     model: String,
-    display_name: String,
-    context_window: u64,
+    /// Explicit user value only. Entries fall back to the model id — except
+    /// official vendor catalog entries, which keep the vendor's display name.
+    display_name: Option<String>,
+    /// Explicit user value only. Entries fall back to the config's
+    /// `model_context_window` (or 128k) — except official vendor catalog
+    /// entries, which keep the vendor's declared window.
+    context_window: Option<u64>,
     /// Per-row override for the native template's `supports_parallel_tool_calls`
     /// (e.g. MiniMax=true, MiMo=false). Only consulted for `NativeResponses`.
     supports_parallel_tool_calls: Option<bool>,
@@ -552,7 +1389,7 @@ struct CodexCatalogModelSpec {
     base_instructions: Option<String>,
 }
 
-fn codex_catalog_model_specs(settings: &Value, config_text: &str) -> Vec<CodexCatalogModelSpec> {
+fn codex_catalog_model_specs(settings: &Value) -> Vec<CodexCatalogModelSpec> {
     let Some(models) = settings
         .get("modelCatalog")
         .and_then(|catalog| catalog.get("models"))
@@ -561,8 +1398,6 @@ fn codex_catalog_model_specs(settings: &Value, config_text: &str) -> Vec<CodexCa
         return Vec::new();
     };
 
-    let default_context_window =
-        extract_codex_top_level_u64(config_text, "model_context_window").unwrap_or(128_000);
     let mut seen = std::collections::HashSet::new();
     let mut specs = Vec::new();
 
@@ -586,13 +1421,12 @@ fn codex_catalog_model_specs(settings: &Value, config_text: &str) -> Vec<CodexCa
             .and_then(|value| value.as_str())
             .map(str::trim)
             .filter(|name| !name.is_empty())
-            .unwrap_or(model);
+            .map(str::to_string);
         let context_window = parse_codex_positive_u64(
             model_config
                 .get("contextWindow")
                 .or_else(|| model_config.get("context_window")),
-        )
-        .unwrap_or(default_context_window);
+        );
 
         let supports_parallel_tool_calls = model_config
             .get("supportsParallelToolCalls")
@@ -621,7 +1455,7 @@ fn codex_catalog_model_specs(settings: &Value, config_text: &str) -> Vec<CodexCa
 
         specs.push(CodexCatalogModelSpec {
             model: model.to_string(),
-            display_name: display_name.to_string(),
+            display_name,
             context_window,
             supports_parallel_tool_calls,
             input_modalities,
@@ -891,6 +1725,135 @@ fn load_codex_native_responses_template() -> Value {
     serde_json::from_str(text).expect("bundled codex native responses template must be valid JSON")
 }
 
+/// Hosts whose native `/responses` gateway publishes an OFFICIAL Codex model
+/// catalog (models.json) that FyAgent mirrors verbatim. Matched against
+/// `base_url` ONLY — deliberately NOT by model brand, unlike
+/// `CODEX_WEB_SEARCH_REJECT_MODEL_PREFIXES`: the official entries GRANT
+/// capabilities (freeform `apply_patch`, vendor harness), and an aggregator
+/// merely hosting the same model may not honor them. The safe failure
+/// direction for aggregators is the neutral template (degraded but working);
+/// wrongly granting freeform apply_patch would reintroduce the custom-tool
+/// rejection bug.
+const CODEX_DEEPSEEK_OFFICIAL_CATALOG_HOSTS: &[&str] = &["deepseek.com"];
+
+/// Bundled copy of DeepSeek's official Codex models.json — the exact file
+/// their one-click integration script writes (api-docs.deepseek.com →
+/// quick_start/agent_integrations/codex): freeform apply_patch, GPT-5 harness
+/// base_instructions, low/high/max reasoning levels, web_search supported,
+/// 1m context. Declares `minimal_client_version` 0.144.0.
+fn load_codex_deepseek_official_catalog_models() -> Vec<Value> {
+    let text = include_str!("resources/codex_deepseek_catalog_template.json");
+    let catalog: Value =
+        serde_json::from_str(text).expect("bundled DeepSeek official catalog must be valid JSON");
+    catalog
+        .get("models")
+        .and_then(|models| models.as_array())
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// Official vendor catalog entries for the provider in `config_text`, if its
+/// gateway ships one. Only the `NativeResponses` profile qualifies: ProxyChat
+/// runs through FyAgent's converter (gpt-5.5 template contract) and the
+/// Anthropic transform drops custom tools, so both must keep their existing
+/// templates. Host-driven like the web_search blacklist, so existing providers
+/// pick it up on their next switch without a re-save.
+fn codex_official_vendor_catalog_models(
+    config_text: &str,
+    profile: CodexCatalogToolProfile,
+) -> Option<Vec<Value>> {
+    if profile != CodexCatalogToolProfile::NativeResponses {
+        return None;
+    }
+    let base_url = extract_codex_base_url(config_text)?;
+    let parsed_base_url = url::Url::parse(&base_url).ok()?;
+    if parsed_base_url.scheme() != "https" {
+        return None;
+    }
+    let base_url_host = parsed_base_url
+        .host_str()?
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    if CODEX_DEEPSEEK_OFFICIAL_CATALOG_HOSTS
+        .iter()
+        .any(|official_host| {
+            base_url_host == *official_host
+                || base_url_host
+                    .strip_suffix(*official_host)
+                    .is_some_and(|prefix| prefix.ends_with('.'))
+        })
+    {
+        let models = load_codex_deepseek_official_catalog_models();
+        if !models.is_empty() {
+            return Some(models);
+        }
+    }
+    None
+}
+
+/// Build one catalog entry from an official vendor catalog: match the user's
+/// model id against the vendor entries by slug; an unknown id clones the
+/// vendor's first (flagship) entry so it keeps the gateway's capability
+/// profile without impersonating the flagship. The official entry is
+/// authoritative — no tool-profile stripping — but explicit per-row user
+/// overrides still win.
+fn codex_vendor_catalog_model_entry(
+    vendor_models: &[Value],
+    spec: &CodexCatalogModelSpec,
+    priority: usize,
+) -> Value {
+    let matched = vendor_models.iter().find(|entry| {
+        entry
+            .get("slug")
+            .and_then(|slug| slug.as_str())
+            .is_some_and(|slug| slug.eq_ignore_ascii_case(&spec.model))
+    });
+    let mut entry = match matched {
+        Some(found) => found.clone(),
+        None => vendor_models.first().cloned().unwrap_or_else(|| json!({})),
+    };
+    let Some(entry_obj) = entry.as_object_mut() else {
+        return json!({});
+    };
+
+    if matched.is_none() {
+        let display_name = spec.display_name.as_deref().unwrap_or(&spec.model);
+        entry_obj.insert("slug".to_string(), json!(spec.model));
+        entry_obj.insert("display_name".to_string(), json!(display_name));
+        entry_obj.insert("description".to_string(), json!(display_name));
+        entry_obj.insert("priority".to_string(), json!(1000 + priority));
+    }
+
+    // Explicit user overrides win over the official entry; absent values keep
+    // the vendor's declarations (context window, modalities, harness, ...).
+    if let Some(display_name) = spec.display_name.as_deref() {
+        entry_obj.insert("display_name".to_string(), json!(display_name));
+    }
+    if let Some(context_window) = spec.context_window {
+        entry_obj.insert("context_window".to_string(), json!(context_window));
+        entry_obj.insert("max_context_window".to_string(), json!(context_window));
+    }
+    if let Some(parallel) = spec.supports_parallel_tool_calls {
+        entry_obj.insert("supports_parallel_tool_calls".to_string(), json!(parallel));
+    }
+    if let Some(modalities) = spec.input_modalities.as_deref() {
+        entry_obj.insert("input_modalities".to_string(), json!(modalities));
+    }
+    if let Some(base_instructions) = spec
+        .base_instructions
+        .as_deref()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+    {
+        entry_obj.insert("base_instructions".to_string(), json!(base_instructions));
+    }
+
+    // Defensive: if a future codex parser requires a field the vendor file
+    // predates, backfill only whitelisted parser-required keys.
+    fill_template_fields_from_static(&mut entry);
+    entry
+}
+
 /// Fields Codex's external-catalog parser REQUIRES (no serde default): when
 /// one is missing Codex rejects the whole catalog file at startup ("missing
 /// field ..."). `base_instructions` is the other known required field; the
@@ -973,11 +1936,14 @@ fn codex_model_catalog_from_specs(
     specs: &[CodexCatalogModelSpec],
     template: &Value,
     profile: CodexCatalogToolProfile,
+    default_context_window: u64,
 ) -> Value {
     let entries: Vec<Value> = specs
         .iter()
         .enumerate()
-        .map(|(index, spec)| codex_catalog_model_entry(template, spec, index, profile))
+        .map(|(index, spec)| {
+            codex_catalog_model_entry(template, spec, index, profile, default_context_window)
+        })
         .collect();
 
     json!({ "models": entries })
@@ -988,10 +1954,27 @@ fn codex_model_catalog_from_settings(
     config_text: &str,
     profile: CodexCatalogToolProfile,
 ) -> Result<Option<Value>, AppError> {
-    let specs = codex_catalog_model_specs(settings, config_text);
+    let specs = codex_catalog_model_specs(settings);
     if specs.is_empty() {
         return Ok(None);
     }
+
+    // Vendors that publish an OFFICIAL Codex models.json for their native
+    // `/responses` gateway get it mirrored verbatim instead of the neutral
+    // template: its freeform apply_patch, vendor harness base_instructions and
+    // reasoning levels are load-bearing (the harness tells the model to use
+    // apply_patch, so catalog and harness must stay consistent).
+    if let Some(vendor_models) = codex_official_vendor_catalog_models(config_text, profile) {
+        let entries: Vec<Value> = specs
+            .iter()
+            .enumerate()
+            .map(|(index, spec)| codex_vendor_catalog_model_entry(&vendor_models, spec, index))
+            .collect();
+        return Ok(Some(json!({ "models": entries })));
+    }
+
+    let default_context_window =
+        extract_codex_top_level_u64(config_text, "model_context_window").unwrap_or(128_000);
 
     // Native providers use the bundled clean template (no freeform apply_patch,
     // no cache dependency); proxy-chat providers keep cloning Codex's gpt-5.5
@@ -1003,7 +1986,10 @@ fn codex_model_catalog_from_settings(
         CodexCatalogToolProfile::ProxyChat => load_codex_model_catalog_template()?,
     };
     Ok(Some(codex_model_catalog_from_specs(
-        &specs, &template, profile,
+        &specs,
+        &template,
+        profile,
+        default_context_window,
     )))
 }
 
@@ -1424,7 +2410,9 @@ fn remove_codex_experimental_bearer_token(config_text: &str) -> Result<String, A
 /// Read the current Codex live settings as a `{ auth, config }` object.
 ///
 /// Missing `auth.json` collapses to `{}` so a config-only third-party install
-/// is still importable; both files empty is treated as "no live install".
+/// is still importable; both files missing is treated as "no live install".
+/// A `config.toml` that exists but is empty is a valid state — e.g. the
+/// official seed after stale-auth cleanup — and must stay readable.
 pub fn read_codex_live_settings() -> Result<Value, AppError> {
     let auth_path = get_codex_auth_path();
     let auth_present = auth_path.exists();
@@ -1434,7 +2422,7 @@ pub fn read_codex_live_settings() -> Result<Value, AppError> {
         json!({})
     };
     let cfg_text = read_and_validate_codex_config_text()?;
-    if !auth_present && cfg_text.trim().is_empty() {
+    if !auth_present && !get_codex_config_path().exists() {
         return Err(AppError::localized(
             "codex.live.missing",
             "Codex 配置文件不存在",
@@ -1449,8 +2437,9 @@ pub fn read_codex_live_settings() -> Result<Value, AppError> {
 /// the shared custom id: `requires_openai_auth` routes auth to the ChatGPT
 /// login in `auth.json` (base_url then defaults to the official Codex
 /// backend), `name = "OpenAI"` keeps Codex's `is_openai()` feature gates
-/// (web search, remote compaction), and `supports_websockets` restores the
-/// built-in default that custom entries otherwise lose.
+/// (web search, remote compaction). Callers opt into `supports_websockets`
+/// only when their own route contract or the user's explicit draft requires
+/// it; omission never serializes an overriding `false`.
 fn codex_official_provider_table(
     base_url: Option<&str>,
     supports_websockets: bool,
@@ -1458,7 +2447,9 @@ fn codex_official_provider_table(
     let mut table = toml_edit::Table::new();
     table["name"] = toml_edit::value("OpenAI");
     table["requires_openai_auth"] = toml_edit::value(true);
-    table["supports_websockets"] = toml_edit::value(supports_websockets);
+    if supports_websockets {
+        table["supports_websockets"] = toml_edit::value(true);
+    }
     table["wire_api"] = toml_edit::value("responses");
     if let Some(base_url) = base_url {
         table["base_url"] = toml_edit::value(base_url.trim_end_matches('/'));
@@ -1505,6 +2496,17 @@ pub fn apply_codex_official_proxy_route(
     let mut doc = config_text
         .parse::<DocumentMut>()
         .map_err(|e| AppError::Message(format!("Invalid Codex config.toml: {e}")))?;
+    let (supports_websockets, image_extension_enabled) = active_codex_provider_table(&doc)
+        .map(|(_, table)| {
+            (
+                table.get("supports_websockets").and_then(Item::as_bool) == Some(true),
+                matches!(
+                    inspect_managed_image_header(table),
+                    ManagedHeaderInspection::Controlled { .. }
+                ),
+            )
+        })
+        .unwrap_or((false, false));
 
     // A third-party takeover may have left the proxy placeholder in config.toml.
     // The official route must use Codex's native OpenAI login instead.
@@ -1528,8 +2530,13 @@ pub fn apply_codex_official_proxy_route(
     // user bearer tokens are preserved, as are all unrelated provider fields.
     remove_codex_proxy_placeholders_from_providers(&mut providers);
 
-    // The local proxy currently exposes HTTP/SSE, not Codex websocket routes.
-    let table = codex_official_provider_table(Some(proxy_base_url), false);
+    // The local proxy currently exposes HTTP/SSE, not Codex websocket routes,
+    // but the user's explicit provider capability is preserved. Save-time UI
+    // warnings communicate the runtime risk without rewriting their choice.
+    let mut table = codex_official_provider_table(Some(proxy_base_url), supports_websockets);
+    if image_extension_enabled {
+        set_managed_image_header(&mut table, true);
+    }
 
     providers.insert(
         FYAGENT_CODEX_OFFICIAL_PROXY_PROVIDER_ID,
@@ -1908,25 +2915,53 @@ pub fn update_codex_toml_field(toml_str: &str, field: &str, value: &str) -> Resu
 
             if let Some(provider_key) = model_provider {
                 // Ensure [model_providers] table exists
-                if doc.get("model_providers").is_none() {
+                //
+                // 用 as_table_like_mut 而非 as_table_mut：用户把配置写成 inline table
+                // （`model_providers = { foo = {...} }`，TOML 合法）时 as_table_mut
+                // 返回 None，会一路掉进下面的顶层 fallback——用户改的 base_url 被写到
+                // 了错误层级且毫无提示。
+                if doc
+                    .get("model_providers")
+                    .is_none_or(|item| item.as_table_like().is_none())
+                {
+                    // 键存在但不是表（`model_providers = 42`）时，下面这行会把用户
+                    // 手写的值替换掉。旧代码在这种形状下会掉进顶层 fallback 而不动
+                    // 它，所以归一化必须留痕——与 mcp/codex.rs、mcp/grokbuild.rs、
+                    // opencode_config.rs 的同款处理保持一致。
+                    if doc
+                        .get("model_providers")
+                        .is_some_and(|item| !item.is_none())
+                    {
+                        log::warn!("config.toml 的 model_providers 不是表，已重置为空表");
+                    }
                     doc["model_providers"] = toml_edit::table();
                 }
 
-                if let Some(model_providers) = doc["model_providers"].as_table_mut() {
+                if let Some(model_providers) = doc
+                    .get_mut("model_providers")
+                    .and_then(toml_edit::Item::as_table_like_mut)
+                {
                     // Ensure [model_providers.<provider_key>] table exists
                     if !model_providers.contains_key(&provider_key) {
-                        model_providers[&provider_key] = toml_edit::table();
+                        model_providers.insert(&provider_key, toml_edit::table());
                     }
 
-                    if let Some(provider_table) = model_providers[&provider_key].as_table_mut() {
+                    if let Some(provider_table) = model_providers
+                        .get_mut(&provider_key)
+                        .and_then(toml_edit::Item::as_table_like_mut)
+                    {
                         if trimmed.is_empty() {
                             provider_table.remove(field);
                         } else {
-                            provider_table[field] = toml_edit::value(trimmed);
+                            provider_table.insert(field, toml_edit::value(trimmed));
                         }
                         return Ok(doc.to_string());
                     }
                 }
+
+                log::warn!(
+                    "config.toml 的 [model_providers.{provider_key}] 结构异常，{field} 改写为顶层字段"
+                );
             }
 
             // Fallback: no model_provider or structure mismatch → top-level field
@@ -2001,6 +3036,806 @@ pub fn remove_codex_toml_base_url_if(toml_str: &str, predicate: impl Fn(&str) ->
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn feature_provider(
+        config: &str,
+        api_format: Option<&str>,
+        image_extension_configured: Option<bool>,
+    ) -> Provider {
+        let mut provider = Provider::with_id(
+            "fixture".to_owned(),
+            "Fixture provider".to_owned(),
+            json!({
+                "auth": { "OPENAI_API_KEY": "fixture-key" },
+                "config": config,
+            }),
+            None,
+        );
+        let meta = ProviderMeta {
+            api_format: api_format.map(str::to_owned),
+            image_extension_configured,
+            ..ProviderMeta::default()
+        };
+        provider.meta = Some(meta);
+        provider
+    }
+
+    fn feature_config(extra: &str) -> String {
+        format!(
+            r#"# keep leading comment
+model_provider = "fixture"
+
+[model_providers.fixture]
+# keep provider comment
+base_url = "https://gateway.example.test/v1"
+wire_api = "responses"
+unknown_scalar = 42
+{extra}"#
+        )
+    }
+
+    #[test]
+    fn feature_patch_preserves_comments_order_unknown_fields_and_unrelated_headers() {
+        let config = feature_config(
+            r#"http_headers = { "X-Company-ID" = "company", "User-Agent" = "fixture" } # keep header comment
+"#,
+        );
+        let provider = feature_provider(&config, Some("openai_responses"), Some(false));
+
+        let patched = patch_codex_provider_features(
+            &provider,
+            &CodexProviderFeatureIntent {
+                image_extension: Some(true),
+                websockets: Some(true),
+            },
+            false,
+        )
+        .expect("native-capability patch");
+
+        assert!(patched.toml_text.contains("# keep leading comment"));
+        assert!(patched.toml_text.contains("# keep provider comment"));
+        assert!(patched.toml_text.contains("# keep header comment"));
+        let base_url_at = patched.toml_text.find("base_url").unwrap();
+        let wire_api_at = patched.toml_text.find("wire_api").unwrap();
+        let unknown_at = patched.toml_text.find("unknown_scalar").unwrap();
+        let headers_at = patched.toml_text.find("http_headers").unwrap();
+        assert!(base_url_at < wire_api_at && wire_api_at < unknown_at && unknown_at < headers_at);
+
+        let parsed: toml::Value = toml::from_str(&patched.toml_text).expect("patched TOML");
+        let table = &parsed["model_providers"]["fixture"];
+        assert_eq!(table["unknown_scalar"].as_integer(), Some(42));
+        assert_eq!(
+            table["http_headers"]["X-Company-ID"].as_str(),
+            Some("company")
+        );
+        assert_eq!(
+            table["http_headers"]["User-Agent"].as_str(),
+            Some("fixture")
+        );
+        assert_eq!(
+            table["http_headers"][CODEX_IMAGE_EXTENSION_HEADER].as_str(),
+            Some(CODEX_IMAGE_EXTENSION_VALUE)
+        );
+        assert_eq!(table["supports_websockets"].as_bool(), Some(true));
+        assert_eq!(patched.image_extension_configured, Some(true));
+    }
+
+    #[test]
+    fn image_header_is_case_insensitive_and_off_removes_only_the_controlled_key() {
+        let config = feature_config(
+            r#"http_headers = { "X-OpenAI-Actor-Authorization" = "local-image-extension", "X-Company-ID" = "company" }
+"#,
+        );
+        let provider = feature_provider(&config, Some("openai_responses"), Some(true));
+        assert!(matches!(
+            analyze_codex_provider_features(&provider, false).image_extension,
+            CodexImageExtensionState::On
+        ));
+
+        let on = patch_codex_provider_features(
+            &provider,
+            &CodexProviderFeatureIntent {
+                image_extension: Some(true),
+                websockets: None,
+            },
+            false,
+        )
+        .expect("idempotent on patch");
+        assert_eq!(
+            on.toml_text
+                .to_ascii_lowercase()
+                .matches(CODEX_IMAGE_EXTENSION_HEADER)
+                .count(),
+            1,
+            "on must not add a second header case variant"
+        );
+
+        let off = patch_codex_provider_features(
+            &provider,
+            &CodexProviderFeatureIntent {
+                image_extension: Some(false),
+                websockets: None,
+            },
+            false,
+        )
+        .expect("off patch");
+        let parsed: toml::Value = toml::from_str(&off.toml_text).expect("patched TOML");
+        let headers = parsed["model_providers"]["fixture"]["http_headers"]
+            .as_table()
+            .expect("headers table");
+        assert!(headers
+            .keys()
+            .all(|key| !key.eq_ignore_ascii_case(CODEX_IMAGE_EXTENSION_HEADER)));
+        assert_eq!(headers["X-Company-ID"].as_str(), Some("company"));
+        assert_eq!(off.image_extension_configured, Some(true));
+    }
+
+    #[test]
+    fn conflicting_or_nonstring_headers_are_repaired_only_by_explicit_toggle() {
+        let conflicting = feature_config(
+            r#"http_headers = { "x-openai-actor-authorization" = "local-image-extension", "X-OpenAI-Actor-Authorization" = "private-conflict-value" }
+"#,
+        );
+        let provider = feature_provider(&conflicting, Some("openai_responses"), None);
+        assert!(matches!(
+            analyze_codex_provider_features(&provider, false).image_extension,
+            CodexImageExtensionState::Conflict { .. }
+        ));
+        validate_codex_provider_features(&provider)
+            .expect("unrelated provider fields may be saved with a header conflict");
+        let mut saved_provider = provider.clone();
+        prepare_codex_provider_features_for_save(&mut saved_provider, false)
+            .expect("unrelated save preserves the conflict");
+        assert_eq!(
+            saved_provider.settings_config["config"].as_str(),
+            Some(conflicting.as_str())
+        );
+
+        let repaired = patch_codex_provider_features(
+            &provider,
+            &CodexProviderFeatureIntent {
+                image_extension: Some(false),
+                websockets: None,
+            },
+            false,
+        )
+        .expect("explicit off removes every case variant");
+        assert!(!repaired.toml_text.contains("private-conflict-value"));
+        assert_eq!(
+            repaired
+                .toml_text
+                .to_ascii_lowercase()
+                .matches(CODEX_IMAGE_EXTENSION_HEADER)
+                .count(),
+            0
+        );
+        let repaired_on = patch_codex_provider_features(
+            &provider,
+            &CodexProviderFeatureIntent {
+                image_extension: Some(true),
+                websockets: None,
+            },
+            false,
+        )
+        .expect("explicit on normalizes every case variant");
+        assert_eq!(
+            repaired_on
+                .toml_text
+                .to_ascii_lowercase()
+                .matches(CODEX_IMAGE_EXTENSION_HEADER)
+                .count(),
+            1
+        );
+        let parsed: toml::Value = toml::from_str(&repaired_on.toml_text).expect("normalized TOML");
+        assert_eq!(
+            parsed["model_providers"]["fixture"]["http_headers"][CODEX_IMAGE_EXTENSION_HEADER]
+                .as_str(),
+            Some(CODEX_IMAGE_EXTENSION_VALUE)
+        );
+        assert_eq!(
+            provider.settings_config["config"].as_str(),
+            Some(conflicting.as_str())
+        );
+        assert_eq!(
+            saved_provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.image_extension_configured),
+            None,
+            "conflict-only saves must leave the migration marker unfinished"
+        );
+
+        let invalid = feature_config("http_headers = [\"private-invalid-value\"]\n");
+        let provider = feature_provider(&invalid, Some("openai_responses"), Some(true));
+        validate_codex_provider_features(&provider)
+            .expect("an unrelated save preserves an invalid header field");
+        let repaired = patch_codex_provider_features(
+            &provider,
+            &CodexProviderFeatureIntent {
+                image_extension: Some(true),
+                websockets: None,
+            },
+            false,
+        )
+        .expect("explicit on replaces an invalid header field");
+        assert!(!repaired.toml_text.contains("private-invalid-value"));
+        let parsed: toml::Value = toml::from_str(&repaired.toml_text).expect("repaired TOML");
+        assert_eq!(
+            parsed["model_providers"]["fixture"]["http_headers"][CODEX_IMAGE_EXTENSION_HEADER]
+                .as_str(),
+            Some(CODEX_IMAGE_EXTENSION_VALUE)
+        );
+        assert_eq!(
+            provider.settings_config["config"].as_str(),
+            Some(invalid.as_str())
+        );
+
+        let removed = patch_codex_provider_features(
+            &provider,
+            &CodexProviderFeatureIntent {
+                image_extension: Some(false),
+                websockets: None,
+            },
+            false,
+        )
+        .expect("explicit off deletes an invalid header field");
+        let parsed: toml::Value = toml::from_str(&removed.toml_text).expect("repaired TOML");
+        assert!(parsed["model_providers"]["fixture"]
+            .get("http_headers")
+            .is_none());
+    }
+
+    #[test]
+    fn legacy_marker_is_read_only_until_the_provider_is_saved() {
+        let config = feature_config("# historical record has no owned header\n");
+        let mut provider = feature_provider(&config, Some("openai_responses"), None);
+
+        assert!(matches!(
+            analyze_codex_provider_features(&provider, false).image_extension,
+            CodexImageExtensionState::LegacyPendingOn
+        ));
+        assert_eq!(
+            provider.settings_config["config"].as_str(),
+            Some(config.as_str())
+        );
+        assert_eq!(
+            provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.image_extension_configured),
+            None
+        );
+
+        prepare_codex_provider_features_for_save(&mut provider, false)
+            .expect("the real save applies the deferred default");
+        let saved = provider.settings_config["config"].as_str().unwrap();
+        let parsed: toml::Value = toml::from_str(saved).expect("saved TOML");
+        assert_eq!(
+            parsed["model_providers"]["fixture"]["http_headers"][CODEX_IMAGE_EXTENSION_HEADER]
+                .as_str(),
+            Some(CODEX_IMAGE_EXTENSION_VALUE)
+        );
+        assert_eq!(
+            provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.image_extension_configured),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn false_marker_is_unfinished_for_a_new_provider_and_is_completed_on_save() {
+        let config = feature_config("");
+        let mut provider = feature_provider(&config, Some("openai_responses"), Some(false));
+
+        assert!(matches!(
+            analyze_codex_provider_features(&provider, true).image_extension,
+            CodexImageExtensionState::On
+        ));
+
+        prepare_codex_provider_features_for_save(&mut provider, true)
+            .expect("new provider save applies the default");
+        let saved: toml::Value = toml::from_str(
+            provider.settings_config["config"]
+                .as_str()
+                .expect("saved config"),
+        )
+        .expect("saved TOML");
+        assert_eq!(
+            saved["model_providers"]["fixture"]["http_headers"][CODEX_IMAGE_EXTENSION_HEADER]
+                .as_str(),
+            Some(CODEX_IMAGE_EXTENSION_VALUE)
+        );
+        assert_eq!(
+            provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.image_extension_configured),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn false_marker_is_unfinished_for_a_historical_provider_and_is_completed_on_save() {
+        let config = feature_config("# historical record has no owned header\n");
+        let mut provider = feature_provider(&config, Some("openai_responses"), Some(false));
+
+        assert!(matches!(
+            analyze_codex_provider_features(&provider, false).image_extension,
+            CodexImageExtensionState::LegacyPendingOn
+        ));
+
+        prepare_codex_provider_features_for_save(&mut provider, false)
+            .expect("historical provider save applies the deferred default");
+        let saved: toml::Value = toml::from_str(
+            provider.settings_config["config"]
+                .as_str()
+                .expect("saved config"),
+        )
+        .expect("saved TOML");
+        assert_eq!(
+            saved["model_providers"]["fixture"]["http_headers"][CODEX_IMAGE_EXTENSION_HEADER]
+                .as_str(),
+            Some(CODEX_IMAGE_EXTENSION_VALUE)
+        );
+        assert_eq!(
+            provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.image_extension_configured),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn new_provider_explicit_image_intent_controls_patch_state_and_first_save() {
+        let config = feature_config("");
+        let provider = feature_provider(&config, Some("openai_responses"), None);
+        assert!(matches!(
+            analyze_codex_provider_features(&provider, true).image_extension,
+            CodexImageExtensionState::On
+        ));
+
+        let enabled = patch_codex_provider_features(
+            &provider,
+            &CodexProviderFeatureIntent {
+                image_extension: Some(true),
+                websockets: None,
+            },
+            true,
+        )
+        .expect("new-provider on patch");
+        assert!(matches!(
+            enabled.state.image_extension,
+            CodexImageExtensionState::On
+        ));
+        assert_eq!(enabled.image_extension_configured, Some(true));
+
+        let disabled = patch_codex_provider_features(
+            &provider,
+            &CodexProviderFeatureIntent {
+                image_extension: Some(false),
+                websockets: None,
+            },
+            true,
+        )
+        .expect("new-provider off patch");
+        assert!(matches!(
+            disabled.state.image_extension,
+            CodexImageExtensionState::Off
+        ));
+        assert_eq!(disabled.image_extension_configured, Some(true));
+
+        let mut first_save = provider.clone();
+        set_provider_config_text(&mut first_save, disabled.toml_text)
+            .expect("apply form-only draft before save");
+        first_save
+            .meta
+            .get_or_insert_with(ProviderMeta::default)
+            .image_extension_configured = disabled.image_extension_configured;
+        prepare_codex_provider_features_for_save(&mut first_save, true)
+            .expect("explicit off survives first save");
+
+        let saved: toml::Value = toml::from_str(
+            first_save.settings_config["config"]
+                .as_str()
+                .expect("saved config"),
+        )
+        .expect("saved TOML");
+        assert!(saved["model_providers"]["fixture"]
+            .get("http_headers")
+            .is_none());
+        assert_eq!(
+            first_save
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.image_extension_configured),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn websocket_is_editable_for_every_api_format_and_repairs_invalid_types() {
+        let config = feature_config("supports_websockets = true\n");
+        for api_format in ["openai_responses", "openai_chat", "anthropic"] {
+            let provider = feature_provider(&config, Some(api_format), Some(false));
+            let state = analyze_codex_provider_features(&provider, false);
+            assert!(state.websockets.enabled, "format: {api_format}");
+            assert!(state.websockets.compatible, "format: {api_format}");
+            validate_codex_provider_features(&provider)
+                .expect("every upstream format accepts the WebSocket field");
+
+            let enabled = patch_codex_provider_features(
+                &provider,
+                &CodexProviderFeatureIntent {
+                    image_extension: None,
+                    websockets: Some(true),
+                },
+                false,
+            )
+            .expect("WebSocket remains enabled for every upstream format");
+            let parsed: toml::Value = toml::from_str(&enabled.toml_text).expect("enabled TOML");
+            assert_eq!(
+                parsed["model_providers"]["fixture"]["supports_websockets"].as_bool(),
+                Some(true),
+                "format: {api_format}"
+            );
+        }
+
+        let provider = feature_provider(&config, Some("openai_chat"), Some(false));
+
+        let repaired = patch_codex_provider_features(
+            &provider,
+            &CodexProviderFeatureIntent {
+                image_extension: None,
+                websockets: Some(false),
+            },
+            false,
+        )
+        .expect("explicit false must remove the invalid field");
+        let parsed: toml::Value = toml::from_str(&repaired.toml_text).expect("repaired TOML");
+        assert!(parsed["model_providers"]["fixture"]
+            .get("supports_websockets")
+            .is_none());
+        assert!(!repaired.toml_text.contains("supports_websockets = false"));
+
+        let invalid = feature_config("supports_websockets = \"yes\"\n");
+        let invalid_provider = feature_provider(&invalid, Some("anthropic"), Some(true));
+        let invalid_state = analyze_codex_provider_features(&invalid_provider, false);
+        assert!(invalid_state
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == CODEX_FEATURE_INVALID_WEBSOCKET));
+        validate_codex_provider_features(&invalid_provider)
+            .expect("invalid field type is non-blocking until its switch is used");
+        let repaired = patch_codex_provider_features(
+            &invalid_provider,
+            &CodexProviderFeatureIntent {
+                image_extension: None,
+                websockets: Some(true),
+            },
+            false,
+        )
+        .expect("explicit on overwrites the invalid type");
+        let parsed: toml::Value = toml::from_str(&repaired.toml_text).expect("repaired TOML");
+        assert_eq!(
+            parsed["model_providers"]["fixture"]["supports_websockets"].as_bool(),
+            Some(true)
+        );
+
+        let removed = patch_codex_provider_features(
+            &invalid_provider,
+            &CodexProviderFeatureIntent {
+                image_extension: None,
+                websockets: Some(false),
+            },
+            false,
+        )
+        .expect("explicit off removes the invalid type");
+        let parsed: toml::Value = toml::from_str(&removed.toml_text).expect("repaired TOML");
+        assert!(parsed["model_providers"]["fixture"]
+            .get("supports_websockets")
+            .is_none());
+    }
+
+    #[test]
+    fn invalid_toml_is_visible_but_remains_the_only_capability_write_blocker() {
+        let provider = feature_provider("[model_providers.fixture\n", None, None);
+        let state = analyze_codex_provider_features(&provider, false);
+        assert!(!state.applicable);
+        assert!(state
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == CODEX_FEATURE_INVALID_TOML));
+        assert!(validate_codex_provider_features(&provider).is_err());
+        assert!(patch_codex_provider_features(
+            &provider,
+            &CodexProviderFeatureIntent {
+                image_extension: Some(true),
+                websockets: None,
+            },
+            false,
+        )
+        .is_err());
+        assert_eq!(
+            provider.settings_config["config"].as_str(),
+            Some("[model_providers.fixture\n")
+        );
+    }
+
+    #[test]
+    fn feature_controls_apply_to_reserved_official_managed_and_third_party_providers() {
+        let no_credential = feature_config("");
+        let provider = Provider::with_id(
+            "fixture".to_owned(),
+            "Fixture provider".to_owned(),
+            json!({ "auth": { "OPENAI_API_KEY": "" }, "config": no_credential }),
+            None,
+        );
+        assert!(analyze_codex_provider_features(&provider, false).applicable);
+
+        let official_url = feature_config("").replace(
+            "https://gateway.example.test/v1",
+            "https://api.openai.com/v1",
+        );
+        let provider = feature_provider(&official_url, Some("openai_responses"), Some(false));
+        assert!(analyze_codex_provider_features(&provider, false).applicable);
+
+        let mut provider =
+            feature_provider(&feature_config(""), Some("openai_responses"), Some(false));
+        provider.category = Some("official".to_owned());
+        let official_state = analyze_codex_provider_features(&provider, false);
+        assert!(official_state.applicable);
+        assert!(matches!(
+            official_state.image_extension,
+            CodexImageExtensionState::Off
+        ));
+
+        let reserved_config = feature_config(&format!(
+            "supports_websockets = true\nhttp_headers = {{ \"{CODEX_IMAGE_EXTENSION_HEADER}\" = \"{CODEX_IMAGE_EXTENSION_VALUE}\" }}\n"
+        ))
+            .replace("model_provider = \"fixture\"", "model_provider = \"OpenAI\"")
+            .replace("[model_providers.fixture]", "[model_providers.OpenAI]");
+        let reserved = feature_provider(&reserved_config, Some("openai_responses"), None);
+        let reserved_state = analyze_codex_provider_features(&reserved, false);
+        assert!(reserved_state.applicable);
+        assert!(matches!(
+            reserved_state.image_extension,
+            CodexImageExtensionState::On
+        ));
+        assert!(reserved_state.websockets.enabled);
+
+        let mut managed = feature_provider(&feature_config(""), Some("openai_responses"), None);
+        managed
+            .meta
+            .get_or_insert_with(ProviderMeta::default)
+            .provider_type = Some("codex_oauth".to_owned());
+        assert!(analyze_codex_provider_features(&managed, false).applicable);
+    }
+
+    #[test]
+    fn official_provider_delays_generation_and_only_removes_an_owned_empty_skeleton() {
+        let mut official = feature_provider("", Some("openai_responses"), None);
+        official.id = crate::database::CODEX_OFFICIAL_PROVIDER_ID.to_owned();
+        official.category = Some("official".to_owned());
+
+        let initial = analyze_codex_provider_features(&official, false);
+        assert!(initial.applicable);
+        assert!(!initial.provider_table_found);
+        assert!(matches!(
+            initial.image_extension,
+            CodexImageExtensionState::Off
+        ));
+        assert!(!initial.websockets.enabled);
+        assert_eq!(codex_provider_config_text(&official), "");
+
+        let enabled = patch_codex_provider_features(
+            &official,
+            &CodexProviderFeatureIntent {
+                image_extension: Some(true),
+                websockets: None,
+            },
+            false,
+        )
+        .expect("first explicit capability creates the official skeleton");
+        assert_eq!(
+            enabled.codex_native_capabilities_generated_provider,
+            Some(true)
+        );
+        let enabled_doc: toml::Value =
+            toml::from_str(&enabled.toml_text).expect("generated official TOML");
+        assert_eq!(
+            enabled_doc["model_provider"].as_str(),
+            Some(FYAGENT_CODEX_MODEL_PROVIDER_ID)
+        );
+        let table = &enabled_doc["model_providers"][FYAGENT_CODEX_MODEL_PROVIDER_ID];
+        assert_eq!(table["name"].as_str(), Some("OpenAI"));
+        assert_eq!(table["requires_openai_auth"].as_bool(), Some(true));
+        assert_eq!(table["wire_api"].as_str(), Some("responses"));
+        assert_eq!(
+            table["http_headers"][CODEX_IMAGE_EXTENSION_HEADER].as_str(),
+            Some(CODEX_IMAGE_EXTENSION_VALUE)
+        );
+        assert!(table.get("supports_websockets").is_none());
+
+        set_provider_config_text(&mut official, enabled.toml_text).expect("apply form draft");
+        official
+            .meta
+            .get_or_insert_with(ProviderMeta::default)
+            .codex_native_capabilities_generated_provider = Some(true);
+        let disabled = patch_codex_provider_features(
+            &official,
+            &CodexProviderFeatureIntent {
+                image_extension: Some(false),
+                websockets: None,
+            },
+            false,
+        )
+        .expect("last disabled capability removes the owned skeleton");
+        assert_eq!(
+            disabled.codex_native_capabilities_generated_provider,
+            Some(false)
+        );
+        assert!(disabled.toml_text.trim().is_empty());
+    }
+
+    #[test]
+    fn official_provider_keeps_a_user_extended_generated_table() {
+        let config = r#"model_provider = "custom"
+
+[model_providers.custom]
+name = "OpenAI"
+requires_openai_auth = true
+wire_api = "responses"
+supports_websockets = true
+user_extension = "keep-me"
+"#;
+        let mut official = feature_provider(config, Some("openai_responses"), None);
+        official.id = crate::database::CODEX_OFFICIAL_PROVIDER_ID.to_owned();
+        official.category = Some("official".to_owned());
+        official
+            .meta
+            .get_or_insert_with(ProviderMeta::default)
+            .codex_native_capabilities_generated_provider = Some(true);
+
+        let disabled = patch_codex_provider_features(
+            &official,
+            &CodexProviderFeatureIntent {
+                image_extension: None,
+                websockets: Some(false),
+            },
+            false,
+        )
+        .expect("disable WebSocket without deleting user extensions");
+        let doc: toml::Value = toml::from_str(&disabled.toml_text).expect("patched TOML");
+        assert_eq!(doc["model_provider"].as_str(), Some("custom"));
+        let table = &doc["model_providers"]["custom"];
+        assert_eq!(table["user_extension"].as_str(), Some("keep-me"));
+        assert!(table.get("supports_websockets").is_none());
+        assert_eq!(disabled.codex_native_capabilities_generated_provider, None);
+    }
+
+    #[test]
+    fn official_provider_never_claims_or_removes_a_preexisting_custom_table() {
+        let config = r#"[model_providers.custom]
+name = "OpenAI"
+requires_openai_auth = true
+wire_api = "responses"
+"#;
+        let mut official = feature_provider(config, Some("openai_responses"), None);
+        official.id = crate::database::CODEX_OFFICIAL_PROVIDER_ID.to_owned();
+        official.category = Some("official".to_owned());
+
+        let enabled = patch_codex_provider_features(
+            &official,
+            &CodexProviderFeatureIntent {
+                image_extension: None,
+                websockets: Some(true),
+            },
+            false,
+        )
+        .expect("reuse the user's existing custom table");
+        assert_eq!(enabled.codex_native_capabilities_generated_provider, None);
+
+        set_provider_config_text(&mut official, enabled.toml_text).expect("apply form draft");
+        let disabled = patch_codex_provider_features(
+            &official,
+            &CodexProviderFeatureIntent {
+                image_extension: None,
+                websockets: Some(false),
+            },
+            false,
+        )
+        .expect("disable WebSocket without claiming the user's table");
+        assert_eq!(disabled.codex_native_capabilities_generated_provider, None);
+        let doc: toml::Value = toml::from_str(&disabled.toml_text).expect("patched TOML");
+        assert_eq!(doc["model_provider"].as_str(), Some("custom"));
+        assert_eq!(
+            doc["model_providers"]["custom"]["name"].as_str(),
+            Some("OpenAI")
+        );
+        assert!(doc["model_providers"]["custom"]
+            .get("supports_websockets")
+            .is_none());
+    }
+
+    #[test]
+    fn websocket_save_warning_classifier_covers_models_catalog_and_proxy_risks() {
+        let websocket_config =
+            |models: &str| format!("{models}{}", feature_config("supports_websockets = true\n"));
+
+        let gpt = feature_provider(
+            &websocket_config("model = \"gpt-5.6-sol\"\nreview_model = \"openai/GPT-5.6-sol\"\n"),
+            Some("openai_responses"),
+            Some(true),
+        );
+        assert!(codex_provider_save_warning_codes(&gpt, false).is_empty());
+
+        let non_gpt = feature_provider(
+            &websocket_config("model = \"grok-4.5\"\n"),
+            Some("openai_chat"),
+            Some(true),
+        );
+        assert_eq!(
+            codex_provider_save_warning_codes(&non_gpt, false),
+            vec![CODEX_WEBSOCKET_NON_GPT_MODEL_WARNING]
+        );
+
+        let empty_basename = feature_provider(
+            &websocket_config("model = \"vendor/\"\n"),
+            Some("openai_responses"),
+            Some(true),
+        );
+        assert_eq!(
+            codex_provider_save_warning_codes(&empty_basename, false),
+            vec![CODEX_WEBSOCKET_NON_GPT_MODEL_WARNING],
+            "only an empty original model string is ignored"
+        );
+
+        let mut mixed_catalog = feature_provider(
+            &websocket_config("model = \"vendor/gpt-5.6-sol\"\n"),
+            Some("anthropic"),
+            Some(true),
+        );
+        mixed_catalog.settings_config["modelCatalog"] = json!({
+            "models": [
+                { "model": "openai/GPT-5.6-sol" },
+                { "model": "vendor/qwen3" },
+                { "model": "" }
+            ]
+        });
+        assert_eq!(
+            codex_provider_save_warning_codes(&mixed_catalog, false),
+            vec![CODEX_WEBSOCKET_NON_GPT_MODEL_WARNING]
+        );
+
+        let no_models = feature_provider(
+            &feature_config("supports_websockets = true\n"),
+            Some("openai_responses"),
+            Some(true),
+        );
+        assert!(codex_provider_save_warning_codes(&no_models, false).is_empty());
+        assert_eq!(
+            codex_provider_save_warning_codes(&no_models, true),
+            vec![CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED_WARNING]
+        );
+        assert_eq!(
+            codex_provider_save_warning_codes(&non_gpt, true),
+            vec![
+                CODEX_WEBSOCKET_NON_GPT_MODEL_WARNING,
+                CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED_WARNING,
+            ]
+        );
+
+        let websocket_off = feature_provider(
+            &websocket_config("model = \"grok-4.5\"\n")
+                .replace("supports_websockets = true", "# WebSocket disabled"),
+            Some("openai_responses"),
+            Some(true),
+        );
+        assert!(codex_provider_save_warning_codes(&websocket_off, true).is_empty());
+    }
 
     #[test]
     fn catalog_tool_profile_from_api_format() {
@@ -2082,13 +3917,34 @@ command = "example"
                 .and_then(toml::Value::as_bool),
             Some(true)
         );
-        assert_eq!(
-            provider
-                .get("supports_websockets")
-                .and_then(toml::Value::as_bool),
-            Some(false)
-        );
+        assert!(provider.get("supports_websockets").is_none());
         assert!(codex_config_has_official_proxy_route(&output));
+    }
+
+    #[test]
+    fn official_proxy_route_preserves_explicit_native_capabilities() {
+        let input = format!(
+            r#"model_provider = "custom"
+
+[model_providers.custom]
+name = "OpenAI"
+requires_openai_auth = true
+wire_api = "responses"
+supports_websockets = true
+http_headers = {{ "{CODEX_IMAGE_EXTENSION_HEADER}" = "{CODEX_IMAGE_EXTENSION_VALUE}", "X-Company-ID" = "not-projected" }}
+"#
+        );
+        let output = apply_codex_official_proxy_route(&input, "http://127.0.0.1:15721/v1")
+            .expect("apply official proxy route");
+        let doc: toml::Value = toml::from_str(&output).expect("parse output");
+        let provider = &doc["model_providers"][FYAGENT_CODEX_OFFICIAL_PROXY_PROVIDER_ID];
+
+        assert_eq!(provider["supports_websockets"].as_bool(), Some(true));
+        assert_eq!(
+            provider["http_headers"][CODEX_IMAGE_EXTENSION_HEADER].as_str(),
+            Some(CODEX_IMAGE_EXTENSION_VALUE)
+        );
+        assert!(provider["http_headers"].get("X-Company-ID").is_none());
     }
 
     #[test]
@@ -2376,6 +4232,65 @@ experimental_bearer_token = "stale-table-key"
     }
 
     #[test]
+    fn credential_login_material_only_counts_real_credentials() {
+        assert!(codex_auth_has_credential_login_material(&json!({
+            "tokens": { "access_token": "t" }
+        })));
+        assert!(codex_auth_has_credential_login_material(&json!({
+            "tokens": { "refresh_token": "r" }
+        })));
+        assert!(codex_auth_has_credential_login_material(&json!({
+            "personal_access_token": "pat"
+        })));
+
+        // API key and pure metadata are not credentials in this predicate's
+        // sense — they must not shield a stale key from cleanup.
+        assert!(!codex_auth_has_credential_login_material(&json!({
+            "OPENAI_API_KEY": "sk-x"
+        })));
+        assert!(!codex_auth_has_credential_login_material(&json!({
+            "OPENAI_API_KEY": "sk-x",
+            "last_refresh": "2026-01-01T00:00:00Z",
+            "tokens": { "account_id": "acct-meta-only" }
+        })));
+        assert!(!codex_auth_has_credential_login_material(&json!({})));
+    }
+
+    #[test]
+    fn stale_third_party_residue_detection() {
+        // Shapes a preserve-off third-party switch leaves behind: cleared.
+        assert!(codex_live_auth_is_stale_third_party_residue(&json!({
+            "OPENAI_API_KEY": "sk-third-party"
+        })));
+        assert!(codex_live_auth_is_stale_third_party_residue(&json!({
+            "auth_mode": "apikey",
+            "OPENAI_API_KEY": "sk-third-party"
+        })));
+        assert!(codex_live_auth_is_stale_third_party_residue(&json!({
+            "OPENAI_API_KEY": "sk-third-party",
+            "last_refresh": "2026-01-01T00:00:00Z",
+            "tokens": { "account_id": "acct-meta-only" }
+        })));
+
+        // Anything carrying a real credential must survive untouched.
+        assert!(!codex_live_auth_is_stale_third_party_residue(&json!({
+            "OPENAI_API_KEY": "sk-x",
+            "tokens": { "access_token": "t" }
+        })));
+        assert!(!codex_live_auth_is_stale_third_party_residue(&json!({
+            "auth_mode": "chatgpt",
+            "OPENAI_API_KEY": null,
+            "tokens": { "access_token": "official-oauth-token" }
+        })));
+
+        // Nothing to clear.
+        assert!(!codex_live_auth_is_stale_third_party_residue(&json!({})));
+        assert!(!codex_live_auth_is_stale_third_party_residue(&json!({
+            "OPENAI_API_KEY": ""
+        })));
+    }
+
+    #[test]
     fn prepare_provider_live_config_does_not_create_incomplete_provider_table() {
         let input = r#"model_provider = "vendor_x"
 model = "gpt-5"
@@ -2586,6 +4501,34 @@ model = "gpt-4"
     }
 
     #[test]
+    fn base_url_writes_into_inline_table_provider_section() {
+        // inline table 是合法 TOML，但 as_table_mut() 对它返回 None。旧代码会因此
+        // 掉进「写顶层字段」的 fallback：用户改的 base_url 落在错误层级，
+        // Codex 读不到，且界面毫无提示。
+        let input = r#"model_provider = "any"
+model_providers = { any = { name = "any", base_url = "https://old.api/v1", wire_api = "responses" } }
+"#;
+
+        let result = update_codex_toml_field(input, "base_url", "https://new.api/v1").unwrap();
+        let parsed: toml::Value = toml::from_str(&result).unwrap();
+
+        assert_eq!(
+            parsed["model_providers"]["any"]["base_url"].as_str(),
+            Some("https://new.api/v1"),
+            "must update the provider section, not a top-level field"
+        );
+        assert!(
+            parsed.get("base_url").is_none(),
+            "must not leak a top-level base_url fallback"
+        );
+        assert_eq!(
+            parsed["model_providers"]["any"]["wire_api"].as_str(),
+            Some("responses"),
+            "sibling fields must survive"
+        );
+    }
+
+    #[test]
     fn clearing_base_url_removes_only_from_correct_section() {
         let input = r#"model_provider = "any"
 
@@ -2779,14 +4722,18 @@ base_url = "https://production.api/v1"
         fill_template_fields_from_static(&mut template);
         let specs = vec![CodexCatalogModelSpec {
             model: "k3".to_string(),
-            display_name: "Kimi K3".to_string(),
-            context_window: 262_144,
+            display_name: Some("Kimi K3".to_string()),
+            context_window: Some(262_144),
             supports_parallel_tool_calls: None,
             input_modalities: None,
             base_instructions: None,
         }];
-        let catalog =
-            codex_model_catalog_from_specs(&specs, &template, CodexCatalogToolProfile::ProxyChat);
+        let catalog = codex_model_catalog_from_specs(
+            &specs,
+            &template,
+            CodexCatalogToolProfile::ProxyChat,
+            128_000,
+        );
         assert_eq!(
             catalog["models"][0]
                 .get("supports_reasoning_summaries")
@@ -2842,9 +4789,13 @@ base_url = "https://production.api/v1"
                 ]
             }
         });
-        let specs = codex_catalog_model_specs(&settings, r#"model_context_window = 128000"#);
-        let catalog =
-            codex_model_catalog_from_specs(&specs, &template, CodexCatalogToolProfile::ProxyChat);
+        let specs = codex_catalog_model_specs(&settings);
+        let catalog = codex_model_catalog_from_specs(
+            &specs,
+            &template,
+            CodexCatalogToolProfile::ProxyChat,
+            128_000,
+        );
         let models = catalog
             .get("models")
             .and_then(|value| value.as_array())
@@ -2977,40 +4928,40 @@ base_url = "https://production.api/v1"
         let specs = vec![
             CodexCatalogModelSpec {
                 model: "gpt-5.4".to_string(),
-                display_name: "GPT 5.4".to_string(),
-                context_window: 128_000,
+                display_name: Some("GPT 5.4".to_string()),
+                context_window: Some(128_000),
                 supports_parallel_tool_calls: None,
                 input_modalities: None,
                 base_instructions: None,
             },
             CodexCatalogModelSpec {
                 model: "deepseek/deepseek-v4-pro".to_string(),
-                display_name: "DeepSeek V4 Pro".to_string(),
-                context_window: 128_000,
+                display_name: Some("DeepSeek V4 Pro".to_string()),
+                context_window: Some(128_000),
                 supports_parallel_tool_calls: None,
                 input_modalities: None,
                 base_instructions: None,
             },
             CodexCatalogModelSpec {
                 model: "glm-5.2v".to_string(),
-                display_name: "GLM 5.2V".to_string(),
-                context_window: 128_000,
+                display_name: Some("GLM 5.2V".to_string()),
+                context_window: Some(128_000),
                 supports_parallel_tool_calls: None,
                 input_modalities: None,
                 base_instructions: None,
             },
             CodexCatalogModelSpec {
                 model: "deepseek-v4-flash".to_string(),
-                display_name: "Explicit Visual Override".to_string(),
-                context_window: 128_000,
+                display_name: Some("Explicit Visual Override".to_string()),
+                context_window: Some(128_000),
                 supports_parallel_tool_calls: None,
                 input_modalities: Some(vec!["text".to_string(), "image".to_string()]),
                 base_instructions: None,
             },
             CodexCatalogModelSpec {
                 model: "custom-text-alias".to_string(),
-                display_name: "Explicit Text Override".to_string(),
-                context_window: 128_000,
+                display_name: Some("Explicit Text Override".to_string()),
+                context_window: Some(128_000),
                 supports_parallel_tool_calls: None,
                 input_modalities: Some(vec!["text".to_string()]),
                 base_instructions: None,
@@ -3022,7 +4973,7 @@ base_url = "https://production.api/v1"
             CodexCatalogToolProfile::NativeResponses,
             CodexCatalogToolProfile::Anthropic,
         ] {
-            let catalog = codex_model_catalog_from_specs(&specs, &template, profile);
+            let catalog = codex_model_catalog_from_specs(&specs, &template, profile, 128_000);
             let models = catalog["models"].as_array().expect("models array");
             let modalities = |slug: &str| {
                 models
@@ -3073,6 +5024,251 @@ base_url = "https://production.api/v1"
         );
     }
 
+    const DEEPSEEK_NATIVE_CONFIG: &str = r#"model = "deepseek-v4-flash"
+model_provider = "custom"
+
+[model_providers.custom]
+name = "deepseek"
+base_url = "https://api.deepseek.com"
+wire_api = "responses"
+"#;
+
+    #[test]
+    fn deepseek_host_native_catalog_mirrors_official_entries() {
+        // DeepSeek publishes an official Codex models.json (freeform
+        // apply_patch + GPT-5 harness + low/high/max reasoning levels). For a
+        // deepseek.com native provider the generated catalog must mirror it
+        // verbatim instead of the stripped neutral template — the harness
+        // tells the model to use apply_patch, so stripping the tool while
+        // keeping the harness would be self-inconsistent.
+        let settings = json!({
+            "modelCatalog": {
+                "models": [
+                    { "model": "deepseek-v4-flash", "displayName": "DeepSeek V4 Flash" },
+                    { "model": "deepseek-v4-pro", "contextWindow": 500_000 }
+                ]
+            }
+        });
+
+        let catalog = codex_model_catalog_from_settings(
+            &settings,
+            DEEPSEEK_NATIVE_CONFIG,
+            CodexCatalogToolProfile::NativeResponses,
+        )
+        .expect("vendor catalog generation should not error")
+        .expect("non-empty modelCatalog must yield a catalog");
+
+        let flash = &catalog["models"][0];
+        assert_eq!(
+            flash.get("slug").and_then(|v| v.as_str()),
+            Some("deepseek-v4-flash")
+        );
+        assert_eq!(
+            flash.get("apply_patch_tool_type").and_then(|v| v.as_str()),
+            Some("freeform"),
+            "official DeepSeek entries keep the freeform apply_patch grant"
+        );
+        assert!(
+            flash
+                .get("base_instructions")
+                .and_then(|v| v.as_str())
+                .is_some_and(|s| s.starts_with("You are Codex, an agent based on GPT-5")),
+            "official GPT-5 harness must survive verbatim"
+        );
+        let efforts: Vec<&str> = flash["supported_reasoning_levels"]
+            .as_array()
+            .expect("official reasoning levels array")
+            .iter()
+            .filter_map(|level| level.get("effort").and_then(|v| v.as_str()))
+            .collect();
+        assert_eq!(efforts, vec!["low", "high", "max"]);
+        assert_eq!(flash.get("supports_search_tool"), Some(&json!(true)));
+        assert_eq!(
+            flash.get("web_search_tool_type").and_then(|v| v.as_str()),
+            Some("text")
+        );
+        assert_eq!(
+            flash.get("supports_reasoning_summaries"),
+            Some(&json!(true))
+        );
+        assert_eq!(flash.get("input_modalities"), Some(&json!(["text"])));
+        assert!(
+            flash.get("model_messages").is_some(),
+            "official entries are mirrored verbatim, incl. model_messages"
+        );
+        // No explicit contextWindow on the row: the official 1m window must
+        // survive instead of being clobbered by the 128k default.
+        assert_eq!(
+            flash.get("context_window").and_then(|v| v.as_u64()),
+            Some(1_048_576)
+        );
+        // Explicit user display name still wins over the official one.
+        assert_eq!(
+            flash.get("display_name").and_then(|v| v.as_str()),
+            Some("DeepSeek V4 Flash")
+        );
+
+        let pro = &catalog["models"][1];
+        assert_eq!(
+            pro.get("slug").and_then(|v| v.as_str()),
+            Some("deepseek-v4-pro")
+        );
+        // Explicit user context window override wins…
+        assert_eq!(
+            pro.get("context_window").and_then(|v| v.as_u64()),
+            Some(500_000)
+        );
+        assert_eq!(
+            pro.get("max_context_window").and_then(|v| v.as_u64()),
+            Some(500_000)
+        );
+        // …while the untouched official display name is kept.
+        assert_eq!(
+            pro.get("display_name").and_then(|v| v.as_str()),
+            Some("DeepSeek-V4-Pro")
+        );
+    }
+
+    #[test]
+    fn deepseek_official_catalog_unknown_model_clones_flagship() {
+        // A user-added model id the official file doesn't know keeps the
+        // gateway's capability profile (clone of the flagship entry) without
+        // impersonating it: own slug/name, demoted priority, and the official
+        // context window rather than the 128k synthetic default.
+        let settings = json!({
+            "modelCatalog": { "models": [{ "model": "deepseek-v4-lite" }] }
+        });
+
+        let catalog = codex_model_catalog_from_settings(
+            &settings,
+            DEEPSEEK_NATIVE_CONFIG,
+            CodexCatalogToolProfile::NativeResponses,
+        )
+        .expect("vendor catalog generation should not error")
+        .expect("non-empty modelCatalog must yield a catalog");
+
+        let entry = &catalog["models"][0];
+        assert_eq!(
+            entry.get("slug").and_then(|v| v.as_str()),
+            Some("deepseek-v4-lite")
+        );
+        assert_eq!(
+            entry.get("display_name").and_then(|v| v.as_str()),
+            Some("deepseek-v4-lite")
+        );
+        assert!(
+            entry
+                .get("priority")
+                .and_then(|v| v.as_u64())
+                .is_some_and(|p| p >= 1000),
+            "clones must sort after official entries"
+        );
+        assert_eq!(
+            entry.get("apply_patch_tool_type").and_then(|v| v.as_str()),
+            Some("freeform")
+        );
+        assert_eq!(
+            entry.get("context_window").and_then(|v| v.as_u64()),
+            Some(1_048_576),
+            "absent contextWindow keeps the flagship's official window"
+        );
+        assert!(entry
+            .get("base_instructions")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.trim().is_empty()));
+    }
+
+    #[test]
+    fn official_vendor_catalog_gated_by_native_profile_and_host() {
+        // The official mirror is a capability GRANT, so the gate must be
+        // narrow: native `/responses` profile AND the vendor's own host. Chat
+        // runs through the proxy converter (gpt-5.5 contract), the Anthropic
+        // transform drops custom tools, and aggregators hosting the same
+        // model may reject freeform tools — all of them keep their templates.
+        assert!(codex_official_vendor_catalog_models(
+            DEEPSEEK_NATIVE_CONFIG,
+            CodexCatalogToolProfile::NativeResponses
+        )
+        .is_some_and(|models| !models.is_empty()));
+
+        for profile in [
+            CodexCatalogToolProfile::ProxyChat,
+            CodexCatalogToolProfile::Anthropic,
+        ] {
+            assert!(
+                codex_official_vendor_catalog_models(DEEPSEEK_NATIVE_CONFIG, profile).is_none(),
+                "only the NativeResponses profile may mirror the official catalog"
+            );
+        }
+
+        let minimax_config = r#"model = "MiniMax-M3"
+model_provider = "custom"
+
+[model_providers.custom]
+name = "minimax"
+base_url = "https://api.minimaxi.com/v1"
+wire_api = "responses"
+"#;
+        assert!(
+            codex_official_vendor_catalog_models(
+                minimax_config,
+                CodexCatalogToolProfile::NativeResponses
+            )
+            .is_none(),
+            "non-DeepSeek native hosts keep the neutral template"
+        );
+
+        for trusted_base_url in ["https://deepseek.com/v1", "https://API.DeepSeek.COM./v1"] {
+            let config = format!(
+                r#"model_provider = "custom"
+
+[model_providers.custom]
+base_url = "{trusted_base_url}"
+wire_api = "responses"
+"#
+            );
+            assert!(
+                codex_official_vendor_catalog_models(
+                    &config,
+                    CodexCatalogToolProfile::NativeResponses
+                )
+                .is_some_and(|models| !models.is_empty()),
+                "the exact DeepSeek host and its subdomains retain the official catalog: {trusted_base_url}"
+            );
+        }
+
+        for untrusted_base_url in [
+            "http://api.deepseek.com/v1",
+            "ftp://api.deepseek.com/v1",
+            "https://api.deepseek.com.evil.example/v1",
+            "https://notdeepseek.com/v1",
+            "https://deepseek.com@evil.example/v1",
+            "https://aggregator.example/deepseek.com/v1",
+        ] {
+            let config = format!(
+                r#"model_provider = "custom"
+
+[model_providers.custom]
+base_url = "{untrusted_base_url}"
+wire_api = "responses"
+"#
+            );
+            assert!(
+                codex_official_vendor_catalog_models(
+                    &config,
+                    CodexCatalogToolProfile::NativeResponses
+                )
+                .is_none(),
+                "untrusted URL must not receive the official DeepSeek capability catalog: {untrusted_base_url}"
+            );
+        }
+
+        assert!(
+            codex_official_vendor_catalog_models("", CodexCatalogToolProfile::NativeResponses)
+                .is_none()
+        );
+    }
+
     #[test]
     fn proxy_chat_profile_still_keeps_apply_patch() {
         // Regression guard for Mode A: the proxy-chat profile must keep the
@@ -3080,8 +5276,8 @@ base_url = "https://production.api/v1"
         let template = load_codex_native_responses_template();
         let specs = vec![CodexCatalogModelSpec {
             model: "x".to_string(),
-            display_name: "x".to_string(),
-            context_window: 128_000,
+            display_name: Some("x".to_string()),
+            context_window: Some(128_000),
             supports_parallel_tool_calls: None,
             input_modalities: None,
             base_instructions: None,
@@ -3095,6 +5291,7 @@ base_url = "https://production.api/v1"
             &specs,
             &proxy_template,
             CodexCatalogToolProfile::ProxyChat,
+            128_000,
         );
         assert_eq!(
             catalog["models"][0]

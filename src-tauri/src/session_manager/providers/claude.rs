@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::config::get_claude_config_dir;
+use crate::session_manager::terminal::session_resume_argument;
 use crate::session_manager::{SessionMessage, SessionMeta};
 
 use super::utils::{
@@ -248,7 +249,8 @@ fn parse_session(path: &Path) -> Option<SessionMeta> {
         created_at,
         last_active_at,
         source_path: Some(path.to_string_lossy().to_string()),
-        resume_command: Some(format!("claude --resume {session_id}")),
+        resume_command: session_resume_argument(&session_id)
+            .map(|argument| format!("claude --resume {argument}")),
     })
 }
 
@@ -401,6 +403,34 @@ mod tests {
 
         let meta = parse_session(&path).unwrap();
         assert_eq!(meta.title.as_deref(), Some("How do I deploy?"));
+        assert_eq!(
+            meta.resume_command.as_deref(),
+            Some("claude --resume session-abc")
+        );
+    }
+
+    #[test]
+    fn parse_session_suppresses_unsafe_resume_commands() {
+        let temp = tempdir().expect("tempdir");
+        for (index, session_id) in [
+            "x; /usr/bin/touch /tmp/fyagent-claude-session-id-injection #",
+            "session & calc.exe & rem",
+            "--dangerously-bypass-approvals-and-sandbox",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let path = temp.path().join(format!("hostile-session-{index}.jsonl"));
+            let line = serde_json::json!({
+                "sessionId": session_id,
+                "cwd": "/tmp/project",
+                "timestamp": "2026-03-06T10:00:00Z"
+            });
+            std::fs::write(&path, format!("{line}\n")).expect("write session");
+
+            let meta = parse_session(&path).expect("parse session");
+            assert_eq!(meta.resume_command, None, "unsafe id: {session_id}");
+        }
     }
 
     #[test]

@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { DeepLinkImportRequest, deeplinkApi } from "@/lib/api/deeplink";
+import { parseDeepLinkConfigPreview } from "@/utils/deepLinkConfigPreview";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
@@ -17,11 +19,14 @@ import { PromptConfirmation } from "./deeplink/PromptConfirmation";
 import { McpConfirmation } from "./deeplink/McpConfirmation";
 import { SkillConfirmation } from "./deeplink/SkillConfirmation";
 import { ProviderIcon } from "./ProviderIcon";
-
-interface DeeplinkError {
-  url: string;
-  error: string;
-}
+import {
+  classifyEndpoint,
+  classifyEnvKey,
+  decodeDeeplinkPayload,
+  maskValue,
+  riskI18nKey,
+} from "@/utils/deeplinkRisk";
+import { decodeBase64Utf8 } from "@/lib/utils/base64";
 
 export function DeepLinkImportDialog() {
   const { t } = useTranslation();
@@ -29,6 +34,9 @@ export function DeepLinkImportDialog() {
   const [request, setRequest] = useState<DeepLinkImportRequest | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [providerActivationApproved, setProviderActivationApproved] =
+    useState(false);
+  const latestImportSequenceRef = useRef(0);
 
   // 容错判断：MCP 导入结果可能缺少 type 字段
   const isMcpImportResult = (
@@ -49,43 +57,58 @@ export function DeepLinkImportDialog() {
   };
 
   useEffect(() => {
+    let disposed = false;
+
     // Listen for deep link import events
     const unlistenImport = listen<DeepLinkImportRequest>(
       "deeplink-import",
       async (event) => {
+        const importSequence = ++latestImportSequenceRef.current;
+        // This confirmation belongs to the visible dialog, never to a value
+        // supplied by the protocol payload. Every newly received link starts
+        // with activation unchecked even if it requested `enabled=true`.
+        setProviderActivationApproved(false);
+        let nextRequest = event.payload;
+
         // If config is present, merge it to get the complete configuration
         if (event.payload.config || event.payload.configUrl) {
           try {
-            const mergedRequest = await deeplinkApi.mergeDeeplinkConfig(
-              event.payload,
-            );
-            setRequest(mergedRequest);
-          } catch (error) {
-            console.error("Failed to merge config:", error);
-            toast.error(t("deeplink.configMergeError"), {
-              description:
-                error instanceof Error ? error.message : String(error),
-            });
-            // Fall back to original request
-            setRequest(event.payload);
+            nextRequest = await deeplinkApi.mergeDeeplinkConfig(event.payload);
+          } catch {
+            if (
+              disposed ||
+              importSequence !== latestImportSequenceRef.current
+            ) {
+              return;
+            }
+            // Config payloads can contain credentials, so show only a
+            // translated, credential-free failure state in the renderer.
+            toast.error(t("deeplink.configMergeError"));
+            // Fall back to the original request below.
           }
-        } else {
-          setRequest(event.payload);
         }
 
+        // A config merge is asynchronous. Do not let an older link replace a
+        // newer confirmation or inherit its activation approval.
+        if (disposed || importSequence !== latestImportSequenceRef.current) {
+          return;
+        }
+
+        setRequest(nextRequest);
         setIsOpen(true);
       },
     );
 
     // Listen for deep link error events
-    const unlistenError = listen<DeeplinkError>("deeplink-error", (event) => {
-      console.error("Deep link error:", event.payload);
-      toast.error(t("deeplink.parseError"), {
-        description: event.payload.error,
-      });
+    const unlistenError = listen("deeplink-error", () => {
+      // Never inspect this payload: older hosts included the original custom
+      // protocol URL here, and such a URL may carry an API key.
+      toast.error(t("deeplink.parseError"));
     });
 
     return () => {
+      disposed = true;
+      latestImportSequenceRef.current += 1;
       unlistenImport.then((fn) => fn());
       unlistenError.then((fn) => fn());
     };
@@ -94,10 +117,19 @@ export function DeepLinkImportDialog() {
   const handleImport = async () => {
     if (!request) return;
 
+    const importSequence = latestImportSequenceRef.current;
     setIsImporting(true);
 
     try {
-      const result = await deeplinkApi.importFromDeeplink(request);
+      const importRequest: DeepLinkImportRequest =
+        request.resource === "provider"
+          ? {
+              ...request,
+              activationApproved:
+                request.enabled === true && providerActivationApproved,
+            }
+          : request;
+      const result = await deeplinkApi.importFromDeeplink(importRequest);
       const refreshMcp = async (summary: {
         importedCount: number;
         importedIds: string[];
@@ -190,13 +222,15 @@ export function DeepLinkImportDialog() {
         });
       }
 
-      // Close dialog after all refreshes complete
-      setIsOpen(false);
-    } catch (error) {
-      console.error("Failed to import from deep link:", error);
-      toast.error(t("deeplink.importError"), {
-        description: error instanceof Error ? error.message : String(error),
-      });
+      // A new link can arrive while this import is pending. Completing the
+      // older import must not close the newer confirmation dialog.
+      if (importSequence === latestImportSequenceRef.current) {
+        setIsOpen(false);
+      }
+    } catch {
+      // Import errors can originate from a link-supplied config; do not turn
+      // them into a copyable renderer error.
+      toast.error(t("deeplink.importError"));
     } finally {
       setIsImporting(false);
     }
@@ -220,73 +254,33 @@ export function DeepLinkImportDialog() {
       ? "url"
       : null;
 
-  // Parse config file content for display
-  interface ParsedConfig {
-    type: "claude" | "codex" | "gemini";
-    env?: Record<string, string>;
-    auth?: Record<string, string>;
-    tomlConfig?: string;
-    raw: Record<string, unknown>;
-  }
+  const parsedConfig = useMemo(
+    () => (request ? parseDeepLinkConfigPreview(request) : null),
+    [request],
+  );
 
-  // Helper to decode base64 with UTF-8 support
-  const b64ToUtf8 = (str: string): string => {
-    try {
-      const binString = atob(str);
-      const bytes = Uint8Array.from(binString, (m) => m.codePointAt(0) || 0);
-      return new TextDecoder().decode(bytes);
-    } catch (e) {
-      console.error("Failed to decode base64:", e);
-      return atob(str);
-    }
-  };
-
-  const parsedConfig = useMemo((): ParsedConfig | null => {
-    if (!request?.config) return null;
-    try {
-      const decoded = b64ToUtf8(request.config);
-      const parsed = JSON.parse(decoded) as Record<string, unknown>;
-
-      if (request.app === "claude") {
-        // Claude 格式: { env: { ANTHROPIC_AUTH_TOKEN: ..., ... } }
-        return {
-          type: "claude",
-          env: (parsed.env as Record<string, string>) || {},
-          raw: parsed,
-        };
-      } else if (request.app === "codex") {
-        // Codex 格式: { auth: { OPENAI_API_KEY: ... }, config: "TOML string" }
-        return {
-          type: "codex",
-          auth: (parsed.auth as Record<string, string>) || {},
-          tomlConfig: (parsed.config as string) || "",
-          raw: parsed,
-        };
-      } else if (request.app === "gemini") {
-        // Gemini 格式: 扁平结构 { GEMINI_API_KEY: ..., GEMINI_BASE_URL: ... }
-        return {
-          type: "gemini",
-          env: parsed as Record<string, string>,
-          raw: parsed,
-        };
-      }
-      return null;
-    } catch (e) {
-      console.error("Failed to parse config:", e);
-      return null;
-    }
-  }, [request?.config, request?.app]);
-
-  // Helper to mask sensitive values
-  const maskValue = (key: string, value: string): string => {
-    const sensitiveKeys = ["TOKEN", "KEY", "SECRET", "PASSWORD"];
-    const isSensitive = sensitiveKeys.some((k) =>
-      key.toUpperCase().includes(k),
+  /**
+   * env 行：值经 `maskValue` 脱敏，键命中加载器控制变量时标记。
+   *
+   * `break-all` 而非 `truncate`——被截断的值等于没展示。
+   */
+  const EnvRow = ({ envKey, value }: { envKey: string; value: string }) => {
+    const risk = classifyEnvKey(envKey);
+    return (
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <span
+          className={`font-mono break-all ${
+            risk
+              ? "text-yellow-700 dark:text-yellow-500 font-semibold"
+              : "text-muted-foreground"
+          }`}
+        >
+          {risk && <span aria-hidden="true">⚠ </span>}
+          {envKey}
+        </span>
+        <span className="font-mono break-all">{maskValue(envKey, value)}</span>
+      </div>
     );
-    if (isSensitive && value.length > 8) {
-      return `${value.substring(0, 8)}${"*".repeat(12)}`;
-    }
-    return value;
   };
 
   const getTitle = () => {
@@ -391,22 +385,37 @@ export function DeepLinkImportDialog() {
                       {t("deeplink.endpoint")}
                     </div>
                     <div className="col-span-2 text-sm break-all space-y-1">
-                      {request.endpoint?.split(",").map((ep, idx) => (
-                        <div
-                          key={idx}
-                          className={
-                            idx === 0 ? "font-medium" : "text-muted-foreground"
-                          }
-                        >
-                          {idx === 0 ? "🔹 " : "└ "}
-                          {ep.trim()}
-                          {idx === 0 && request.endpoint?.includes(",") && (
-                            <span className="text-xs text-muted-foreground ml-2">
-                              ({t("deeplink.primaryEndpoint")})
-                            </span>
-                          )}
-                        </div>
-                      ))}
+                      {request.endpoint?.split(",").map((ep, idx) => {
+                        const endpointRisk = classifyEndpoint(ep.trim());
+                        return (
+                          <div
+                            key={idx}
+                            className={
+                              endpointRisk
+                                ? "text-yellow-700 dark:text-yellow-500 font-semibold"
+                                : idx === 0
+                                  ? "font-medium"
+                                  : "text-muted-foreground"
+                            }
+                          >
+                            {idx === 0 ? "🔹 " : "└ "}
+                            {endpointRisk && (
+                              <span aria-hidden="true">⚠ </span>
+                            )}
+                            {ep.trim()}
+                            {idx === 0 && request.endpoint?.includes(",") && (
+                              <span className="text-xs text-muted-foreground ml-2">
+                                ({t("deeplink.primaryEndpoint")})
+                              </span>
+                            )}
+                            {endpointRisk && (
+                              <div className="text-xs font-normal mt-0.5">
+                                {t(riskI18nKey(endpointRisk))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -419,6 +428,54 @@ export function DeepLinkImportDialog() {
                       {maskedApiKey}
                     </div>
                   </div>
+
+                  {/*
+                    A link can request a provider switch, but it cannot
+                    authorize one.  The checkbox below starts unchecked and
+                    is the only UI path that sets activationApproved.
+                  */}
+                  <div className="grid grid-cols-3 items-start gap-4">
+                    <div className="font-medium text-sm text-muted-foreground">
+                      {t("deeplink.providerActivation")}
+                    </div>
+                    <div
+                      className={`col-span-2 text-sm ${
+                        request.enabled === true
+                          ? "font-medium text-yellow-700 dark:text-yellow-500"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {request.enabled === true
+                        ? providerActivationApproved
+                          ? t("deeplink.providerActivationEnabled")
+                          : t("deeplink.providerActivationPending")
+                        : t("deeplink.providerActivationDisabled")}
+                    </div>
+                  </div>
+
+                  {request.enabled === true && (
+                    <div
+                      role="alert"
+                      className="text-yellow-600 dark:text-yellow-500 text-sm flex items-start gap-2"
+                    >
+                      <span aria-hidden="true">⚠️</span>
+                      <span>{t("deeplink.providerActivationWarning")}</span>
+                    </div>
+                  )}
+
+                  {request.enabled === true && (
+                    <label className="flex cursor-pointer items-start gap-2 rounded border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm">
+                      <Checkbox
+                        id="deeplink-provider-activation"
+                        checked={providerActivationApproved}
+                        onCheckedChange={(checked) =>
+                          setProviderActivationApproved(checked === true)
+                        }
+                        className="mt-0.5"
+                      />
+                      <span>{t("deeplink.providerActivationApproval")}</span>
+                    </label>
+                  )}
 
                   {/* Model Fields - 根据应用类型显示不同的模型字段 */}
                   {request.app === "claude" ? (
@@ -527,46 +584,38 @@ export function DeepLinkImportDialog() {
                               <div className="space-y-1.5">
                                 {Object.entries(parsedConfig.env).map(
                                   ([key, value]) => (
-                                    <div
+                                    <EnvRow
                                       key={key}
-                                      className="grid grid-cols-2 gap-2 text-xs"
-                                    >
-                                      <span className="font-mono text-muted-foreground truncate">
-                                        {key}
-                                      </span>
-                                      <span className="font-mono truncate">
-                                        {maskValue(key, String(value))}
-                                      </span>
-                                    </div>
+                                      envKey={key}
+                                      value={String(value)}
+                                    />
                                   ),
                                 )}
                               </div>
                             )}
 
                           {/* Codex config */}
-                          {parsedConfig.type === "codex" && (
+                          {(parsedConfig.type === "codex" ||
+                            parsedConfig.type === "grokbuild") && (
                             <div className="space-y-2">
-                              {parsedConfig.auth &&
+                              {parsedConfig.type === "codex" &&
+                                parsedConfig.auth &&
                                 Object.keys(parsedConfig.auth).length > 0 && (
                                   <div className="space-y-1.5">
                                     <div className="text-xs text-muted-foreground">
                                       Auth:
                                     </div>
-                                    {Object.entries(parsedConfig.auth).map(
-                                      ([key, value]) => (
-                                        <div
-                                          key={key}
-                                          className="grid grid-cols-2 gap-2 text-xs pl-2"
-                                        >
-                                          <span className="font-mono text-muted-foreground truncate">
-                                            {key}
-                                          </span>
-                                          <span className="font-mono truncate">
-                                            {maskValue(key, String(value))}
-                                          </span>
-                                        </div>
-                                      ),
-                                    )}
+                                    <div className="pl-2 space-y-1.5">
+                                      {Object.entries(parsedConfig.auth).map(
+                                        ([key, value]) => (
+                                          <EnvRow
+                                            key={key}
+                                            envKey={key}
+                                            value={String(value)}
+                                          />
+                                        ),
+                                      )}
+                                    </div>
                                   </div>
                                 )}
                               {parsedConfig.tomlConfig && (
@@ -574,10 +623,8 @@ export function DeepLinkImportDialog() {
                                   <div className="text-xs text-muted-foreground">
                                     TOML Config:
                                   </div>
-                                  <pre className="text-xs font-mono bg-background p-2 rounded overflow-x-auto max-h-24 whitespace-pre-wrap">
-                                    {parsedConfig.tomlConfig.substring(0, 300)}
-                                    {parsedConfig.tomlConfig.length > 300 &&
-                                      "..."}
+                                  <pre className="text-xs font-mono bg-background p-2 rounded overflow-auto max-h-24 whitespace-pre-wrap break-all">
+                                    {parsedConfig.tomlConfig}
                                   </pre>
                                 </div>
                               )}
@@ -590,17 +637,11 @@ export function DeepLinkImportDialog() {
                               <div className="space-y-1.5">
                                 {Object.entries(parsedConfig.env).map(
                                   ([key, value]) => (
-                                    <div
+                                    <EnvRow
                                       key={key}
-                                      className="grid grid-cols-2 gap-2 text-xs"
-                                    >
-                                      <span className="font-mono text-muted-foreground truncate">
-                                        {key}
-                                      </span>
-                                      <span className="font-mono truncate">
-                                        {maskValue(key, String(value))}
-                                      </span>
-                                    </div>
+                                      envKey={key}
+                                      value={String(value)}
+                                    />
                                   ),
                                 )}
                               </div>
@@ -632,14 +673,19 @@ export function DeepLinkImportDialog() {
                           })}
                         </div>
                         <div className="col-span-2 text-sm">
+                          {/*
+                            判据是 `=== true`，与后端 `usage_enabled.unwrap_or(false)`
+                            严格对齐。此前用的 `!== false` 会把"链接没说"渲染成绿色的
+                            「已启用」——徽章必须显示实际会发生的事，不能比后端更乐观。
+                          */}
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${
-                              request.usageEnabled !== false
+                              request.usageEnabled === true
                                 ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300"
                                 : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
                             }`}
                           >
-                            {request.usageEnabled !== false
+                            {request.usageEnabled === true
                               ? t("deeplink.usageScriptEnabled", {
                                   defaultValue: "已启用",
                                 })
@@ -648,6 +694,33 @@ export function DeepLinkImportDialog() {
                                 })}
                           </span>
                         </div>
+                      </div>
+
+                      {/*
+                        脚本正文必须完整展示。这段是会执行的 JavaScript，而 payload
+                        常常整条藏在中间——`whitespace-pre-wrap break-all` + 可滚动容器，
+                        不用 truncate，任何字符都不得被 CSS 藏起来。
+                      */}
+                      <div className="space-y-1">
+                        <div className="font-medium text-sm text-muted-foreground">
+                          {t("deeplink.usageScriptCode")}
+                        </div>
+                        <pre className="max-h-48 overflow-auto rounded border border-border-default bg-muted/40 p-2 text-xs font-mono whitespace-pre-wrap break-all">
+                          {decodeDeeplinkPayload(
+                            request.usageScript,
+                            decodeBase64Utf8,
+                          )}
+                        </pre>
+                      </div>
+
+                      {/*
+                        无条件显示，不看 `usageEnabled`：代码无论启用与否都会被写入供应商
+                        配置，用户之后在应用内一键即可开启。挂条件等于让攻击者省略参数就能
+                        关掉这条警告。
+                      */}
+                      <div className="text-yellow-600 dark:text-yellow-500 text-sm flex items-start gap-2">
+                        <span aria-hidden="true">⚠️</span>
+                        <span>{t("deeplink.usageScriptWarning")}</span>
                       </div>
 
                       {/* Usage API Key (if different from provider) */}
@@ -719,7 +792,13 @@ export function DeepLinkImportDialog() {
                 {t("common.cancel")}
               </Button>
               <Button onClick={handleImport} disabled={isImporting}>
-                {isImporting ? t("deeplink.importing") : t("deeplink.import")}
+                {isImporting
+                  ? t("deeplink.importing")
+                  : request.resource === "provider" &&
+                      request.enabled === true &&
+                      providerActivationApproved
+                    ? t("deeplink.importAndActivate")
+                    : t("deeplink.import")}
               </Button>
             </DialogFooter>
           </>

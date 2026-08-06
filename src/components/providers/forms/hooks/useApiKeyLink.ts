@@ -57,7 +57,7 @@ export function useApiKeyLink({
   const getWebsiteUrl = useMemo(() => {
     if (currentPresetEntry) {
       const preset = currentPresetEntry.preset;
-      // 对于 cn_official、aggregator、third_party，优先使用 apiKeyUrl（可能包含推广参数）
+      // 对于 cn_official、aggregator、third_party，优先使用 apiKeyUrl。
       if (
         preset.category === "cn_official" ||
         preset.category === "aggregator" ||
@@ -69,15 +69,6 @@ export function useApiKeyLink({
     }
     return formWebsiteUrl || "";
   }, [currentPresetEntry, formWebsiteUrl]);
-
-  // 提取合作伙伴信息
-  const isPartner = useMemo(() => {
-    return currentPresetEntry?.preset.isPartner ?? false;
-  }, [currentPresetEntry]);
-
-  const partnerPromotionKey = useMemo(() => {
-    return currentPresetEntry?.preset.partnerPromotionKey;
-  }, [currentPresetEntry]);
 
   return {
     shouldShowApiKeyLink:
@@ -91,7 +82,5 @@ export function useApiKeyLink({
         ? shouldShowApiKeyLink
         : false,
     websiteUrl: getWebsiteUrl,
-    isPartner,
-    partnerPromotionKey,
   };
 }

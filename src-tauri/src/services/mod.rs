@@ -7,6 +7,7 @@ pub mod env_checker;
 pub mod env_manager;
 pub mod mcp;
 pub mod model_fetch;
+pub mod model_pricing;
 pub mod omo;
 pub mod profile;
 pub mod prompt;
@@ -32,6 +33,7 @@ pub mod usage_stats;
 pub mod webdav;
 pub mod webdav_auto_sync;
 pub mod webdav_sync;
+pub mod workbuddy;
 
 pub use codex_desktop::CodexDesktopService;
 pub use config::ConfigService;

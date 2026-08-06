@@ -540,6 +540,81 @@ pub enum LocalInstallStatus {
     },
 }
 
+/// Privacy-safe runtime state used only by the Codex restart coordinator.
+/// The backend never serializes PIDs, executable paths, bundle paths, AUMIDs,
+/// or package family names: those stay inside the trusted platform boundary.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum CodexDesktopRuntimeStatus {
+    NotInstalled,
+    NotRunning,
+    Running,
+    Ambiguous {
+        reason: CodexDesktopRuntimeAmbiguity,
+    },
+    Unsupported {
+        reason: UnsupportedReason,
+    },
+    /// The host exposed a display-level installation record but did not
+    /// provide the exact PFN / Bundle ID evidence required for lifecycle
+    /// control.  This is intentionally distinct from an unsupported host:
+    /// callers may still ask the user to restart manually, but must not select
+    /// a process or launch target from a name, title, or path fallback.
+    UntrustedTarget,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexDesktopRuntimeAmbiguity {
+    Installations,
+    Instances,
+    IdentityVerification,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexDesktopRestartPromptReason {
+    /// The standard single-installation/single-instance destructive action.
+    /// It is separate from the three ambiguity reasons so the renderer never
+    /// has to claim that multiple applications were found when that is false.
+    UniqueRuntime,
+    MultipleInstances,
+    MultipleInstallations,
+    IdentityBindingAmbiguous,
+}
+
+/// A lifecycle capability is unavailable without exposing local process or
+/// installation details. The renderer can only offer a manual restart path.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexDesktopManualRestartReason {
+    UntrustedTarget,
+    Unsupported,
+}
+
+/// Result of a capability-scoped Codex Desktop restart. Opaque capabilities
+/// stay server-side and never encode a PID, path, package family, bundle ID,
+/// version, candidate count, or failure phase. The only destructive branch is
+/// entered after `ConfirmationRequired`; it always force-closes exact trusted
+/// instances and never performs a graceful-close / second-confirmation flow.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum CodexDesktopRestartOutcome {
+    Restarted,
+    ConfirmationRequired {
+        token: String,
+        reason: CodexDesktopRestartPromptReason,
+    },
+    NotRunning,
+    ManualRestartRequired {
+        reason: CodexDesktopManualRestartReason,
+    },
+    Incomplete {
+        #[serde(rename = "retryToken")]
+        retry_token: String,
+    },
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum InstallerWarningCode {

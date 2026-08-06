@@ -21,6 +21,56 @@ export interface SwitchResult {
   warnings: string[];
 }
 
+/** A non-sensitive result envelope returned by the Codex-aware provider IPCs. */
+export interface ProviderMutationResult<T> {
+  value: T;
+  liveConfigChanged: boolean;
+  /** The backend only returns a real provider-domain application identifier. */
+  app: AppId;
+  /** Optional Codex save risks; absent for older hosts and non-risky writes. */
+  warningCodes?: CodexProviderMutationWarning[];
+}
+
+export type CodexProviderMutationWarning =
+  | "CODEX_WEBSOCKET_NON_GPT_MODEL"
+  | "CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED";
+
+export type CodexImageExtensionState =
+  | { kind: "on" }
+  | { kind: "off" }
+  | { kind: "legacyPendingOn" }
+  | { kind: "conflict"; key: string }
+  | { kind: "invalid"; code: string };
+
+export interface CodexConfigDiagnostic {
+  code: string;
+  field?: string;
+}
+
+export interface CodexProviderFeatureState {
+  applicable: boolean;
+  imageExtension: CodexImageExtensionState;
+  websockets: {
+    enabled: boolean;
+    compatible: boolean;
+    reason?: string;
+  };
+  providerTableFound: boolean;
+  diagnostics: CodexConfigDiagnostic[];
+}
+
+export interface CodexProviderFeatureIntent {
+  imageExtension?: boolean;
+  websockets?: boolean;
+}
+
+export interface CodexProviderFeaturePatchResult {
+  tomlText: string;
+  state: CodexProviderFeatureState;
+  imageExtensionConfigured?: true;
+  codexNativeCapabilitiesGeneratedProvider?: boolean;
+}
+
 export interface OpenTerminalOptions {
   cwd?: string;
 }
@@ -63,6 +113,18 @@ export const providersApi = {
     return await invoke("add_provider", { provider, app: appId, addToLive });
   },
 
+  async addWithResult(
+    provider: Provider,
+    appId: AppId,
+    addToLive?: boolean,
+  ): Promise<ProviderMutationResult<boolean>> {
+    return await invoke("add_provider_with_result", {
+      provider,
+      app: appId,
+      addToLive,
+    });
+  },
+
   async update(
     provider: Provider,
     appId: AppId,
@@ -75,8 +137,27 @@ export const providersApi = {
     });
   },
 
+  async updateWithResult(
+    provider: Provider,
+    appId: AppId,
+    originalId?: string,
+  ): Promise<ProviderMutationResult<boolean>> {
+    return await invoke("update_provider_with_result", {
+      provider,
+      app: appId,
+      originalId,
+    });
+  },
+
   async delete(id: string, appId: AppId): Promise<boolean> {
     return await invoke("delete_provider", { id, app: appId });
+  },
+
+  async deleteWithResult(
+    id: string,
+    appId: AppId,
+  ): Promise<ProviderMutationResult<boolean>> {
+    return await invoke("delete_provider_with_result", { id, app: appId });
   },
 
   /**
@@ -91,8 +172,53 @@ export const providersApi = {
     return await invoke("switch_provider", { id, app: appId });
   },
 
+  async switchWithResult(
+    id: string,
+    appId: AppId,
+  ): Promise<ProviderMutationResult<SwitchResult>> {
+    return await invoke("switch_provider_with_result", { id, app: appId });
+  },
+
   async importDefault(appId: AppId): Promise<boolean> {
     return await invoke("import_default_config", { app: appId });
+  },
+
+  async importDefaultWithResult(
+    appId: AppId,
+  ): Promise<ProviderMutationResult<boolean>> {
+    return await invoke("import_default_config_with_result", { app: appId });
+  },
+
+  /**
+   * Analyze a form-only Codex TOML draft. This never writes a provider row or
+   * the live Codex file, so it is safe to run after debounced manual edits.
+   */
+  async analyzeCodexProviderFeatures(
+    provider: Provider,
+    isNew = false,
+  ): Promise<CodexProviderFeatureState> {
+    return await invoke("analyze_codex_provider_features", {
+      app: "codex",
+      provider,
+      isNew,
+    });
+  },
+
+  /**
+   * Apply only a requested native-capability change to the form draft. The
+   * returned TOML must still be submitted through the normal provider save.
+   */
+  async patchCodexProviderFeatures(
+    provider: Provider,
+    intent: CodexProviderFeatureIntent,
+    isNew = false,
+  ): Promise<CodexProviderFeaturePatchResult> {
+    return await invoke("patch_codex_provider_features", {
+      app: "codex",
+      provider,
+      intent,
+      isNew,
+    });
   },
 
   async importClaudeDesktopFromClaude(): Promise<number> {

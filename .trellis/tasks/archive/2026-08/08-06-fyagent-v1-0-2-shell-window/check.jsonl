@@ -1,0 +1,5 @@
+{"file":"docs/fyagent/dev/v1-0.2/07-验收标准与自动化测试计划.md","reason":"UI-E 几何、窗口、DPI 和视觉验收。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"响应式、可访问性和可运行前端检查。"}
+{"file":"src/components/AppSwitcher.tsx","reason":"`mise exec -- pnpm vitest run tests/components/AppSwitcher.test.tsx tests/components/topbar/TopLevelHeader.test.tsx tests/components/profiles/ProfileSwitcher.test.tsx tests/hooks/useWindowLayoutMode.test.tsx tests/lib/layout/windowLayoutConstants.test.ts tests/integration/App.test.tsx` 通过：6 files、16 tests；均为 jsdom/MSW fake，不启动或控制真实 Codex/ChatGPT。"}
+{"file":"src-tauri/src/window_layout.rs","reason":"`mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --test window_layout` 通过：3 tests；验证 normal/constrained、off-screen/corrupt geometry clamp 与 maximized 保留。Cargo 输出有并行 Codex runtime 代码的 2 个现有 warning，不影响该测试结果。"}
+{"file":"src/components/topbar/","type":"directory","reason":"仅负责文件运行 Prettier 与 rustfmt；`git diff --check` 通过，未发现尾随空白。真实窗口/DPI/多显示器仍须按验收计划人工验证。"}

@@ -1,6 +1,5 @@
 use std::time::Duration;
 use tauri::{AppHandle, State};
-use tauri_plugin_opener::OpenerExt;
 
 use crate::hermes_config;
 use crate::store::AppState;
@@ -124,9 +123,9 @@ pub async fn open_hermes_web_ui(app: AppHandle, path: Option<String>) -> Result<
         _ => format!("{base}/"),
     };
 
-    app.opener()
-        .open_url(&target, None::<String>)
-        .map_err(|e| format!("failed to open Hermes Web UI: {e}"))
+    crate::platform::process_launch::open_http_url_as_user(app, target)
+        .await
+        .map_err(|error| format!("failed to open Hermes Web UI: {error}"))
 }
 
 /// Open the preferred terminal and run `hermes dashboard`. Non-blocking —

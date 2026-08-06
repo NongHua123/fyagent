@@ -192,10 +192,63 @@ describe("useProviderActions", () => {
     expect(switchProviderMutateAsync).toHaveBeenCalledWith(provider.id);
     expect(settingsApiGetMock).not.toHaveBeenCalled();
     expect(settingsApiApplyMock).not.toHaveBeenCalled();
-    expect(toastSuccessMock).toHaveBeenCalledWith(
-      "切换成功，请重启客户端以生效",
-      { closeButton: true },
+    expect(toastSuccessMock).toHaveBeenCalledWith("切换成功！", {
+      closeButton: true,
+    });
+  });
+
+  it("does not inspect or prompt for restart when Codex reports no live change", async () => {
+    switchProviderMutateAsync.mockResolvedValueOnce({
+      value: { warnings: [] },
+      liveConfigChanged: false,
+    });
+    const onCodexLiveConfigChanged = vi.fn();
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(
+      () =>
+        useProviderActions(
+          "codex",
+          undefined,
+          undefined,
+          onCodexLiveConfigChanged,
+        ),
+      { wrapper },
     );
+
+    await act(async () => {
+      await result.current.switchProvider(
+        createProvider({ category: "custom" }),
+      );
+    });
+
+    expect(onCodexLiveConfigChanged).not.toHaveBeenCalled();
+  });
+
+  it("coordinates exactly one restart check after a Codex live change", async () => {
+    switchProviderMutateAsync.mockResolvedValueOnce({
+      value: { warnings: [] },
+      liveConfigChanged: true,
+    });
+    const onCodexLiveConfigChanged = vi.fn().mockResolvedValue(undefined);
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(
+      () =>
+        useProviderActions(
+          "codex",
+          undefined,
+          undefined,
+          onCodexLiveConfigChanged,
+        ),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current.switchProvider(
+        createProvider({ category: "custom" }),
+      );
+    });
+
+    expect(onCodexLiveConfigChanged).toHaveBeenCalledTimes(1);
   });
 
   it("warns but still switches providers that require proxy when proxy is not running", async () => {

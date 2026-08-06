@@ -209,12 +209,272 @@ jobs:
         shell: pwsh
         env:
           WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
+          FYAGENT_WINDOWS_MANIFEST: release
         run: |
           $ErrorActionPreference = 'Stop'
           if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') {
-            pnpm tauri build --target aarch64-pc-windows-msvc --bundles msi
+            pnpm tauri build --target aarch64-pc-windows-msvc --no-bundle
           } else {
-            pnpm tauri build
+            pnpm tauri build --no-bundle
+          }
+
+      - name: Verify embedded Windows release manifest before EXE signing
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $targetRoot = if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') {
+            'src-tauri/target/aarch64-pc-windows-msvc/release'
+          } else {
+            'src-tauri/target/release'
+          }
+          $exePath = Join-Path $targetRoot 'fyagent.exe'
+          if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
+            throw "Windows release executable not found: $exePath"
+          }
+
+          $manifestPath = Join-Path $env:RUNNER_TEMP 'fyagent-release-before-exe-sign.manifest'
+          Remove-Item -LiteralPath $manifestPath -Force -ErrorAction SilentlyContinue
+          Get-Command mt.exe -ErrorAction Stop | Out-Null
+          # mt.exe only reads the PE RT_MANIFEST resource; it never runs fyagent.exe.
+          & mt.exe "-inputresource:$exePath;#1" "-out:$manifestPath" -nologo
+          if ($LASTEXITCODE -ne 0) {
+            throw "mt.exe failed to extract RT_MANIFEST from $exePath before executable signing"
+          }
+          if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+            throw "mt.exe did not write the extracted RT_MANIFEST: $manifestPath"
+          }
+
+          $manifest = [System.Xml.XmlDocument]::new()
+          try {
+            $manifest.Load($manifestPath)
+          } catch {
+            throw "Extracted RT_MANIFEST is not valid XML: $($_.Exception.Message)"
+          }
+          $requestedExecutionLevels = @(
+            $manifest.SelectNodes("//*[local-name()='requestedExecutionLevel']")
+          )
+          if ($requestedExecutionLevels.Count -ne 1) {
+            throw "Embedded RT_MANIFEST must contain exactly one requestedExecutionLevel; found $($requestedExecutionLevels.Count)"
+          }
+          [System.Xml.XmlElement]$requestedExecutionLevel = $requestedExecutionLevels[0]
+          if (
+            $requestedExecutionLevel.NamespaceURI -cne 'urn:schemas-microsoft-com:asm.v3' -or
+            $requestedExecutionLevel.Attributes.Count -ne 2 -or
+            -not $requestedExecutionLevel.HasAttribute('level') -or
+            -not $requestedExecutionLevel.HasAttribute('uiAccess') -or
+            $requestedExecutionLevel.GetAttribute('level') -cne 'requireAdministrator' -or
+            $requestedExecutionLevel.GetAttribute('uiAccess') -cne 'false'
+          ) {
+            throw 'Embedded RT_MANIFEST must contain exactly one requestedExecutionLevel level="requireAdministrator" uiAccess="false"'
+          }
+
+      - name: Import Windows Authenticode certificate
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_AUTHENTICODE_PFX_BASE64: ${{ secrets.WINDOWS_AUTHENTICODE_PFX_BASE64 }}
+          WINDOWS_AUTHENTICODE_PFX_PASSWORD: ${{ secrets.WINDOWS_AUTHENTICODE_PFX_PASSWORD }}
+          WINDOWS_AUTHENTICODE_PUBLISHER_SUBJECT: ${{ secrets.WINDOWS_AUTHENTICODE_PUBLISHER_SUBJECT }}
+          WINDOWS_AUTHENTICODE_TIMESTAMP_URL: ${{ secrets.WINDOWS_AUTHENTICODE_TIMESTAMP_URL }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @(
+            'WINDOWS_AUTHENTICODE_PFX_BASE64',
+            'WINDOWS_AUTHENTICODE_PFX_PASSWORD',
+            'WINDOWS_AUTHENTICODE_PUBLISHER_SUBJECT',
+            'WINDOWS_AUTHENTICODE_TIMESTAMP_URL'
+          )) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Required Windows Authenticode signing input is missing: $name"
+            }
+          }
+
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'fyagent-authenticode-signing.pfx'
+          [IO.File]::WriteAllBytes(
+            $pfxPath,
+            [Convert]::FromBase64String($env:WINDOWS_AUTHENTICODE_PFX_BASE64)
+          )
+          $password = ConvertTo-SecureString `
+            $env:WINDOWS_AUTHENTICODE_PFX_PASSWORD `
+            -AsPlainText `
+            -Force
+          $certificate = Import-PfxCertificate `
+            -FilePath $pfxPath `
+            -CertStoreLocation Cert:\CurrentUser\My `
+            -Password $password
+          if ($null -eq $certificate -or -not $certificate.HasPrivateKey) {
+            throw 'The Windows Authenticode certificate has no usable private key'
+          }
+
+          "FYAGENT_WINDOWS_CERT_THUMBPRINT=$($certificate.Thumbprint)" |
+            Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "FYAGENT_WINDOWS_CERT_PUBLISHER_SUBJECT=$env:WINDOWS_AUTHENTICODE_PUBLISHER_SUBJECT" |
+            Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "FYAGENT_WINDOWS_CERT_PATH=$pfxPath" |
+            Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Sign and verify Windows application executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
+          WINDOWS_AUTHENTICODE_TIMESTAMP_URL: ${{ secrets.WINDOWS_AUTHENTICODE_TIMESTAMP_URL }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $targetRoot = if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') {
+            'src-tauri/target/aarch64-pc-windows-msvc/release'
+          } else {
+            'src-tauri/target/release'
+          }
+          $exePath = Join-Path $targetRoot 'fyagent.exe'
+          if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
+            throw "Windows release executable not found: $exePath"
+          }
+
+          & signtool.exe sign `
+            /fd SHA256 `
+            /tr $env:WINDOWS_AUTHENTICODE_TIMESTAMP_URL `
+            /td SHA256 `
+            /sha1 $env:FYAGENT_WINDOWS_CERT_THUMBPRINT `
+            /v `
+            $exePath
+          if ($LASTEXITCODE -ne 0) {
+            throw "Authenticode signing failed for $exePath"
+          }
+          & signtool.exe verify /pa /all /v $exePath
+          if ($LASTEXITCODE -ne 0) {
+            throw "Authenticode verification failed for $exePath"
+          }
+
+          $signature = Get-AuthenticodeSignature -FilePath $exePath
+          if ($signature.Status -ne 'Valid' -or
+              $null -eq $signature.SignerCertificate -or
+              $null -eq $signature.TimeStamperCertificate) {
+            throw "Executable must have a valid Authenticode signer and timestamp: $exePath"
+          }
+          if ($signature.SignerCertificate.Subject -ne $env:FYAGENT_WINDOWS_CERT_PUBLISHER_SUBJECT) {
+            throw "Executable signer does not match the expected publisher subject: $exePath"
+          }
+
+      - name: Bundle signed Windows MSI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
+          FYAGENT_WINDOWS_MANIFEST: release
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') {
+            pnpm tauri bundle --target aarch64-pc-windows-msvc --bundles msi
+          } else {
+            pnpm tauri bundle --bundles msi
+          }
+
+      - name: Re-verify embedded Windows release manifest after MSI bundle
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $targetRoot = if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') {
+            'src-tauri/target/aarch64-pc-windows-msvc/release'
+          } else {
+            'src-tauri/target/release'
+          }
+          $exePath = Join-Path $targetRoot 'fyagent.exe'
+          if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
+            throw "Windows release executable not found after MSI bundle: $exePath"
+          }
+
+          $manifestPath = Join-Path $env:RUNNER_TEMP 'fyagent-release-after-msi-bundle.manifest'
+          Remove-Item -LiteralPath $manifestPath -Force -ErrorAction SilentlyContinue
+          Get-Command mt.exe -ErrorAction Stop | Out-Null
+          # Re-read the same signed release EXE; never install the MSI to inspect it.
+          & mt.exe "-inputresource:$exePath;#1" "-out:$manifestPath" -nologo
+          if ($LASTEXITCODE -ne 0) {
+            throw "mt.exe failed to extract RT_MANIFEST from $exePath after MSI bundle"
+          }
+          if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+            throw "mt.exe did not write the extracted RT_MANIFEST: $manifestPath"
+          }
+
+          $manifest = [System.Xml.XmlDocument]::new()
+          try {
+            $manifest.Load($manifestPath)
+          } catch {
+            throw "Extracted RT_MANIFEST is not valid XML: $($_.Exception.Message)"
+          }
+          $requestedExecutionLevels = @(
+            $manifest.SelectNodes("//*[local-name()='requestedExecutionLevel']")
+          )
+          if ($requestedExecutionLevels.Count -ne 1) {
+            throw "Embedded RT_MANIFEST must contain exactly one requestedExecutionLevel; found $($requestedExecutionLevels.Count)"
+          }
+          [System.Xml.XmlElement]$requestedExecutionLevel = $requestedExecutionLevels[0]
+          if (
+            $requestedExecutionLevel.NamespaceURI -cne 'urn:schemas-microsoft-com:asm.v3' -or
+            $requestedExecutionLevel.Attributes.Count -ne 2 -or
+            -not $requestedExecutionLevel.HasAttribute('level') -or
+            -not $requestedExecutionLevel.HasAttribute('uiAccess') -or
+            $requestedExecutionLevel.GetAttribute('level') -cne 'requireAdministrator' -or
+            $requestedExecutionLevel.GetAttribute('uiAccess') -cne 'false'
+          ) {
+            throw 'Embedded RT_MANIFEST must contain exactly one requestedExecutionLevel level="requireAdministrator" uiAccess="false"'
+          }
+
+      - name: Sign and verify Windows MSI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
+          WINDOWS_AUTHENTICODE_TIMESTAMP_URL: ${{ secrets.WINDOWS_AUTHENTICODE_TIMESTAMP_URL }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $targetRoot = if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') {
+            'src-tauri/target/aarch64-pc-windows-msvc/release'
+          } else {
+            'src-tauri/target/release'
+          }
+          $msis = @(
+            Get-ChildItem `
+              -Path (Join-Path $targetRoot 'bundle/msi') `
+              -Recurse `
+              -Filter *.msi `
+              -File `
+              -ErrorAction Stop
+          )
+          if ($msis.Count -ne 1) {
+            throw "Expected exactly one Windows MSI to sign, found $($msis.Count)"
+          }
+          $msiPath = $msis[0].FullName
+
+          & signtool.exe sign `
+            /fd SHA256 `
+            /tr $env:WINDOWS_AUTHENTICODE_TIMESTAMP_URL `
+            /td SHA256 `
+            /sha1 $env:FYAGENT_WINDOWS_CERT_THUMBPRINT `
+            /v `
+            $msiPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "Authenticode signing failed for $msiPath"
+          }
+          & signtool.exe verify /pa /all /v $msiPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "Authenticode verification failed for $msiPath"
+          }
+
+          $signature = Get-AuthenticodeSignature -FilePath $msiPath
+          if ($signature.Status -ne 'Valid' -or
+              $null -eq $signature.SignerCertificate -or
+              $null -eq $signature.TimeStamperCertificate) {
+            throw "MSI must have a valid Authenticode signer and timestamp: $msiPath"
+          }
+          if ($signature.SignerCertificate.Subject -ne $env:FYAGENT_WINDOWS_CERT_PUBLISHER_SUBJECT) {
+            throw "MSI signer does not match the expected publisher subject: $msiPath"
           }
 
       - name: Build Tauri App (Linux)
@@ -463,48 +723,24 @@ jobs:
             $dest = "FyAgent-$VERSION-Windows$assetSuffix.msi"
             Copy-Item $msi.FullName (Join-Path release-assets $dest)
             Write-Host "Installer copied: $dest"
-          } elseif ($isArm64) {
-            throw 'No Windows ARM64 MSI installer found'
           } else {
-            Write-Warning 'No Windows MSI installer found'
+            throw "No signed Windows MSI installer found for $env:WINDOWS_RELEASE_ARCH"
           }
 
-          # 绿色版（portable）：仅可执行文件打 zip。
-          $exeCandidates = if ($isArm64) {
-            @('src-tauri/target/aarch64-pc-windows-msvc/release/fyagent.exe')
-          } else {
-            @(
-              'src-tauri/target/release/fyagent.exe',
-              'src-tauri/target/x86_64-pc-windows-msvc/release/fyagent.exe'
-            )
-          }
-          $exePath = $exeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if ($null -ne $exePath) {
-            $portableDir = 'release-assets/FyAgent-Portable'
-            New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
-            Copy-Item $exePath $portableDir
-            $portableIniPath = Join-Path $portableDir 'portable.ini'
-            $portableContent = if ($isArm64) {
-              @(
-                '# FyAgent portable ARM64 build marker',
-                'portable=true',
-                'arch=arm64'
-              )
-            } else {
-              @(
-                '# FyAgent portable build marker',
-                'portable=true'
-              )
+      - name: Remove Windows Authenticode certificate
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not [string]::IsNullOrWhiteSpace($env:FYAGENT_WINDOWS_CERT_THUMBPRINT)) {
+            $certificatePath = "Cert:\CurrentUser\My\$env:FYAGENT_WINDOWS_CERT_THUMBPRINT"
+            if (Test-Path -LiteralPath $certificatePath) {
+              Remove-Item -LiteralPath $certificatePath -Force
             }
-            $portableContent | Set-Content -Path $portableIniPath -Encoding UTF8
-            $portableZip = "release-assets/FyAgent-$VERSION-Windows$assetSuffix-Portable.zip"
-            Compress-Archive -Path "$portableDir/*" -DestinationPath $portableZip -Force
-            Remove-Item -Recurse -Force $portableDir
-            Write-Host "Windows portable zip created: FyAgent-$VERSION-Windows$assetSuffix-Portable.zip"
-          } elseif ($isArm64) {
-            throw 'Portable ARM64 exe not found'
-          } else {
-            Write-Warning 'Portable exe not found'
+          }
+          if (-not [string]::IsNullOrWhiteSpace($env:FYAGENT_WINDOWS_CERT_PATH) -and
+              (Test-Path -LiteralPath $env:FYAGENT_WINDOWS_CERT_PATH)) {
+            Remove-Item -LiteralPath $env:FYAGENT_WINDOWS_CERT_PATH -Force
           }
 
       - name: Prepare Linux Assets
@@ -606,8 +842,8 @@ jobs:
             ### 下载
 
             - **macOS**: `FyAgent-${{ github.ref_name }}-macOS.dmg`（推荐）或 `FyAgent-${{ github.ref_name }}-macOS.zip`（解压即用）
-            - **Windows (x86_64)**: `FyAgent-${{ github.ref_name }}-Windows.msi`（安装版）或 `FyAgent-${{ github.ref_name }}-Windows-Portable.zip`（绿色版）
-            - **Windows (ARM64)**: `FyAgent-${{ github.ref_name }}-Windows-arm64.msi`（安装版）或 `FyAgent-${{ github.ref_name }}-Windows-arm64-Portable.zip`（绿色版）
+            - **Windows (x86_64)**: `FyAgent-${{ github.ref_name }}-Windows.msi`（签名安装版）
+            - **Windows (ARM64)**: `FyAgent-${{ github.ref_name }}-Windows-arm64.msi`（签名安装版）
             - **Linux (x86_64)**: `FyAgent-${{ github.ref_name }}-Linux-x86_64.AppImage` / `.deb` / `.rpm`
             - **Linux (ARM64)**: `FyAgent-${{ github.ref_name }}-Linux-arm64.AppImage` / `.deb` / `.rpm`
 

@@ -4,20 +4,28 @@ import { Button } from "@/components/ui/button";
 import { ToggleRow } from "@/components/ui/toggle-row";
 import { cn } from "@/lib/utils";
 import { ProviderIcon } from "@/components/ProviderIcon";
+import { WorkBuddyIcon } from "@/components/BrandIcons";
 import type { SettingsFormState } from "@/hooks/useSettings";
 import type { VisibleApps } from "@/types";
-import type { AppId } from "@/lib/api";
+import type { TopLevelAppId } from "@/types/topLevelApp";
 
 interface AppVisibilitySettingsProps {
   settings: SettingsFormState;
   onChange: (updates: Partial<SettingsFormState>) => void;
 }
 
-const APP_CONFIG: Array<{
-  id: AppId;
-  icon: string;
-  nameKey: string;
-}> = [
+type AppConfig =
+  | {
+      id: Exclude<TopLevelAppId, "workbuddy">;
+      icon: string;
+      nameKey: string;
+    }
+  | {
+      id: "workbuddy";
+      nameKey: string;
+    };
+
+const APP_CONFIG: AppConfig[] = [
   { id: "claude", icon: "claude", nameKey: "apps.claudeCode" },
   {
     id: "claude-desktop",
@@ -25,6 +33,7 @@ const APP_CONFIG: Array<{
     nameKey: "apps.claudeDesktop",
   },
   { id: "codex", icon: "openai", nameKey: "apps.codex" },
+  { id: "workbuddy", nameKey: "apps.workbuddy" },
   { id: "gemini", icon: "gemini", nameKey: "apps.gemini" },
   { id: "grokbuild", icon: "grok", nameKey: "apps.grokbuild" },
   { id: "opencode", icon: "opencode", nameKey: "apps.opencode" },
@@ -42,6 +51,7 @@ export function AppVisibilitySettings({
     claude: true,
     "claude-desktop": true,
     codex: true,
+    workbuddy: true,
     gemini: true,
     grokbuild: true,
     opencode: true,
@@ -50,16 +60,25 @@ export function AppVisibilitySettings({
   };
 
   // Count how many apps are currently visible
-  const visibleCount = Object.values(visibleApps).filter(Boolean).length;
+  const resolvedVisibleApps = {
+    ...visibleApps,
+    workbuddy: visibleApps.workbuddy ?? true,
+  };
 
-  const handleToggle = (appId: AppId) => {
-    const isCurrentlyVisible = visibleApps[appId];
+  const visibleCount =
+    Object.values(resolvedVisibleApps).filter(Boolean).length;
+
+  const handleToggle = (appId: TopLevelAppId) => {
+    const isCurrentlyVisible =
+      appId === "workbuddy"
+        ? resolvedVisibleApps.workbuddy
+        : resolvedVisibleApps[appId];
     // Prevent disabling the last visible app
     if (isCurrentlyVisible && visibleCount <= 1) return;
 
     onChange({
       visibleApps: {
-        ...visibleApps,
+        ...resolvedVisibleApps,
         [appId]: !isCurrentlyVisible,
       },
     });
@@ -77,7 +96,10 @@ export function AppVisibilitySettings({
       </header>
       <div className="flex flex-wrap gap-1 rounded-md border border-border-default bg-background p-1">
         {APP_CONFIG.map((app) => {
-          const isVisible = visibleApps[app.id];
+          const isVisible =
+            app.id === "workbuddy"
+              ? resolvedVisibleApps.workbuddy
+              : resolvedVisibleApps[app.id];
           // Disable button if this is the last visible app
           const isDisabled = isVisible && visibleCount <= 1;
 
@@ -87,7 +109,8 @@ export function AppVisibilitySettings({
               active={isVisible}
               disabled={isDisabled}
               onClick={() => handleToggle(app.id)}
-              icon={app.icon}
+              icon={app.id === "workbuddy" ? undefined : app.icon}
+              isWorkBuddy={app.id === "workbuddy"}
               name={t(app.nameKey)}
             >
               {t(app.nameKey)}
@@ -110,7 +133,8 @@ interface AppButtonProps {
   active: boolean;
   disabled?: boolean;
   onClick: () => void;
-  icon: string;
+  icon: string | undefined;
+  isWorkBuddy?: boolean;
   name: string;
   children: React.ReactNode;
 }
@@ -120,6 +144,7 @@ function AppButton({
   disabled,
   onClick,
   icon,
+  isWorkBuddy,
   name,
   children,
 }: AppButtonProps) {
@@ -137,7 +162,11 @@ function AppButton({
           : "text-muted-foreground hover:text-foreground hover:bg-muted",
       )}
     >
-      <ProviderIcon icon={icon} name={name} size={14} />
+      {isWorkBuddy ? (
+        <WorkBuddyIcon size={14} />
+      ) : (
+        <ProviderIcon icon={icon} name={name} size={14} />
+      )}
       {children}
     </Button>
   );

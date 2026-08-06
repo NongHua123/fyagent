@@ -3,17 +3,67 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { providersApi, sessionsApi, settingsApi, type AppId } from "@/lib/api";
 import type { DeleteSessionOptions } from "@/lib/api/sessions";
-import type { SwitchResult } from "@/lib/api/providers";
+import type {
+  CodexProviderMutationWarning,
+  SwitchResult,
+} from "@/lib/api/providers";
 import type { Provider, SessionMeta, Settings } from "@/types";
 import { extractErrorMessage } from "@/utils/errorUtils";
 import { generateUUID } from "@/utils/uuid";
 import { openclawKeys } from "@/hooks/useOpenClaw";
 import { invalidateHermesProviderCaches } from "@/hooks/useHermes";
+import { proxyKeys } from "@/lib/query/proxy";
 import { usageKeys } from "@/lib/query/usage";
 import {
   CODEX_OFFICIAL_PROVIDER_ID,
   GROKBUILD_OFFICIAL_PROVIDER_ID,
 } from "@/utils/providerCapabilities";
+
+/**
+ * Renderer-facing summary for a completed provider write. `liveConfigChanged`
+ * is intentionally supplied only by the Codex-aware backend mutation IPCs;
+ * it is never inferred from the selected provider or a button label.
+ */
+export interface ProviderMutationOutcome<T> {
+  value: T;
+  liveConfigChanged: boolean;
+  warningCodes?: CodexProviderMutationWarning[];
+}
+
+const codexMutationWarningMessage = (
+  t: ReturnType<typeof useTranslation>["t"],
+  operation: "added" | "saved",
+  warnings: CodexProviderMutationWarning[] | undefined,
+): string | null => {
+  if (!warnings?.length) return null;
+
+  const warningSet = new Set(warnings);
+  const risks = [
+    ...(warningSet.has("CODEX_WEBSOCKET_NON_GPT_MODEL")
+      ? [
+          t("codexFeatures.saveWarnings.nonGptModel", {
+            defaultValue: "WebSocket 传输仅支持 GPT 系列模型",
+          }),
+        ]
+      : []),
+    ...(warningSet.has("CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED")
+      ? [
+          t("codexFeatures.saveWarnings.proxyMayBeUnsupported", {
+            defaultValue: "当前代理接管链路可能不支持 WebSocket",
+          }),
+        ]
+      : []),
+  ];
+  if (!risks.length) return null;
+
+  const status = t(`codexFeatures.saveWarnings.${operation}`, {
+    defaultValue: operation === "added" ? "供应商已添加" : "供应商已保存",
+  });
+  const separator = t("codexFeatures.saveWarnings.separator", {
+    defaultValue: "；",
+  });
+  return `${status}${separator}${risks.join(separator)}`;
+};
 
 export const useAddProviderMutation = (appId: AppId) => {
   const queryClient = useQueryClient();
@@ -45,7 +95,7 @@ export const useAddProviderMutation = (appId: AppId) => {
         if (!officialProvider) {
           throw new Error("Claude Desktop official provider was not created");
         }
-        return officialProvider;
+        return { value: officialProvider, liveConfigChanged: false };
       }
 
       if (appId === "codex" && ensureCodexOfficialSeed) {
@@ -55,7 +105,9 @@ export const useAddProviderMutation = (appId: AppId) => {
         if (!officialProvider) {
           throw new Error("Codex official provider was not created");
         }
-        return officialProvider;
+        // This seed operation only ensures a database row. It does not use a
+        // live-config mutation command, so it cannot request a desktop restart.
+        return { value: officialProvider, liveConfigChanged: false };
       }
 
       if (appId === "grokbuild" && ensureGrokBuildOfficialSeed) {
@@ -65,7 +117,7 @@ export const useAddProviderMutation = (appId: AppId) => {
         if (!officialProvider) {
           throw new Error("Grok Build official provider was not created");
         }
-        return officialProvider;
+        return { value: officialProvider, liveConfigChanged: false };
       }
 
       let id: string;
@@ -94,10 +146,25 @@ export const useAddProviderMutation = (appId: AppId) => {
       };
       delete (newProvider as any).providerKey;
 
+      if (appId === "codex") {
+        const result = await providersApi.addWithResult(
+          newProvider,
+          appId,
+          addToLive,
+        );
+        return {
+          value: newProvider,
+          liveConfigChanged: result.liveConfigChanged,
+          ...(result.warningCodes?.length
+            ? { warningCodes: result.warningCodes }
+            : {}),
+        };
+      }
+
       await providersApi.add(newProvider, appId, addToLive);
-      return newProvider;
+      return { value: newProvider, liveConfigChanged: false };
     },
-    onSuccess: async () => {
+    onSuccess: async (outcome) => {
       await queryClient.invalidateQueries({ queryKey: ["providers", appId] });
 
       if (appId === "opencode") {
@@ -134,14 +201,23 @@ export const useAddProviderMutation = (appId: AppId) => {
         );
       }
 
-      toast.success(
-        t("notifications.providerAdded", {
-          defaultValue: "供应商已添加",
-        }),
-        {
-          closeButton: true,
-        },
+      const warningMessage = codexMutationWarningMessage(
+        t,
+        "added",
+        outcome.warningCodes,
       );
+      if (warningMessage) {
+        toast.warning(warningMessage, { closeButton: true });
+      } else {
+        toast.success(
+          t("notifications.providerAdded", {
+            defaultValue: "供应商已添加",
+          }),
+          {
+            closeButton: true,
+          },
+        );
+      }
     },
     onError: (error: Error) => {
       const detail = extractErrorMessage(error) || t("common.unknown");
@@ -167,10 +243,26 @@ export const useUpdateProviderMutation = (appId: AppId) => {
       provider: Provider;
       originalId?: string;
     }) => {
+      if (appId === "codex") {
+        const result = await providersApi.updateWithResult(
+          provider,
+          appId,
+          originalId,
+        );
+        return {
+          value: provider,
+          liveConfigChanged: result.liveConfigChanged,
+          ...(result.warningCodes?.length
+            ? { warningCodes: result.warningCodes }
+            : {}),
+        };
+      }
+
       await providersApi.update(provider, appId, originalId);
-      return provider;
+      return { value: provider, liveConfigChanged: false };
     },
-    onSuccess: async (provider, variables) => {
+    onSuccess: async (outcome, variables) => {
+      const provider = outcome.value;
       await queryClient.invalidateQueries({ queryKey: ["providers", appId] });
       await queryClient.invalidateQueries({
         queryKey: usageKeys.script(provider.id, appId),
@@ -188,14 +280,23 @@ export const useUpdateProviderMutation = (appId: AppId) => {
       if (appId === "hermes") {
         await invalidateHermesProviderCaches(queryClient);
       }
-      toast.success(
-        t("notifications.updateSuccess", {
-          defaultValue: "供应商更新成功",
-        }),
-        {
-          closeButton: true,
-        },
+      const warningMessage = codexMutationWarningMessage(
+        t,
+        "saved",
+        outcome.warningCodes,
       );
+      if (warningMessage) {
+        toast.warning(warningMessage, { closeButton: true });
+      } else {
+        toast.success(
+          t("notifications.updateSuccess", {
+            defaultValue: "供应商更新成功",
+          }),
+          {
+            closeButton: true,
+          },
+        );
+      }
     },
     onError: (error: Error) => {
       const detail = extractErrorMessage(error) || t("common.unknown");
@@ -214,8 +315,19 @@ export const useDeleteProviderMutation = (appId: AppId) => {
   const { t } = useTranslation();
 
   return useMutation({
-    mutationFn: async (providerId: string) => {
+    mutationFn: async (
+      providerId: string,
+    ): Promise<ProviderMutationOutcome<void>> => {
+      if (appId === "codex") {
+        const result = await providersApi.deleteWithResult(providerId, appId);
+        return {
+          value: undefined,
+          liveConfigChanged: result.liveConfigChanged,
+        };
+      }
+
       await providersApi.delete(providerId, appId);
+      return { value: undefined, liveConfigChanged: false };
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["providers", appId] });
@@ -280,13 +392,26 @@ export const useSwitchProviderMutation = (appId: AppId) => {
   const { t } = useTranslation();
 
   return useMutation({
-    mutationFn: async (providerId: string): Promise<SwitchResult> => {
-      return await providersApi.switch(providerId, appId);
+    mutationFn: async (
+      providerId: string,
+    ): Promise<ProviderMutationOutcome<SwitchResult>> => {
+      if (appId === "codex") {
+        const result = await providersApi.switchWithResult(providerId, appId);
+        return {
+          value: result.value,
+          liveConfigChanged: result.liveConfigChanged,
+        };
+      }
+
+      return {
+        value: await providersApi.switch(providerId, appId),
+        liveConfigChanged: false,
+      };
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["providers", appId] });
       if (appId === "claude-desktop") {
-        await queryClient.invalidateQueries({ queryKey: ["proxyStatus"] });
+        await queryClient.invalidateQueries({ queryKey: proxyKeys.status });
         await queryClient.invalidateQueries({
           queryKey: ["claudeDesktopStatus"],
         });

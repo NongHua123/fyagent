@@ -1,8 +1,10 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
 use serde_json::Value;
 
+use crate::session_manager::terminal::session_resume_argument;
 use crate::session_manager::{SessionMessage, SessionMeta};
 
 use super::utils::{parse_timestamp_to_ms, path_basename, truncate_summary};
@@ -63,13 +65,19 @@ pub fn scan_sessions() -> Vec<SessionMeta> {
 
 fn scan_sessions_json() -> Vec<SessionMeta> {
     let storage = get_opencode_data_dir();
-    let session_dir = storage.join("session");
-    if !session_dir.exists() {
-        return Vec::new();
-    }
+    let storage = match validate_storage_root(&storage) {
+        Ok(storage) => storage,
+        Err(_) => return Vec::new(),
+    };
+    let session_dir = match validate_directory_root(&storage, "session", "OpenCode session") {
+        Ok(Some(session_dir)) => session_dir,
+        Ok(None) | Err(_) => return Vec::new(),
+    };
 
     let mut json_files = Vec::new();
-    collect_json_files(&session_dir, &mut json_files);
+    if collect_json_files_checked(&session_dir, &mut json_files).is_err() {
+        return Vec::new();
+    }
 
     let mut sessions = Vec::new();
     for path in json_files {
@@ -149,7 +157,8 @@ fn scan_sessions_sqlite() -> Vec<SessionMeta> {
             created_at: Some(created),
             last_active_at: Some(updated),
             source_path: Some(format!("sqlite:{db_display}:{session_id}")),
-            resume_command: Some(format!("opencode -s {session_id}")),
+            resume_command: session_resume_argument(&session_id)
+                .map(|argument| format!("opencode -s {argument}")),
         });
     }
     sessions
@@ -165,9 +174,18 @@ pub fn load_messages(path: &Path) -> Result<Vec<SessionMessage>, String> {
         .parent()
         .and_then(|p| p.parent())
         .ok_or_else(|| "Cannot determine storage root from message path".to_string())?;
+    let storage = validate_storage_root(storage)?;
+    let session_id = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "OpenCode message directory has no UTF-8 session ID".to_string())?;
+    if !is_safe_storage_id(session_id) {
+        return Err(format!("Invalid OpenCode session ID: {session_id:?}"));
+    }
+    let path = validate_message_source(&storage, path, session_id)?;
 
     let mut msg_files = Vec::new();
-    collect_json_files(path, &mut msg_files);
+    collect_json_files_checked(&path, &mut msg_files)?;
 
     // Parse all messages and collect (created_ts, message_id, role, parts_text)
     let mut entries: Vec<(i64, String, String, String)> = Vec::new();
@@ -186,6 +204,9 @@ pub fn load_messages(path: &Path) -> Result<Vec<SessionMessage>, String> {
             Some(id) => id.to_string(),
             None => continue,
         };
+        if !is_safe_storage_id(&msg_id) {
+            return Err(format!("Invalid OpenCode message ID: {msg_id:?}"));
+        }
 
         let role = value
             .get("role")
@@ -200,8 +221,13 @@ pub fn load_messages(path: &Path) -> Result<Vec<SessionMessage>, String> {
             .unwrap_or(0);
 
         // Collect text parts from storage/part/{messageID}/
-        let part_dir = storage.join("part").join(&msg_id);
-        let text = collect_parts_text(&part_dir);
+        let part_dir = validate_part_targets(&storage, std::slice::from_ref(&msg_id))?
+            .into_iter()
+            .next();
+        let text = match part_dir {
+            Some(part_dir) => collect_parts_text(&part_dir)?,
+            None => String::new(),
+        };
         if text.trim().is_empty() {
             continue;
         }
@@ -314,6 +340,15 @@ pub fn load_messages_sqlite(source: &str) -> Result<Vec<SessionMessage>, String>
 }
 
 pub fn delete_session(storage: &Path, path: &Path, session_id: &str) -> Result<bool, String> {
+    if !is_safe_storage_id(session_id) {
+        return Err(format!(
+            "Invalid OpenCode session ID for deletion: {session_id:?}"
+        ));
+    }
+
+    let storage = validate_storage_root(storage)?;
+    let path = validate_message_source(&storage, path, session_id)?;
+
     if path.file_name().and_then(|name| name.to_str()) != Some(session_id) {
         return Err(format!(
             "OpenCode session path does not match session ID: expected {session_id}, found {}",
@@ -322,9 +357,9 @@ pub fn delete_session(storage: &Path, path: &Path, session_id: &str) -> Result<b
     }
 
     let mut message_files = Vec::new();
-    collect_json_files(path, &mut message_files);
+    collect_json_files_checked(&path, &mut message_files)?;
 
-    let mut message_ids = Vec::new();
+    let mut message_ids = HashSet::new();
     for message_path in &message_files {
         let data = match std::fs::read_to_string(message_path) {
             Ok(data) => data,
@@ -335,13 +370,31 @@ pub fn delete_session(storage: &Path, path: &Path, session_id: &str) -> Result<b
             Err(_) => continue,
         };
         if let Some(message_id) = value.get("id").and_then(Value::as_str) {
-            message_ids.push(message_id.to_string());
+            if !is_safe_storage_id(message_id) {
+                return Err(format!(
+                    "Invalid OpenCode message ID for deletion: {message_id:?}"
+                ));
+            }
+            message_ids.insert(message_id.to_string());
         }
     }
 
-    for message_id in &message_ids {
-        let part_dir = storage.join("part").join(message_id);
-        remove_dir_all_if_exists(&part_dir).map_err(|e| {
+    let mut message_ids = message_ids.into_iter().collect::<Vec<_>>();
+    message_ids.sort_unstable();
+
+    // Resolve and validate every derived target before the first mutation. A
+    // malformed later message must not turn deletion into a partial operation.
+    let part_dirs = validate_part_targets(&storage, &message_ids)?;
+    let session_diff_path = validate_optional_file_target(
+        &storage,
+        "session_diff",
+        &format!("{session_id}.json"),
+        "OpenCode session diff",
+    )?;
+    let session_file = find_session_file(&storage, session_id)?;
+
+    for part_dir in &part_dirs {
+        remove_dir_all_if_exists(part_dir).map_err(|e| {
             format!(
                 "Failed to delete OpenCode part directory {}: {e}",
                 part_dir.display()
@@ -349,24 +402,23 @@ pub fn delete_session(storage: &Path, path: &Path, session_id: &str) -> Result<b
         })?;
     }
 
-    let session_diff_path = storage
-        .join("session_diff")
-        .join(format!("{session_id}.json"));
-    remove_file_if_exists(&session_diff_path).map_err(|e| {
-        format!(
-            "Failed to delete OpenCode session diff {}: {e}",
-            session_diff_path.display()
-        )
-    })?;
+    if let Some(session_diff_path) = session_diff_path {
+        remove_file_if_exists(&session_diff_path).map_err(|e| {
+            format!(
+                "Failed to delete OpenCode session diff {}: {e}",
+                session_diff_path.display()
+            )
+        })?;
+    }
 
-    remove_dir_all_if_exists(path).map_err(|e| {
+    remove_dir_all_if_exists(&path).map_err(|e| {
         format!(
             "Failed to delete OpenCode message directory {}: {e}",
             path.display()
         )
     })?;
 
-    if let Some(session_file) = find_session_file(storage, session_id) {
+    if let Some(session_file) = session_file {
         remove_file_if_exists(&session_file).map_err(|e| {
             format!(
                 "Failed to delete OpenCode session file {}: {e}",
@@ -453,13 +505,20 @@ fn parse_session(storage: &Path, path: &Path) -> Option<SessionMeta> {
             .map(|s| s.to_string())
     });
 
-    // Build source_path = message directory for this session
-    let msg_dir = storage.join("message").join(&session_id);
-    let source_path = msg_dir.to_string_lossy().to_string();
+    let safe_session_id = is_safe_storage_id(&session_id);
+    let source_path = safe_session_id.then(|| {
+        storage
+            .join("message")
+            .join(&session_id)
+            .to_string_lossy()
+            .to_string()
+    });
 
     // Skip expensive I/O if title already available from session JSON
     let summary = if has_title {
         display_title.clone()
+    } else if !safe_session_id {
+        None
     } else {
         get_first_user_summary(storage, &session_id)
     };
@@ -472,61 +531,23 @@ fn parse_session(storage: &Path, path: &Path) -> Option<SessionMeta> {
         project_dir: directory,
         created_at,
         last_active_at: updated_at.or(created_at),
-        source_path: Some(source_path),
-        resume_command: Some(format!("opencode -s {session_id}")),
+        source_path,
+        resume_command: session_resume_argument(&session_id)
+            .map(|argument| format!("opencode -s {argument}")),
     })
 }
 
 /// Read the first user message's first text part to use as summary.
 fn get_first_user_summary(storage: &Path, session_id: &str) -> Option<String> {
+    if !is_safe_storage_id(session_id) {
+        return None;
+    }
     let msg_dir = storage.join("message").join(session_id);
-    if !msg_dir.is_dir() {
-        return None;
-    }
-
-    let mut msg_files = Vec::new();
-    collect_json_files(&msg_dir, &mut msg_files);
-
-    // Collect user messages with timestamps for ordering
-    let mut user_msgs: Vec<(i64, String)> = Vec::new();
-    for msg_path in &msg_files {
-        let data = match std::fs::read_to_string(msg_path) {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
-        let value: Value = match serde_json::from_str(&data) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-
-        if value.get("role").and_then(Value::as_str) != Some("user") {
-            continue;
-        }
-
-        let msg_id = match value.get("id").and_then(Value::as_str) {
-            Some(id) => id.to_string(),
-            None => continue,
-        };
-
-        let ts = value
-            .get("time")
-            .and_then(|t| t.get("created"))
-            .and_then(parse_timestamp_to_ms)
-            .unwrap_or(0);
-
-        user_msgs.push((ts, msg_id));
-    }
-
-    user_msgs.sort_by_key(|(ts, _)| *ts);
-
-    // Take first user message and get its parts
-    let (_, first_id) = user_msgs.first()?;
-    let part_dir = storage.join("part").join(first_id);
-    let text = collect_parts_text(&part_dir);
-    if text.trim().is_empty() {
-        return None;
-    }
-    Some(truncate_summary(&text, 160))
+    let messages = load_messages(&msg_dir).ok()?;
+    let first_user = messages
+        .iter()
+        .find(|message| message.role == "user" && !message.content.trim().is_empty())?;
+    Some(truncate_summary(&first_user.content, 160))
 }
 
 /// Collect text content from all parts in a part directory.
@@ -548,13 +569,13 @@ fn extract_part_text(part_value: &Value) -> Option<String> {
     }
 }
 
-fn collect_parts_text(part_dir: &Path) -> String {
+fn collect_parts_text(part_dir: &Path) -> Result<String, String> {
     if !part_dir.is_dir() {
-        return String::new();
+        return Ok(String::new());
     }
 
     let mut parts = Vec::new();
-    collect_json_files(part_dir, &mut parts);
+    collect_json_files_checked(part_dir, &mut parts)?;
 
     let mut texts = Vec::new();
     for part_path in &parts {
@@ -572,38 +593,259 @@ fn collect_parts_text(part_dir: &Path) -> String {
         }
     }
 
-    texts.join("\n")
+    Ok(texts.join("\n"))
 }
 
-fn collect_json_files(root: &Path, files: &mut Vec<PathBuf>) {
-    if !root.exists() {
-        return;
+fn is_safe_storage_id(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    bytes
+        .next()
+        .is_some_and(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+}
+
+fn validate_storage_root(storage: &Path) -> Result<PathBuf, String> {
+    let metadata = std::fs::symlink_metadata(storage)
+        .map_err(|e| format!("Failed to inspect OpenCode storage root: {e}"))?;
+    if metadata.file_type().is_symlink() {
+        return Err("OpenCode storage root must not be a symlink".to_string());
+    }
+    if !metadata.is_dir() {
+        return Err("OpenCode storage root is not a directory".to_string());
+    }
+    storage
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize OpenCode storage root: {e}"))
+}
+
+fn validate_directory_root(
+    storage: &Path,
+    name: &str,
+    label: &str,
+) -> Result<Option<PathBuf>, String> {
+    let path = storage.join(name);
+    let metadata = match std::fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("Failed to inspect {label} root: {error}")),
+    };
+    if metadata.file_type().is_symlink() {
+        return Err(format!("{label} root must not be a symlink"));
+    }
+    if !metadata.is_dir() {
+        return Err(format!("{label} root is not a directory"));
     }
 
-    let entries = match std::fs::read_dir(root) {
-        Ok(entries) => entries,
-        Err(_) => return,
-    };
+    let canonical = path
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize {label} root: {e}"))?;
+    if canonical == storage || !canonical.starts_with(storage) {
+        return Err(format!("{label} root is outside OpenCode storage"));
+    }
+    Ok(Some(canonical))
+}
 
-    for entry in entries.flatten() {
+fn validate_message_source(
+    storage: &Path,
+    path: &Path,
+    session_id: &str,
+) -> Result<PathBuf, String> {
+    let message_root = validate_directory_root(storage, "message", "OpenCode message")?
+        .ok_or_else(|| "OpenCode message root does not exist".to_string())?;
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|e| format!("Failed to inspect OpenCode message directory: {e}"))?;
+    if metadata.file_type().is_symlink() {
+        return Err("OpenCode message directory must not be a symlink".to_string());
+    }
+    if !metadata.is_dir() {
+        return Err("OpenCode message source is not a directory".to_string());
+    }
+
+    let canonical = path
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize OpenCode message directory: {e}"))?;
+    if canonical.parent() != Some(message_root.as_path())
+        || canonical.file_name().and_then(|name| name.to_str()) != Some(session_id)
+    {
+        return Err(format!(
+            "OpenCode message directory is outside its session slot: {}",
+            path.display()
+        ));
+    }
+    Ok(canonical)
+}
+
+fn collect_json_files_checked(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+    let entries = std::fs::read_dir(root).map_err(|e| {
+        format!(
+            "Failed to read OpenCode storage directory {}: {e}",
+            root.display()
+        )
+    })?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to inspect OpenCode message entry: {e}"))?;
         let path = entry.path();
-        if path.is_dir() {
-            collect_json_files(&path, files);
-        } else if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+        let file_type = entry.file_type().map_err(|e| {
+            format!(
+                "Failed to inspect OpenCode message entry {}: {e}",
+                path.display()
+            )
+        })?;
+        if file_type.is_symlink() {
+            return Err(format!(
+                "OpenCode message tree must not contain a symlink: {}",
+                path.display()
+            ));
+        }
+        if file_type.is_dir() {
+            collect_json_files_checked(&path, files)?;
+        } else if file_type.is_file()
+            && path.extension().and_then(|extension| extension.to_str()) == Some("json")
+        {
             files.push(path);
         }
     }
+    Ok(())
 }
 
-fn find_session_file(storage: &Path, session_id: &str) -> Option<PathBuf> {
-    let session_root = storage.join("session");
-    let mut files = Vec::new();
-    collect_json_files(&session_root, &mut files);
-    let expected = format!("{session_id}.json");
+fn validate_part_targets(storage: &Path, message_ids: &[String]) -> Result<Vec<PathBuf>, String> {
+    let Some(part_root) = validate_directory_root(storage, "part", "OpenCode part")? else {
+        return Ok(Vec::new());
+    };
+    let mut targets = Vec::new();
 
-    files
-        .into_iter()
-        .find(|path| path.file_name().and_then(|name| name.to_str()) == Some(expected.as_str()))
+    for message_id in message_ids {
+        let target = part_root.join(message_id);
+        let metadata = match std::fs::symlink_metadata(&target) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(format!(
+                    "Failed to inspect OpenCode part directory {}: {error}",
+                    target.display()
+                ));
+            }
+        };
+        if metadata.file_type().is_symlink() {
+            return Err(format!(
+                "OpenCode part directory must not be a symlink: {}",
+                target.display()
+            ));
+        }
+        if !metadata.is_dir() {
+            return Err(format!(
+                "OpenCode part target is not a directory: {}",
+                target.display()
+            ));
+        }
+
+        let canonical = target.canonicalize().map_err(|e| {
+            format!(
+                "Failed to canonicalize OpenCode part directory {}: {e}",
+                target.display()
+            )
+        })?;
+        if !canonical.starts_with(&part_root) || canonical.parent() != Some(part_root.as_path()) {
+            return Err(format!(
+                "OpenCode part directory is outside the part root: {}",
+                target.display()
+            ));
+        }
+        targets.push(canonical);
+    }
+    Ok(targets)
+}
+
+fn validate_optional_file_target(
+    storage: &Path,
+    root_name: &str,
+    filename: &str,
+    label: &str,
+) -> Result<Option<PathBuf>, String> {
+    let Some(root) = validate_directory_root(storage, root_name, label)? else {
+        return Ok(None);
+    };
+    let target = root.join(filename);
+    let metadata = match std::fs::symlink_metadata(&target) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("Failed to inspect {label} target: {error}")),
+    };
+    if metadata.file_type().is_symlink() {
+        return Err(format!("{label} target must not be a symlink"));
+    }
+    if !metadata.is_file() {
+        return Err(format!("{label} target is not a file"));
+    }
+    let canonical = target
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize {label} target: {e}"))?;
+    if canonical.parent() != Some(root.as_path()) {
+        return Err(format!("{label} target is outside its storage root"));
+    }
+    Ok(Some(canonical))
+}
+
+fn find_session_file(storage: &Path, session_id: &str) -> Result<Option<PathBuf>, String> {
+    let Some(session_root) = validate_directory_root(storage, "session", "OpenCode session")?
+    else {
+        return Ok(None);
+    };
+    let expected = format!("{session_id}.json");
+    find_session_file_in_root(&session_root, &session_root, &expected)
+}
+
+fn find_session_file_in_root(
+    root: &Path,
+    current: &Path,
+    expected: &str,
+) -> Result<Option<PathBuf>, String> {
+    let entries = std::fs::read_dir(current).map_err(|e| {
+        format!(
+            "Failed to read OpenCode session directory {}: {e}",
+            current.display()
+        )
+    })?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to inspect OpenCode session entry: {e}"))?;
+        let path = entry.path();
+        let file_type = entry.file_type().map_err(|e| {
+            format!(
+                "Failed to inspect OpenCode session entry {}: {e}",
+                path.display()
+            )
+        })?;
+        if file_type.is_symlink() {
+            return Err(format!(
+                "OpenCode session tree must not contain a symlink: {}",
+                path.display()
+            ));
+        }
+        if file_type.is_dir() {
+            if let Some(found) = find_session_file_in_root(root, &path, expected)? {
+                return Ok(Some(found));
+            }
+        } else if file_type.is_file()
+            && path.file_name().and_then(|name| name.to_str()) == Some(expected)
+        {
+            let canonical = path.canonicalize().map_err(|e| {
+                format!(
+                    "Failed to canonicalize OpenCode session file {}: {e}",
+                    path.display()
+                )
+            })?;
+            if !canonical.starts_with(root) {
+                return Err(format!(
+                    "OpenCode session file is outside its storage root: {}",
+                    path.display()
+                ));
+            }
+            return Ok(Some(canonical));
+        }
+    }
+    Ok(None)
 }
 
 fn remove_file_if_exists(path: &Path) -> std::io::Result<()> {
@@ -664,6 +906,22 @@ mod tests {
             ",
         )
         .expect("create sqlite schema");
+    }
+
+    fn write_file_session_message(
+        storage: &Path,
+        session_id: &str,
+        filename: &str,
+        message_id: &str,
+    ) -> PathBuf {
+        let message_dir = storage.join("message").join(session_id);
+        std::fs::create_dir_all(&message_dir).expect("create message dir");
+        std::fs::write(
+            message_dir.join(filename),
+            serde_json::json!({ "id": message_id, "role": "user" }).to_string(),
+        )
+        .expect("write message");
+        message_dir
     }
 
     #[test]
@@ -728,6 +986,169 @@ mod tests {
     }
 
     #[test]
+    fn delete_session_rejects_absolute_message_id_before_any_deletion() {
+        let temp = tempdir().expect("tempdir");
+        let storage = temp.path().join("storage");
+        let session_id = "ses_absolute_escape";
+        let outside = temp.path().join("outside-absolute");
+        std::fs::create_dir_all(&outside).expect("create outside dir");
+        let sentinel = outside.join("sentinel.txt");
+        std::fs::write(&sentinel, "keep").expect("write sentinel");
+        let message_dir = write_file_session_message(
+            &storage,
+            session_id,
+            "message.json",
+            outside.to_str().expect("utf-8 path"),
+        );
+
+        let result = delete_session(&storage, &message_dir, session_id);
+        assert!(
+            result.is_err(),
+            "absolute message id was accepted: {result:?}; outside sentinel exists: {}",
+            sentinel.exists()
+        );
+        let error = result.expect_err("checked error");
+
+        assert!(error.contains("message ID"));
+        assert!(sentinel.exists());
+        assert!(message_dir.exists());
+    }
+
+    #[test]
+    fn delete_session_rejects_parent_traversal_before_any_deletion() {
+        let temp = tempdir().expect("tempdir");
+        let storage = temp.path().join("storage");
+        let session_id = "ses_parent_escape";
+        std::fs::create_dir_all(storage.join("part")).expect("create part root");
+        let outside = temp.path().join("outside-parent");
+        std::fs::create_dir_all(&outside).expect("create outside dir");
+        let sentinel = outside.join("sentinel.txt");
+        std::fs::write(&sentinel, "keep").expect("write sentinel");
+        let message_dir = write_file_session_message(
+            &storage,
+            session_id,
+            "message.json",
+            "../../outside-parent",
+        );
+
+        let result = delete_session(&storage, &message_dir, session_id);
+        assert!(
+            result.is_err(),
+            "parent traversal was accepted: {result:?}; outside sentinel exists: {}",
+            sentinel.exists()
+        );
+        let error = result.expect_err("checked error");
+
+        assert!(error.contains("message ID"));
+        assert!(sentinel.exists());
+        assert!(message_dir.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delete_session_rejects_symlink_part_target_before_any_deletion() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempdir().expect("tempdir");
+        let storage = temp.path().join("storage");
+        let session_id = "ses_symlink_escape";
+        let part_root = storage.join("part");
+        std::fs::create_dir_all(&part_root).expect("create part root");
+        let outside = temp.path().join("outside-symlink");
+        std::fs::create_dir_all(&outside).expect("create outside dir");
+        let sentinel = outside.join("sentinel.txt");
+        std::fs::write(&sentinel, "keep").expect("write sentinel");
+        symlink(&outside, part_root.join("msg_symlink")).expect("create part symlink");
+        let message_dir =
+            write_file_session_message(&storage, session_id, "message.json", "msg_symlink");
+
+        let result = delete_session(&storage, &message_dir, session_id);
+        assert!(
+            result.is_err(),
+            "symlink part target was accepted: {result:?}; outside sentinel exists: {}",
+            sentinel.exists()
+        );
+        let error = result.expect_err("checked error");
+
+        assert!(error.contains("symlink"));
+        assert!(sentinel.exists());
+        assert!(message_dir.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delete_session_rejects_symlink_part_root_before_any_deletion() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempdir().expect("tempdir");
+        let storage = temp.path().join("storage");
+        let session_id = "ses_part_root_symlink";
+        std::fs::create_dir_all(&storage).expect("create storage");
+        let outside = temp.path().join("outside-part-root");
+        let outside_part = outside.join("msg_external");
+        std::fs::create_dir_all(&outside_part).expect("create outside part");
+        let sentinel = outside_part.join("sentinel.txt");
+        std::fs::write(&sentinel, "keep").expect("write sentinel");
+        symlink(&outside, storage.join("part")).expect("create part-root symlink");
+        let message_dir =
+            write_file_session_message(&storage, session_id, "message.json", "msg_external");
+
+        let result = delete_session(&storage, &message_dir, session_id);
+        assert!(
+            result.is_err(),
+            "symlink part root was accepted: {result:?}; outside sentinel exists: {}",
+            sentinel.exists()
+        );
+        let error = result.expect_err("checked error");
+
+        assert!(error.contains("symlink"));
+        assert!(sentinel.exists());
+        assert!(message_dir.exists());
+    }
+
+    #[test]
+    fn delete_session_prevalidates_all_message_ids_atomically() {
+        let temp = tempdir().expect("tempdir");
+        let storage = temp.path().join("storage");
+        let session_id = "ses_atomic_validation";
+        let good_part = storage.join("part").join("msg_good");
+        std::fs::create_dir_all(&good_part).expect("create good part");
+        let good_sentinel = good_part.join("sentinel.txt");
+        std::fs::write(&good_sentinel, "keep").expect("write good sentinel");
+        let outside = temp.path().join("outside-atomic");
+        std::fs::create_dir_all(&outside).expect("create outside dir");
+        let outside_sentinel = outside.join("sentinel.txt");
+        std::fs::write(&outside_sentinel, "keep").expect("write outside sentinel");
+        let message_dir =
+            write_file_session_message(&storage, session_id, "00-good.json", "msg_good");
+        write_file_session_message(
+            &storage,
+            session_id,
+            "99-malicious.json",
+            outside.to_str().expect("utf-8 path"),
+        );
+        let session_diff = storage
+            .join("session_diff")
+            .join(format!("{session_id}.json"));
+        std::fs::create_dir_all(session_diff.parent().expect("diff parent"))
+            .expect("create diff dir");
+        std::fs::write(&session_diff, "[]").expect("write session diff");
+
+        let result = delete_session(&storage, &message_dir, session_id);
+        assert!(
+            result.is_err(),
+            "mixed valid/malicious IDs were accepted: {result:?}; good sentinel exists: {}; outside sentinel exists: {}",
+            good_sentinel.exists(),
+            outside_sentinel.exists()
+        );
+
+        assert!(good_sentinel.exists());
+        assert!(outside_sentinel.exists());
+        assert!(message_dir.exists());
+        assert!(session_diff.exists());
+    }
+
+    #[test]
     fn load_messages_includes_tool_parts() {
         let temp = tempdir().expect("tempdir");
         let storage = temp.path();
@@ -762,6 +1183,109 @@ mod tests {
         assert_eq!(msgs[0].role, "assistant");
         assert!(msgs[0].content.contains("[Tool: bash]"));
         assert!(msgs[0].content.contains("Here are the files."));
+    }
+
+    #[test]
+    fn parse_json_session_does_not_follow_unsafe_session_or_message_ids() {
+        let temp = tempdir().expect("tempdir");
+        let storage = temp.path().join("storage");
+        let session_dir = storage.join("session").join("project");
+        std::fs::create_dir_all(&session_dir).expect("create session dir");
+
+        let outside_messages = temp.path().join("outside-messages");
+        let outside_parts = temp.path().join("outside-parts");
+        std::fs::create_dir_all(&outside_messages).expect("create outside messages");
+        std::fs::create_dir_all(&outside_parts).expect("create outside parts");
+        std::fs::write(
+            outside_messages.join("message.json"),
+            serde_json::json!({
+                "id": outside_parts.to_str().expect("utf-8 path"),
+                "role": "user",
+                "time": { "created": 1 }
+            })
+            .to_string(),
+        )
+        .expect("write outside message");
+        std::fs::write(
+            outside_parts.join("part.json"),
+            r#"{"type":"text","text":"must-not-leak"}"#,
+        )
+        .expect("write outside part");
+
+        let session_path = session_dir.join("unsafe.json");
+        std::fs::write(
+            &session_path,
+            serde_json::json!({
+                "id": outside_messages.to_str().expect("utf-8 path"),
+                "time": { "created": 1 }
+            })
+            .to_string(),
+        )
+        .expect("write session");
+
+        let meta = parse_session(&storage, &session_path).expect("parse session metadata");
+        assert_eq!(meta.source_path, None);
+        assert_eq!(meta.summary, None);
+        assert_eq!(meta.resume_command, None);
+    }
+
+    #[test]
+    fn load_messages_rejects_unsafe_message_id_before_reading_parts() {
+        let temp = tempdir().expect("tempdir");
+        let storage = temp.path().join("storage");
+        let message_dir = storage.join("message").join("ses_safe");
+        let outside_parts = temp.path().join("outside-parts");
+        std::fs::create_dir_all(&message_dir).expect("create message dir");
+        std::fs::create_dir_all(&outside_parts).expect("create outside parts");
+        std::fs::write(
+            message_dir.join("message.json"),
+            serde_json::json!({
+                "id": outside_parts.to_str().expect("utf-8 path"),
+                "role": "user"
+            })
+            .to_string(),
+        )
+        .expect("write message");
+        std::fs::write(
+            outside_parts.join("part.json"),
+            r#"{"type":"text","text":"must-not-leak"}"#,
+        )
+        .expect("write outside part");
+
+        let error = load_messages(&message_dir).expect_err("unsafe message id must fail closed");
+        assert!(error.contains("message ID"));
+        assert!(!error.contains("must-not-leak"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn load_messages_rejects_symlink_part_directory() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempdir().expect("tempdir");
+        let storage = temp.path().join("storage");
+        let message_dir = storage.join("message").join("ses_safe");
+        let part_root = storage.join("part");
+        let outside_parts = temp.path().join("outside-parts");
+        std::fs::create_dir_all(&message_dir).expect("create message dir");
+        std::fs::create_dir_all(&part_root).expect("create part root");
+        std::fs::create_dir_all(&outside_parts).expect("create outside parts");
+        std::fs::write(
+            message_dir.join("message.json"),
+            r#"{"id":"msg_safe","role":"user"}"#,
+        )
+        .expect("write message");
+        std::fs::write(
+            outside_parts.join("part.json"),
+            r#"{"type":"text","text":"must-not-leak"}"#,
+        )
+        .expect("write outside part");
+        symlink(&outside_parts, part_root.join("msg_safe")).expect("create part symlink");
+
+        let error =
+            load_messages(&message_dir).expect_err("symlink part directory must fail closed");
+        assert!(error.contains("symlink"));
+        assert!(!error.contains("must-not-leak"));
     }
 
     #[test]
@@ -829,6 +1353,85 @@ mod tests {
             sessions[1].resume_command.as_deref(),
             Some("opencode -s ses_1")
         );
+    }
+
+    #[test]
+    #[allow(deprecated)] // set_var/remove_var deprecated since Rust 1.81; safe here under mutex
+    fn scan_sessions_sqlite_suppresses_unsafe_resume_commands() {
+        let _guard = opencode_env_lock().lock().expect("lock");
+        let temp = tempdir().expect("tempdir");
+        let original_xdg = std::env::var_os("XDG_DATA_HOME");
+        std::env::set_var("XDG_DATA_HOME", temp.path());
+
+        let base_dir = temp.path().join("opencode");
+        std::fs::create_dir_all(&base_dir).expect("create base dir");
+        let db_path = base_dir.join("opencode.db");
+        let conn = Connection::open(&db_path).expect("open sqlite db");
+        create_sqlite_schema(&conn);
+        for (index, session_id) in [
+            "x; /usr/bin/touch /tmp/fyagent-opencode-sqlite-injection #",
+            "session & calc.exe & rem",
+            "--dangerously-bypass-approvals-and-sandbox",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            conn.execute(
+                "INSERT INTO session (id, title, directory, time_created, time_updated) VALUES (?1, ?2, ?3, ?4, ?5)",
+                (session_id, "Hostile ID", "/tmp/project", 1000_i64, 3000_i64 + index as i64),
+            )
+            .expect("insert session");
+        }
+        drop(conn);
+
+        let sessions = scan_sessions_sqlite();
+
+        if let Some(value) = original_xdg {
+            std::env::set_var("XDG_DATA_HOME", value);
+        } else {
+            std::env::remove_var("XDG_DATA_HOME");
+        }
+
+        assert_eq!(sessions.len(), 3);
+        assert!(sessions
+            .iter()
+            .all(|session| session.resume_command.is_none()));
+    }
+
+    #[test]
+    fn parse_json_session_preserves_plain_and_suppresses_unsafe_resume_commands() {
+        let temp = tempdir().expect("tempdir");
+        let storage = temp.path();
+
+        let plain_path = storage.join("plain.json");
+        std::fs::write(
+            &plain_path,
+            serde_json::json!({ "id": "ses_plain-1", "title": "Plain" }).to_string(),
+        )
+        .expect("write plain session");
+        let plain = parse_session(storage, &plain_path).expect("parse plain session");
+        assert_eq!(
+            plain.resume_command.as_deref(),
+            Some("opencode -s ses_plain-1")
+        );
+
+        for (index, session_id) in [
+            "line-one\n\"line-two\"",
+            "session & calc.exe & rem",
+            "--dangerously-bypass-approvals-and-sandbox",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let hostile_path = storage.join(format!("hostile-{index}.json"));
+            std::fs::write(
+                &hostile_path,
+                serde_json::json!({ "id": session_id, "title": "Hostile" }).to_string(),
+            )
+            .expect("write hostile session");
+            let hostile = parse_session(storage, &hostile_path).expect("parse hostile session");
+            assert_eq!(hostile.resume_command, None, "unsafe id: {session_id}");
+        }
     }
 
     #[test]

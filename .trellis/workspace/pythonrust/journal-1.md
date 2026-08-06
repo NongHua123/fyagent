@@ -172,3 +172,115 @@ Regenerated all application-brand icons from the approved FyAgent source, added 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: 实现 FyAgent v1-0.1
+
+**Date**: 2026-08-03
+**Task**: 实现 FyAgent v1-0.1
+**Branch**: `feature/fyagent-v1`
+
+### Summary
+
+实现独立 0.1.0 版本、Codex 原生能力与可信重启、WorkBuddy 独立配置域；本地质量门禁通过，真实端到端留给人工验收。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `73aed1ad` | (see git log) |
+| `2e56a6fe` | (see git log) |
+| `16b20c05` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 7: Codex 原生能力开关放宽
+
+**Date**: 2026-08-04
+**Task**: Codex 原生能力开关放宽
+**Branch**: `feature/fyagent-v1`
+
+### Summary
+
+开放所有 Codex 供应商的生图与 WebSocket 高级开关，增加保存后模型及代理风险警告，保留代理投影能力字段，并加固跨权限文件系统测试。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dd4162e0` | (see git log) |
+| `64939d83` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 8: Sync upstream v3.19.1
+
+**Date**: 2026-08-05
+**Task**: Sync upstream v3.19.1
+**Branch**: `feature/fyagent-v1`
+
+### Summary
+
+Merged upstream v3.19.1 while preserving FyAgent boundaries, resolved conflicts semantically, fixed provider and session security regressions, and validated locally.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b8c68eb104b31ab4d77027aaac82f90d054a9e97` | (see git log) |
+| `ca0f055bd373217ebef9af907a3d828cab41c59c` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 9: Restore Windows cross-built MSI packaging
+
+**Date**: 2026-08-06
+**Task**: Restore Windows cross-built MSI packaging
+**Branch**: `feature/fyagent-v1`
+
+### Summary
+
+Fixed explicit release-manifest selection, test-only manifest linker scope, windows 0.61 API compatibility, and strict cross-target Rust lint failures. Verified fmt, host and Windows Clippy with warnings denied, the full Rust suite, Windows test-harness linking, release workflow regressions, and complete x64 plus ARM64 MSI cross-builds with Linux structural checks.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `09042531` | (see git log) |
+
+### Status
+
+[OK] **Completed**

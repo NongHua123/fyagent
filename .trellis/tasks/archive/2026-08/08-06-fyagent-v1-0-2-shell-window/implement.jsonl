@@ -1,0 +1,7 @@
+{"file":"docs/fyagent/dev/v1-0.2/03-交互设计与状态矩阵.md","reason":"顶部栏、页面壳层、滚动、窗口和键盘状态设计。"}
+{"file":"docs/fyagent/dev/v1-0.2/04-系统架构与IPC设计.md","reason":"顶部栏组件和窗口状态服务边界。"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"现有 UI 原语、可访问性和组合模式。"}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"renderer 文件归属和测试位置。"}
+{"file":"src/components/topbar/","type":"directory","reason":"新增固定尾部主操作槽、P2 overflow 和顶层 header 容量分区；WorkBuddy 使用无焦点占位而非禁用按钮。"}
+{"file":"src/components/AppSwitcher.tsx","reason":"按实际容量在 constrained 模式保留当前应用直达，并把其余可见应用放入 More；保留旧版本 WorkBuddy 可见性默认。"}
+{"file":"src/lib/layout/","type":"directory","reason":"新增版本化、可测试的逻辑像素窗口策略和 renderer fallback hook；纯 Rust 同步实现由后续 host 接线消费。"}

@@ -23,7 +23,6 @@
     "unknown": "不明",
     "enterValidValue": "有効な値を入力してください",
     "clear": "クリア",
-    "toggleTheme": "テーマを切り替え",
     "format": "フォーマット",
     "formatSuccess": "整形しました",
     "formatError": "整形に失敗しました: {{error}}",
@@ -143,7 +142,6 @@
     "duplicate": "複製",
     "sortUpdateFailed": "並び順の更新に失敗しました",
     "configureUsage": "利用状況を設定",
-    "officialPartner": "公式パートナー",
     "managedByHermes": "Hermes 管理",
     "managedByHermesHint": "Hermes の providers: dict で定義されています。Hermes Web UI で編集または削除してください。",
     "openTerminal": "ターミナルを開く",
@@ -173,7 +171,8 @@
         "oauthHint": "Google 公式は OAuth 個人認証を使用するため API Key は不要です。初回利用時にブラウザが開きます。",
         "apiKeyPlaceholder": "Gemini API Key を入力"
       }
-    }
+    },
+    "duplicateLiveIdsLoadFailed": "設定内のプロバイダー識別子を読み込めませんでした。設定を修正してから再度お試しください"
   },
   "claudeCode": {
     "needsRouting": "ルーティングが必要",
@@ -222,7 +221,8 @@
       "tooltip": {
         "active": "Claude Desktop ローカルルーティングは起動中です - {{address}}:{{port}}",
         "inactive": "モデルマッピングや形式変換が必要なプロバイダー向けに Claude Desktop ローカルルーティングを起動します。設定アドレス: {{address}}:{{port}}"
-      }
+      },
+      "stopBlockedByTakeover": "別のアプリがプロキシテイクオーバーを使用しています。設定で該当アプリのテイクオーバーを無効にしてから、ローカルルーティングを停止してください。"
     }
   },
   "notifications": {
@@ -271,7 +271,8 @@
     "backfillWarning": "切り替え成功しましたが、前のプロバイダーへの設定保存に失敗しました",
     "windowControlFailed": "ウィンドウ操作に失敗しました: {{error}}",
     "officialBlockedByProxy": "ローカルルーティングモード中は公式プロバイダーに切り替えできません。ルーティング経由で公式 API にアクセスするとアカウントが停止される可能性があります。",
-    "proxyOfficialWarning": "現在のプロバイダー {{name}} は公式です。ローカルルーティングを使用する前にサードパーティプロバイダーに切り替えてください。"
+    "proxyOfficialWarning": "現在のプロバイダー {{name}} は公式です。ローカルルーティングを使用する前にサードパーティプロバイダーに切り替えてください。",
+    "proxyReasonClaudeDesktop": "Claude Desktop ローカルルーティングモードを使用中"
   },
   "confirm": {
     "deleteProvider": "プロバイダーを削除",
@@ -779,6 +780,8 @@
     "resetDefault": "デフォルトに戻す（保存後に反映）",
     "aboutHint": "FyAgent のバージョン情報とローカルツールの状態を表示します。",
     "portableMode": "ポータブルモードが有効です。",
+    "runtimePrivilegeAdministrator": "実行権限：管理者",
+    "runtimePrivilegeStandardUser": "実行権限：標準ユーザー",
     "manualInstallCommands": "手動インストールコマンド",
     "oneClickInstallHint": "Claude Code / Gemini CLI / Grok Build / OpenCode / OpenClaw / Hermes をインストールまたは更新",
     "localEnvCheck": "ローカル環境チェック",
@@ -866,11 +869,299 @@
     "claudeDesktop": "Claude Desktop",
     "claude-desktop": "Claude Desktop",
     "codex": "Codex",
+    "workbuddy": "WorkBuddy",
     "gemini": "Gemini",
     "grokbuild": "Grok Build",
     "opencode": "OpenCode",
     "openclaw": "OpenClaw",
     "hermes": "Hermes"
+  },
+  "workbuddy": {
+    "title": "WorkBuddy",
+    "description": "保存済みの認証情報を読み取らずに、WorkBuddy 用の OpenAI 互換モデルを設定します。",
+    "status": {
+      "title": "設定の状態",
+      "loading": "設定の状態を読み込み中...",
+      "path": "設定ファイル",
+      "exists": "ファイルの状態",
+      "existsYes": "存在します",
+      "existsNo": "まだ作成されていません",
+      "modelCount": "設定済みモデル数",
+      "backup": "バックアップ ファイル",
+      "backupYes": "存在します",
+      "backupNo": "未作成",
+      "unavailable": "現在、設定の状態を読み取れません。",
+      "download": "WorkBuddy をダウンロード",
+      "downloadHint": "既定のブラウザーで WorkBuddy の Web サイトを開きます",
+      "downloadFailed": "WorkBuddy の Web サイトを開けませんでした。既定のブラウザー設定を確認してください。"
+    },
+    "existingModels": {
+      "title": "既存のモデル（{{count}}）",
+      "loading": "既存のモデルを読み込み中...",
+      "refresh": "更新",
+      "searchPlaceholder": "既存のモデル ID を検索",
+      "clearSearch": "既存モデルの検索をクリア",
+      "list": "既存のモデル ID",
+      "empty": "設定済みのモデルはありません。",
+      "noMatch": "一致するモデル ID はありません。",
+      "readFailed": "既存のモデル設定を読み取れませんでした。models.json を確認してください。"
+    },
+    "connection": { "title": "接続設定" },
+    "baseUrl": "ベース URL",
+    "apiKey": "API キー",
+    "showApiKey": "API キーを表示",
+    "hideApiKey": "API キーを隠す",
+    "allowNoApiKey": "API キーなしを許可",
+    "allowNoApiKeyHint": "上流エンドポイントで認証が不要な場合にのみ使用してください。",
+    "clearExistingApiKeys": "選択したモデルの既存 API キーも空にする",
+    "clearExistingApiKeysHint": "選択したモデルに API キーがある場合、チェックすると空のキーを書き込みます。チェックしない場合は既存のキーを個別に保持します。",
+    "fetchModels": "モデルを取得",
+    "fetchFailed": "モデルを取得できませんでした",
+    "save": "設定を保存",
+    "saving": "保存中...",
+    "saveSuccess": "設定を保存しました",
+    "saveFailed": "設定を保存できませんでした",
+    "httpWarning": {
+      "title": "暗号化されていないリモート接続",
+      "description": "このリモートエンドポイントは HTTP を使用しています。転送中に API キーが露出する可能性があります。"
+    },
+    "models": {
+      "title": "モデル",
+      "selectAll": "すべて選択",
+      "deselectAll": "すべて解除",
+      "truncatedTitle": "モデル一覧が切り詰められました",
+      "truncatedDescription": "ここでは上流サービスが返した先頭 1,000 件の重複しないモデル ID だけを利用できます。残りは手動で追加してください。",
+      "fetchedList": "取得済みモデル一覧",
+      "emptyFetch": "上流サービスから使用可能なモデル ID が返されませんでした。",
+      "notFetched": "モデルを取得して選択するか、モデル ID を手動で追加してください。",
+      "manual": "手動モデル ID",
+      "manualPlaceholder": "1 行に 1 つのモデル ID",
+      "manualHint": "1 行に 1 つのモデル ID を入力します。空行は無視されます。"
+    },
+    "remoteModels": {
+      "title": "リモートモデル",
+      "selectionSummary": "選択済み {{selected}} / 現在の結果 {{total}}",
+      "searchPlaceholder": "モデル ID、名前、ベンダーを検索",
+      "clearSearch": "リモートモデルの検索をクリア",
+      "selectCurrent": "現在の結果をすべて選択",
+      "deselectCurrent": "現在の結果の選択を解除",
+      "noMatch": "一致するリモートモデルはありません。",
+      "existing": "既存"
+    },
+    "validation": {
+      "apiKeyRequired": "「API キーなしを許可」が有効でない限り、API キーは必須です。",
+      "modelRequired": "保存する前に少なくとも 1 つのモデルを選択または入力してください。"
+    },
+    "duplicateDialog": {
+      "title": "既存モデルを上書きしますか？",
+      "description": "以下のモデルはすでに存在します。続行すると、接続先と API キーが更新されます。",
+      "occurrences": "{{count}} 件",
+      "keepDuplicates": "同じ ID のすべての設定エントリが更新されます。エントリは削除も統合もされません。",
+      "confirm": "保存を続行"
+    },
+    "error": {
+      "invalidUrl": "有効な HTTP または HTTPS URL を入力してください。",
+      "apiKeyRequired": "このリクエストには API キーが必要です。",
+      "fetchHttp": "モデルサービスが HTTP エラーを返しました。",
+      "fetchTimeout": "モデル取得リクエストがタイムアウトしました。",
+      "fetchRedirectRejected": "モデルリクエストは信頼できないオリジンへリダイレクトされました。",
+      "fetchResponseTooLarge": "モデルレスポンスが大きすぎます。",
+      "fetchInvalidSchema": "モデルサービスが未対応のレスポンスを返しました。手動入力を使用してください。",
+      "configReadFailed": "既存の WorkBuddy 設定を安全に読み取れませんでした。",
+      "configInvalidJson": "既存の WorkBuddy 設定は有効な JSON ではありません。",
+      "configRootNotArray": "既存の WorkBuddy 設定のルートは JSON 配列である必要があります。",
+      "configUnsupportedRoot": "WorkBuddy 設定の構造を認識できません。models.json を確認してください。",
+      "configModelsNotArray": "WorkBuddy 設定の構造を認識できません。models.json を確認してください。",
+      "configInvalidEntry": "既存の WorkBuddy 設定に無効なモデルエントリがあります。",
+      "configNoTargetModels": "保存する前に少なくとも 1 つのモデルを選択または入力してください。",
+      "configConcurrentModification": "WorkBuddy 設定が FyAgent の外部で変更されました。更新して再試行してください。",
+      "configDuplicateTarget": "重複した対象モデル ID には確認が必要です。",
+      "overwriteTokenInvalid": "上書き確認は無効になりました。更新してから再度保存してください。",
+      "overwriteTokenExpired": "上書き確認の有効期限が切れました。更新してから再度保存してください。",
+      "configBackupFailed": "バックアップを作成できなかったため、設定は変更されませんでした。",
+      "configWriteFailed": "設定を安全に書き込めませんでした。",
+      "httpStatus": "HTTP ステータス: {{status}}",
+      "redactedSummary": "上流の要約: {{summary}}",
+      "invalidEntryIndex": "無効な設定項目のインデックス: {{index}}",
+      "internal": "WorkBuddy リクエストを完了できませんでした。もう一度お試しください。"
+    }
+  },
+  "codexFeatures": {
+    "title": "Codex ネイティブ機能",
+    "description": "これらの設定はすべての Codex プロバイダーで利用でき、現在の TOML 下書きだけを変更して保存時に書き込みます。",
+    "analyzing": "Codex ネイティブ機能を確認しています…",
+    "analysisFailed": "Codex ネイティブ機能の下書きを解析できませんでした。TOML を確認して再試行してください。",
+    "patchFailed": "Codex ネイティブ機能の下書きを更新できませんでした。TOML を確認して再試行してください。",
+    "savePreparationFailed": "Codex ネイティブ機能を保存用に準備できませんでした。TOML を確認して再試行してください。",
+    "imageExtension": {
+      "label": "組み込み画像拡張を有効にする",
+      "description": "Codex の組み込み画像拡張を有効にするため、現在のプロバイダーへ管理済みリクエストヘッダーを書き込みます。",
+      "legacyTitle": "保存時に移行",
+      "legacyDescription": "これは既存プロバイダー向けの既定オン移行です。保存するまで設定は変更されません。",
+      "conflictTitle": "画像拡張ヘッダーの競合",
+      "conflictDescription": "TOML に同名または大文字小文字違いのヘッダーがあります。スイッチを操作すると一致する値を上書きします。",
+      "invalidTitle": "画像拡張設定を読み取れません",
+      "invalidDescription": "リクエストヘッダーが文字列マップではありません。スイッチを操作するとこのフィールドを置換または削除します。"
+    },
+    "websockets": {
+      "label": "WebSocket 転送を有効にする",
+      "description": "supports_websockets = true を書き込みます。上流モデルやプロキシ経路が未対応の場合があり、保存後に判定済みのリスクを表示します。"
+    },
+    "saveWarnings": {
+      "added": "プロバイダーを追加しました",
+      "saved": "プロバイダーを保存しました",
+      "nonGptModel": "WebSocket 転送は GPT 系モデルのみをサポートします",
+      "proxyMayBeUnsupported": "現在のプロキシ引き継ぎ経路は WebSocket に対応していない可能性があります",
+      "separator": "；"
+    },
+    "diagnostic": {
+      "invalidToml": "Codex TOML 下書きが無効です。FyAgent は自動的に書き換えません。",
+      "invalidHeaders": "Codex リクエストヘッダー構造が無効です。画像スイッチを操作すると修復します。",
+      "invalidWebsockets": "WebSocket 設定が無効です。WebSocket スイッチを操作すると修復します。",
+      "generic": "Codex ネイティブ機能の設定が無効です。FyAgent はこの TOML 下書きを自動で書き換えません。"
+    }
+  },
+  "codexRestart": {
+    "confirm": {
+      "title": "Codex を再起動する必要があります",
+      "saved": "設定を保存しました。",
+      "uniqueRuntime": "Codex は実行中です。",
+      "multipleInstances": "複数の Codex が実行中です。",
+      "multipleInstallations": "複数の Codex インストールが利用可能です。",
+      "identityAmbiguous": "Codex インスタンスを一意に確認できません。",
+      "risk": "続行すると、条件に一致するすべての Codex を強制終了します。保存していない作業が失われる可能性があり、その後は 1 つのインスタンスだけを起動します。",
+      "manual": "後で手動で再起動",
+      "force": "強制終了して再起動"
+    },
+    "progress": "Codex を再起動しています…",
+    "progressDescription": "しばらくお待ちください。",
+    "incomplete": {
+      "title": "Codex の再起動が完了しませんでした",
+      "body": "設定は保存されましたが、Codex の再起動は完了しませんでした。",
+      "manual": "手動で再起動します",
+      "retry": "もう一度再起動を試す"
+    },
+    "title": "設定を更新しました",
+    "description": "Codex は現在実行中です。再起動すると、保存した新しい設定が読み込まれます。",
+    "restartAction": "Codex を再起動",
+    "laterAction": "後で手動で再起動",
+    "forceTitle": "Codex が正常に終了しませんでした",
+    "forceDescription": "設定は保存されましたが、Codex が時間内に終了しませんでした。確認後にのみ、検証済みのインスタンスを強制終了して再起動します。後で手動で再起動することもできます。",
+    "forceAction": "強制終了して再起動",
+    "restarted": "Codex を再起動し、新しい設定を読み込みました。",
+    "later": "設定を保存しました。後で Codex を手動で再起動してください。",
+    "manualRequired": "設定を保存しました。新しい設定を読み込むには Codex を手動で再起動してください。",
+    "notInstalled": "設定を保存しましたが、再起動できる信頼済みの Codex Desktop が見つかりませんでした。",
+    "ambiguous": "設定を保存しましたが、実行中の Codex Desktop を一意に確認できませんでした。手動で再起動してください。",
+    "unsupported": "設定を保存しました。このプラットフォームでは自動再起動に対応していないため、Codex を手動で再起動してください。",
+    "failed": "設定は保存されましたが、Codex の再起動に失敗しました。続行する前に手動で再起動してください。",
+    "phase": {
+      "detect": "信頼済みデスクトップアプリの検出を完了できませんでした。",
+      "quit": "Codex が正常に終了しませんでした。",
+      "forceQuit": "検証済みの Codex インスタンスを強制終了できませんでした。",
+      "launch": "信頼済みのインストールから Codex を起動できませんでした。",
+      "verify": "Codex は起動しましたが、新しい信頼済みインスタンスを確認できませんでした。"
+    }
+  },
+  "codexDesktop": {
+    "title": "Codex デスクトップアプリ",
+    "description": "中国本土向けミラーを通じて、Codex を含む最新版の OpenAI 公式 ChatGPT デスクトップアプリをダウンロードしてインストールします。",
+    "source": "OpenAI 公式パッケージ · 中国本土向けミラー",
+    "actions": {
+      "install": "Codex をインストール",
+      "update": "Codex を更新",
+      "launch": "Codex を起動",
+      "cancel": "キャンセル",
+      "retry": "再試行",
+      "refresh": "更新",
+      "copyErrorDetails": "エラー詳細をコピー",
+      "openLogDirectory": "ログフォルダーを開く"
+    },
+    "details": {
+      "localVersion": "ローカル バージョン",
+      "latestVersion": "最新バージョン",
+      "unavailable": "利用できません",
+      "progress": "インストールの進行状況"
+    },
+    "version": {
+      "localLoading": "ローカル バージョンを確認中",
+      "localError": "ローカル バージョンを確認できません",
+      "remoteLoading": "最新バージョンを取得中",
+      "refreshing": "最新バージョンを更新中",
+      "refreshNetworkFailed": "最新バージョンの取得に失敗しました。ネットワーク接続を確認してください",
+      "fetchFailed": "取得に失敗しました",
+      "platformUnavailable": "このプラットフォームで利用可能なバージョンはありません",
+      "metadataInvalid": "バージョン情報に問題があります"
+    },
+    "state": {
+      "hidden": "このプラットフォームではこの機能を利用できません",
+      "checking": "デスクトップアプリの状態を確認中",
+      "preflight": "インストール前の確認を実行中",
+      "unsupportedArchitecture": "Intel Mac はまだサポートされていません",
+      "ambiguous": "複数の Codex デスクトップアプリのインストールが検出されました。続行する前に解決してください。",
+      "readyInstall": "バージョン {{version}} をインストールできます",
+      "updateAvailable": "バージョン {{version}} に更新できます",
+      "upToDate": "最新の状態です",
+      "localNewer": "より新しいバージョンがインストールされています。ダウングレードはできません",
+      "remoteUnavailable": "最新バージョンを取得できません。ネットワークまたはグローバルプロキシを確認して再試行してください。",
+      "remoteUnavailableInstalled": "現在は更新を確認できませんが、インストール済みアプリは起動できます。",
+      "downloading": "公式パッケージをダウンロード中",
+      "verifyingDownload": "公式パッケージを検証中",
+      "installing": "インストール中",
+      "verifyingInstallation": "インストール結果を確認中",
+      "succeeded": "インストール済み",
+      "failed": "インストールが完了しませんでした",
+      "cancelled": "キャンセルしました"
+    },
+    "error": {
+      "title": "Codex デスクトップアプリの操作に失敗しました",
+      "details": "エラー詳細",
+      "platformUnsupported": "このプラットフォームでは Codex デスクトップアプリのインストールに対応していません。",
+      "osVersionUnsupported": "現在のオペレーティングシステムのバージョンはインストール要件を満たしていません。",
+      "architectureUnsupported": "現在のプロセッサアーキテクチャはサポートされていません。",
+      "sourceUnavailable": "最新バージョンを取得できません。ネットワークまたはグローバルプロキシを確認して再試行してください。",
+      "releaseMetadataInvalid": "最新バージョンのリリース情報が無効なため、インストールをブロックしました。",
+      "releaseNotAvailable": "このプラットフォーム向けのインストール可能なパッケージは現在ありません。",
+      "metadataChanged": "リリース情報が変更されました。更新して再試行してください。",
+      "redirectRejected": "ダウンロードのリダイレクトがセキュリティ要件を満たさないため、ダウンロードをブロックしました。",
+      "downloadFailed": "公式パッケージのダウンロードに失敗しました。再試行してください。",
+      "downloadTimeout": "ダウンロードがタイムアウトしました。ネットワークを確認して再試行してください。",
+      "downloadCancelled": "ダウンロードをキャンセルしました。",
+      "insufficientDiskSpace": "空きディスク容量が不足しています。空き容量を確保して再試行してください。",
+      "checksumMissing": "パッケージに必要な検証情報がないため、インストールをブロックしました。",
+      "checksumMismatch": "ダウンロードしたパッケージは検証に合格しなかったため、インストールをブロックしました。",
+      "packageParseFailed": "パッケージ内容を読み取れないため、インストールをブロックしました。",
+      "packageIdentityMismatch": "パッケージの識別情報が期待値と一致しないため、インストールをブロックしました。",
+      "packageArchitectureMismatch": "パッケージのアーキテクチャがこのデバイスと一致しないため、インストールをブロックしました。",
+      "packageSignatureInvalid": "パッケージの署名が無効なため、インストールをブロックしました。",
+      "windowsUacCancelled": "Windows の権限確認をキャンセルしました。",
+      "windowsElevationFailed": "Windows の権限確認を完了できませんでした。",
+      "windowsPackageInUse": "作業を保存し、ChatGPT または Codex を閉じてから更新を再試行してください。",
+      "windowsDeploymentBlocked": "Windows によりこのインストールはブロックされました。システム管理者に連絡してください。",
+      "windowsDependencyMissing": "Windows に必要なインストールコンポーネントがありません。システム管理者に連絡してください。",
+      "windowsAllUsersUnsupported": "このインストール方法はすべてのユーザー範囲に対応していません。",
+      "windowsDeploymentFailed": "Windows でのインストールに失敗しました。再試行してください。",
+      "macDmgMountFailed": "macOS ディスクイメージをマウントできませんでした。再試行してください。",
+      "macAppNotFound": "ディスクイメージ内に想定したアプリが見つかりませんでした。",
+      "macBundleIdMismatch": "アプリ識別子が期待値と一致しないため、インストールをブロックしました。",
+      "macTeamIdMismatch": "アプリ署名チームが期待値と一致しないため、インストールをブロックしました。",
+      "macGatekeeperRejected": "macOS Gatekeeper がこのアプリを拒否しました。",
+      "macAppRunning": "ChatGPT または Codex を閉じてから再試行してください。",
+      "macMultipleInstallations": "複数の Codex デスクトップアプリのインストールが検出されました。続行する前に解決してください。",
+      "macTargetPathConflict": "対象のインストール先パスが競合しています。続行する前に解決してください。",
+      "macCopyFailed": "macOS アプリのコピーに失敗しました。再試行してください。",
+      "macDmgDetachFailed": "インストール後にディスクイメージを取り外せませんでした。後でもう一度試してください。",
+      "installationVerifyFailed": "インストール後の検証に失敗したため、アプリはインストール済みとして扱われません。",
+      "launchFailed": "検証済みの Codex デスクトップアプリを起動できませんでした。",
+      "jobAlreadyRunning": "Codex デスクトップアプリのインストールはすでに実行中です。",
+      "jobNotFound": "指定されたインストールタスクが見つかりませんでした。",
+      "internalError": "内部エラーが発生しました。ログを開いて再試行してください。"
+    },
+    "toast": {
+      "installed": "Codex デスクトップアプリのインストールに成功しました。システム上では「ChatGPT」と表示される場合があります。",
+      "copied": "エラー詳細をコピーしました",
+      "copyFailed": "エラー詳細をコピーできませんでした"
+    }
   },
   "grokBuild": {
     "apiBackend": "API Backend",
@@ -1004,45 +1295,6 @@
     "officialHint": "💡 公式プロバイダーはブラウザログインで、API Key は不要です",
     "providerKeyStatusLoading": "プロバイダー識別子の状態を読み込んでいます。しばらくしてからもう一度お試しください",
     "getApiKey": "API Key を取得",
-    "partnerPromotion": {
-      "sudocode": "SudoCode の1つのキーで、Claude Code と Claude Desktop では Claude Opus 5、Codex では GPT-5.6 を利用できます。登録後 QQ グループ 726213516 に参加し、管理者へ連絡すると CNY ¥10 のトライアルクレジットを受け取れます。",
-      "code0": "code0.ai は開発者向けの AI コーディングサービスプラットフォームで、Claude Code、Codex、Gemini に対応。FyAgent ユーザー限定特典：公式サイトからサポートに連絡してテストクレジットを受け取れます！",
-      "nekocode": "NekoCode は Claude や Codex などの AI モデルに対応した、安定・高効率で信頼性の高い API 中継サービスを提供します。明瞭な従量課金制。FyAgent ユーザー限定 10%オフ：上のリンクから登録し、チャージ時にクーポンコード cc-switch を入力すると 10%オフ！",
-      "packycode": "PackyCode は FyAgent の公式パートナーです。登録後チャージ時に \"cc-switch\" を入力すると 10% オフ",
-      "apikeyfun": "APIKEY.FUN は FyAgent ユーザー向けに特別優待を提供しています。専用リンクから登録すると、最大でチャージ永久 5% オフを受けられます。",
-      "apinebula": "APINEBULA は FyAgent ユーザー向けに特別割引を提供しています。専用リンクから登録し、チャージ時にプロモコード「ccswitch」を入力すると、さらに 10% OFF の割引が適用されます。",
-      "atlascloud": "Atlas Cloud は、1 つの API で動画・画像生成や LLM を利用できる全モーダル対応の AI 推論プラットフォームです。より低コストで API を利用できる新しい「コーディングプラン」プロモーションをご確認ください。",
-      "patewayai": "PatewayAI は FyAgent ユーザーに特別な特典を提供しています。このリンクから登録すると $3 のクレジットがもらえます。",
-      "claudeapi": "ClaudeAPI は FyAgent ユーザーに特別な特典を提供しています。このリンクから登録するとテストクレジットを受け取ることができます。",
-      "claudecn": "ClaudeCN は登録企業が運営するエンタープライズグレードの AI ゲートウェイプラットフォームで、企業調達プロセスをサポートし、法人支払い、契約、コンプライアンス保証を提供します。",
-      "runapi": "RunAPI は FyAgent ユーザーに特別な特典を提供しています。このリンクから登録しカスタマーサポートにご連絡いただくと、¥14 の無料クレジットを受け取ることができます。",
-      "minimax_cn": "MiniMax Coding Plan 特別価格、Starter ¥9.9 から",
-      "minimax_en": "MiniMax Coding Plan Black Friday、Starter が月額 $2（80% OFF）",
-      "opencode_go": "このリンクから OpenCode Go を購読すると、初月はわずか $5、さらに $5 分のクレジットがもらえます！",
-      "dmxapi": "Claude Code 専用モデル 66% OFF 実施中！",
-      "cubence": "Cubence は FyAgent の公式パートナーです。登録後チャージ時に \"CCSWITCH\" を入力すると、毎回 10% オフ",
-      "aigocode": "AIGoCode は FyAgent の公式パートナーです。このリンクから登録すると、初回チャージ時に 10% のボーナスクレジットがもらえます！",
-      "rightcode": "RightCode は FyAgent の公式パートナーです。このリンクから登録すると、毎回のチャージに 5% のボーナスクレジットがもらえます！",
-      "aicodemirror": "AICodeMirror は FyAgent の公式パートナーです。このリンクから登録すると20%オフ！",
-      "aicoding": "AI Coding は FyAgent ユーザー向けに特別割引を提供しています。初回チャージが 10% オフ！",
-      "crazyrouter": "CrazyRouter は FyAgent ユーザー向けに特別ボーナスを提供しています。初回チャージで 30% の追加クレジットがもらえます！",
-      "sssaicode": "SSAI Code は FyAgent ユーザー向けに特別ボーナスを提供しています。チャージごとに $10 の追加クレジットがもらえます！",
-      "siliconflow": "SiliconFlow は FyAgent の公式パートナーです",
-      "ucloud": "Compshare は FyAgent ユーザー向けに特別ボーナスを提供しています。このリンクから登録すると、5元のプラットフォーム体験クレジットがもらえます！",
-      "micu": "Micu は FyAgent の公式パートナーです",
-      "etok": "公式サイトで ETok コミュニティに参加し、プランを購読してください。",
-      "shengsuanyun": "胜算云はFyAgentユーザーに特別特典を提供しています。このリンクから登録すると、10元分の無料クレジットと初回チャージ10%ボーナスがもらえます！",
-      "doubaoseed": "豆包大モデルは FyAgent ユーザーに専属特典を提供しています：このリンクから登録すると、豆包全テキストモデル50万トークンの推論クレジットおよびSeedance2.0の500万トークン無料クレジットがもらえます。",
-      "volcengine_agentplan": "火山方舟 Coding Plan は FyAgent ユーザーに専属特典を提供しています：このリンクから方舟 Coding Plan を購読すると、新規のお客様は最初の 2 か月が 75% オフ、さらに専用招待コード 6J6FV5N2 で 5% オフが加算され、月額 9.4 元から！",
-      "byteplus": "このリンクから登録すると、各モデルごとに50万トークンの無料推論クォータがもらえます。",
-      "ccsub": "CCSub は安定・低価格の AI API リレーサービスです。Claude Code の公式サブスクリプションの代替として、1つのキーで全モデルを公式比約1/3のコストで利用できます。",
-      "subrouter": "SubRouter は、1つのキーで複数のモデルとプロバイダーにアクセスできる AI 中継アグリゲーターです。",
-      "qiniu": "Qiniu Cloud（七牛云）はマルチプロトコル対応の AI 中継プラットフォームです。1つのキーでネイティブの Claude・GPT・Gemini モデルを利用でき、Anthropic／OpenAI／Gemini の各 API に対応します。",
-      "fenno": "Fenno.ai は安定・高効率な API 中継サービスで、幅広い主要モデルを利用できます。FyAgent 利用者限定特典：このリンクから 9.9 元（150 ドル相当）の Coding Plan を購入できます！",
-      "zetaapi": "ZetaAPI はモデルを水増し・劣化させず、公式価格の 35% から利用できます。FyAgent 利用者限定特典：このリンクから登録し、初回チャージ時にプロモコード CC-SWITCH を使うと初回チャージ 10% オフ！",
-      "teamorouter": "TeamoRouter はエンタープライズグレードの Agentic LLM ゲートウェイで、料金は最大 90% オフ。FyAgent ユーザーに特別特典を提供しています：このリンクから新規登録すると初回チャージが 10% オフ！",
-      "unity2": "Unity2.ai は FyAgent ユーザーに専属特典を提供しています：このリンクから登録すると $2 分のクレジット、公式グループ参加でさらに $10、最大 $12 の無料クレジットがもらえます！"
-    },
     "presets": {
       "ucloud": "Compshare",
       "ucloudCoding": "Compshare Coding Plan",
@@ -1153,7 +1405,8 @@
     "fetchModelsAuthFailed": "API Key が無効か、権限がありません",
     "fetchModelsNotSupported": "このプロバイダーはモデル一覧の取得に対応していません",
     "fetchModelsEndpointNotFound": "利用可能なモデル一覧エンドポイントが見つかりません。Base URL を確認するか、プロバイダーが該当 API を公開しているかご確認ください",
-    "fetchModelsTimeout": "リクエストがタイムアウトしました。ネットワーク接続を確認してください"
+    "fetchModelsTimeout": "リクエストがタイムアウトしました。ネットワーク接続を確認してください",
+    "requiredFields": "プロバイダー名、API エンドポイント、API Key、モデルを入力してください"
   },
   "copilot": {
     "authSection": "GitHub Copilot 認証",
@@ -1350,7 +1603,9 @@
     "reasoningEffortHint": "上流が low/high/max などの思考の深さの制御に対応している場合に有効化します。有効にすると思考モードも自動的にオンになり、Codex の reasoning.effort を上流の Chat パラメータに変換します。",
     "reasoningGroupTitle": "思考能力",
     "reasoningSectionHint": "プリセットの供給元は自動的に設定され、カスタム供給元は名前/URL から自動推論されます。自動識別が正しくない場合のみ手動で上書きしてください。",
-    "advancedSectionHint": "上流フォーマット、モデルマッピング、思考能力、カスタム User-Agent の設定を含みます。Chat Completions プロトコルを使用するプロバイダーはルーティング引き継ぎの有効化が必要です。"
+    "advancedSectionHint": "Codex ネイティブ機能、上流フォーマット、モデルマッピング、思考能力、カスタム User-Agent を含みます。Chat Completions ではルーティング引き継ぎが必要です。",
+    "officialAdvancedSectionHint": "組み込み画像拡張と WebSocket 転送のスイッチを含みます。",
+    "noCommonConfigToApply": "共通設定スニペットが空か、書き込む内容がありません"
   },
   "geminiConfig": {
     "envFile": "環境変数 (.env)",
@@ -1449,6 +1704,7 @@
     "totalRequests": "総リクエスト数",
     "totalCost": "総コスト",
     "cost": "コスト",
+    "unpriced": "価格未設定",
     "perMillion": "(100万あたり)",
     "trends": "利用トレンド",
     "rangeToday": "直近24時間 (時間別)",
@@ -1491,24 +1747,6 @@
       "grokbuild": "Grok Build"
     },
     "rawInputLabel": "原始",
-    "dataSources": "データソース",
-    "dataSource": {
-      "proxy": "ルーティング",
-      "session_log": "セッションログ",
-      "codex_db": "Codex DB",
-      "codex_session": "Codex セッション",
-      "gemini_session": "Gemini セッション",
-      "opencode_session": "OpenCode セッション",
-      "grok_session": "Grok Build セッション"
-    },
-    "sessionSync": {
-      "trigger": "セッションログを同期",
-      "import": "セッションをインポート",
-      "resync": "同期",
-      "imported": "セッションログから {{count}} 件のレコードをインポートしました",
-      "upToDate": "セッションログは最新です",
-      "failed": "セッション同期に失敗しました"
-    },
     "rebuildCodex": {
       "title": "Codex 使用量メンテナンス",
       "description": "ローカルの rollout ログから Codex セッション使用量を再構築します",
@@ -1618,6 +1856,40 @@
     "modelsDevNoResults": "一致するモデルがありません",
     "modelsDevTruncated": "{{total}} 件中、先頭 {{shown}} 件のみ表示しています。検索条件を絞り込んでください",
     "modelsDevDefaultHint": "最新リリース順に {{shown}} 件を表示しています（全 {{total}} 件）。キーワード入力で全件検索できます",
+    "modelsDevAutoSync": {
+      "title": "models.dev 料金の自動同期",
+      "description": "有効にすると、FyAgent の起動時に選択したモデルの最新料金を定期的に取得し、ローカル料金ファイルに保存します。",
+      "enabled": "有効",
+      "disabled": "無効",
+      "enableConfirmTitle": "料金の自動同期を有効にしますか？",
+      "enableConfirmMessage": "有効にすると、FyAgent の起動時に models.dev から選択したモデルの料金を定期的に更新します（最大 6 時間に 1 回）。同じモデル ID の内蔵料金と手動設定した料金は上書きされます。",
+      "enableConfirmAction": "自動同期を有効にする",
+      "configure": "モデルを選択",
+      "configureTitle": "料金を自動同期するモデルを選択",
+      "configureDescription": "検索とプロバイダーの絞り込みで自動更新するモデルを選択します。選択内容はローカルに保存されます。",
+      "commonModels": "よく使うモデルを自動的に含める",
+      "commonModelsDescription": "最近の Claude、GPT、Gemini、Grok、DeepSeek、Qwen、MiMo、LongCat、Kimi、MiniMax、GLM から {{count}} モデルを選択します。",
+      "selectFiltered": "絞り込み結果を選択（{{count}}）",
+      "clearFiltered": "絞り込み結果を解除",
+      "selectedCount": "{{count}} モデルを選択中",
+      "selectionHint": "正規化後のモデル ID が同じ項目は一度だけインポートされます。",
+      "commonBadge": "よく使う",
+      "selectionSaved": "自動料金同期の選択を保存しました",
+      "syncSuccess": "料金同期が完了しました：{{imported}} モデルを確認、{{changed}} モデルを更新",
+      "syncFailed": "料金同期に失敗しました：{{error}}",
+      "configLoadFailed": "ローカル料金設定の読み込みに失敗しました：{{error}}",
+      "neverSynced": "未同期",
+      "lastSync": "最終同期",
+      "commonStatus": "よく使うモデル",
+      "lastError": "前回の自動同期に失敗しました：{{error}}",
+      "localFile": "ローカル料金ファイル",
+      "openFolder": "フォルダーを開く",
+      "openFolderFailed": "ローカル料金フォルダーを開けませんでした: {{error}}",
+      "reloadLocalFile": "ファイルを再読み込み",
+      "localFileReloaded": "ローカル料金ファイルを再読み込みしました",
+      "localFileReloadFailed": "ローカル料金ファイルの再読み込みに失敗しました：{{error}}",
+      "syncNow": "今すぐ同期"
+    },
     "cacheReadCostPerMillion": "キャッシュ読み取りコスト（100万トークンあたり、USD）",
     "cacheCreationCostPerMillion": "キャッシュ書き込みコスト（100万トークンあたり、USD）"
   },
@@ -2261,6 +2533,9 @@
       "skillDirNotFound": "スキルディレクトリが見つかりません: {{path}}",
       "directoryConflict": "スキルディレクトリ '{{directory}}' は既に {{existing_repo}} で使用されています。{{new_repo}} からインストールできません",
       "emptyArchive": "ダウンロードしたアーカイブが空です",
+      "invalidRepoRef": "リポジトリの指定が不正です：{{owner}}/{{name}}",
+      "archiveTooLarge": "アーカイブが展開上限 {{limit_mb}} MB を超えたため中止しました",
+      "archiveTooManyEntries": "アーカイブのエントリ数が多すぎます（{{count}}）。上限は {{limit}} です",
       "downloadFailed": "ダウンロードに失敗しました: HTTP {{status}}",
       "allBranchesFailed": "すべてのブランチで失敗しました。試行: {{branches}}",
       "httpError": "HTTP エラー {{status}}",
@@ -2420,18 +2695,29 @@
     "configUrl": "設定ファイル URL",
     "configMergeError": "設定ファイルのマージに失敗しました",
     "primaryEndpoint": "メイン",
+    "providerActivation": "インポート後の操作",
+    "providerActivationEnabled": "このプロバイダーを現在のプロバイダーに切り替え、設定を直ちに適用します",
+    "providerActivationPending": "明示的に有効化を承認するまで、このプロバイダーはインポートのみされます",
+    "providerActivationDisabled": "このプロバイダーへ自動的に切り替えません",
+    "providerActivationWarning": "このリンクは現在のプロバイダー設定の置き換えを要求しています。信頼できる提供元の場合のみ続行してください。",
+    "providerActivationApproval": "このプロバイダーを現在のプロバイダーに設定し、対象アプリへ設定を書き込むことを承認します。",
+    "importAndActivate": "インポートして現在のプロバイダーに設定",
     "mcp": {
       "title": "MCP サーバーを一括インポート",
       "targetApps": "ターゲットアプリ",
       "serverCount": "MCP サーバー（{{count}} 件）",
-      "enabledWarning": "インポート後、指定したすべてのアプリに即座に書き込まれます"
+      "enabledWarning": "インポート後、指定したすべてのアプリに即座に書き込まれます",
+      "command": "コマンド",
+      "args": "引数",
+      "env": "環境変数",
+      "url": "URL"
     },
     "prompt": {
       "title": "システムプロンプトをインポート",
       "app": "アプリ",
       "name": "名前",
       "description": "説明",
-      "contentPreview": "内容プレビュー",
+      "contentPreview": "インポートする完全な内容",
       "enabledWarning": "インポート後すぐにこのプロンプトが有効になり、他は無効になります"
     },
     "skill": {
@@ -2446,10 +2732,17 @@
     "usageScript": "使用量クエリ",
     "usageScriptEnabled": "有効",
     "usageScriptDisabled": "無効",
+    "usageScriptCode": "スクリプトコード",
+    "usageScriptWarning": "これは有効化すると使用量クエリ時に実行される JavaScript です。提供元が信頼できる場合のみインポートしてください。",
     "usageApiKey": "使用量 API キー",
     "usageBaseUrl": "使用量クエリ URL",
     "usageAutoInterval": "自動クエリ",
-    "usageAutoIntervalValue": "{{minutes}} 分ごと"
+    "usageAutoIntervalValue": "{{minutes}} 分ごと",
+    "risk": {
+      "envHijack": "この設定には、プロセスの読み込み動作を変える環境変数（ライブラリの注入、CA 証明書の差し替えなど）が含まれています。信頼できる提供元か確認してください。",
+      "privateEndpoint": "このアドレスはローカルホストまたは内部ネットワークを指しています。自分で立てたローカルサービス以外はインポートしないでください。",
+      "shellCommand": "この設定はシェル経由でコマンド全体を実行します。実際に動作する内容は引数にあります。1 行ずつ確認してください。"
+    }
   },
   "iconPicker": {
     "search": "アイコンを検索",
@@ -2468,8 +2761,7 @@
     "selectIcon": "アイコンを選択",
     "preview": "プレビュー",
     "clickToChange": "クリックでアイコンを変更",
-    "clickToSelect": "クリックでアイコンを選択",
-    "color": "アイコンカラー"
+    "clickToSelect": "クリックでアイコンを選択"
   },
   "migration": {
     "success": "設定の移行が完了しました",
@@ -2498,7 +2790,8 @@
     },
     "tooltip": {
       "enabled": "{{app}} フェイルオーバーが有効\nキューの優先度（P1→P2→...）で使用します",
-      "disabled": "{{app}} フェイルオーバーを有効にする\nキューの P1 に即時切替し、失敗時は次を順に試行します"
+      "disabled": "{{app}} フェイルオーバーを有効にする\nキューの P1 に即時切替し、失敗時は次を順に試行します",
+      "takeoverRequired": "先に {{app}} を引き継いでから、フェイルオーバーを有効にしてください"
     }
   },
   "proxy": {
@@ -2676,7 +2969,9 @@
     },
     "server": {
       "started": "ルーティングサービスが開始されました - {{address}}:{{port}}",
-      "startFailed": "ルーティングサービスの開始に失敗しました: {{detail}}"
+      "startFailed": "ルーティングサービスの開始に失敗しました: {{detail}}",
+      "stopped": "ルーティングサービスが停止しました",
+      "stopFailed": "ルーティングサービスの停止に失敗しました: {{detail}}"
     },
     "stoppedWithRestore": "ルーティングサービスが停止し、すべてのルーティング設定が復元されました",
     "stopWithRestoreFailed": "停止に失敗しました: {{detail}}"
@@ -2710,33 +3005,6 @@
     "streamingFirstByte": "ストリーミング初回バイトタイムアウト",
     "streamingIdle": "ストリーミングアイドルタイムアウト",
     "nonStreaming": "非ストリーミングタイムアウト"
-  },
-  "circuitBreaker": {
-    "failureThreshold": "失敗閾値",
-    "successThreshold": "成功閾値",
-    "timeoutSeconds": "タイムアウト（秒）",
-    "errorRateThreshold": "エラー率閾値 (%)",
-    "minRequests": "最小リクエスト数",
-    "validationFailed": "以下のフィールドが有効範囲外です: {{fields}}",
-    "configSaved": "サーキットブレーカー設定が保存されました",
-    "saveFailed": "保存に失敗しました",
-    "loading": "読み込み中...",
-    "title": "サーキットブレーカー設定",
-    "description": "サーキットブレーカーパラメータを調整して、障害検出と復旧動作を制御します",
-    "failureThresholdHint": "連続失敗後にサーキットブレーカーを開く回数",
-    "timeoutSecondsHint": "サーキットブレーカーを開いた後、復旧を試みるまでの時間（半開状態）",
-    "successThresholdHint": "半開状態で成功してサーキットブレーカーを閉じる回数",
-    "errorRateThresholdHint": "エラー率がこの値を超えるとサーキットブレーカーを開く",
-    "minRequestsHint": "エラー率を計算する前の最小リクエスト数",
-    "saveConfig": "設定を保存",
-    "instructionsTitle": "設定説明",
-    "instructions": {
-      "failureThreshold": "連続失敗がこの回数に達するとサーキットブレーカーが開く",
-      "timeout": "サーキットブレーカーを開いた後、この時間待機してから半開を試みる",
-      "successThreshold": "半開状態で成功がこの回数に達するとサーキットブレーカーを閉じる",
-      "errorRate": "エラー率がこの値を超えるとサーキットブレーカーが開く",
-      "minRequests": "リクエスト数がこの値に達した後にのみエラー率が計算される"
-    }
   },
   "universalProvider": {
     "duplicate": "複製",

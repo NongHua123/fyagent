@@ -1,0 +1,5 @@
+{"file":"docs/fyagent/dev/v1-0.2/04-系统架构与IPC设计.md","reason":"Windows 构建、单实例、降权启动、IPC 和深链接设计。"}
+{"file":"docs/fyagent/dev/v1-0.2/06-实施顺序与仓库变更地图.md","reason":"Windows 变更文件、依赖顺序和回滚组。"}
+{"file":"docs/fyagent/dev/v1-0.2/08-ADR与外部资料.md","reason":"提升、安装、Portable、降权和 IPC 已接受 ADR。"}
+{"file":".trellis/spec/backend/github-release-workflow.md","reason":"现有发布 workflow 和签名/产物边界。"}
+{"file":".trellis/spec/backend/development-environment.md","reason":"本地工具与平台验证边界。"}

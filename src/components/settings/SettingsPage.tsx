@@ -77,6 +77,7 @@ export function SettingsPage({
     isLoading,
     isSaving,
     isPortable,
+    runtimePrivilege,
     appConfigDir,
     resolvedDirs,
     updateSettings,
@@ -506,7 +507,10 @@ export function SettingsPage({
               </TabsContent>
 
               <TabsContent value="about" className="mt-0">
-                <AboutSection isPortable={isPortable} />
+                <AboutSection
+                  isPortable={isPortable}
+                  runtimePrivilege={runtimePrivilege}
+                />
               </TabsContent>
 
               <TabsContent value="usage" className="mt-0">

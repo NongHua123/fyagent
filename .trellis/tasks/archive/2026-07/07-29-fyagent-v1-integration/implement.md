@@ -28,7 +28,7 @@ rg -n "agentsmirror|github.com|oaistatic|apps.microsoft.com" src-tauri/src/codex
 
 图标替换还必须核对源文件 hash/尺寸/mode/alpha、全部已跟踪应用品牌路径的变更、各输出
 尺寸与透明度、About 32×32 字节一致性、macOS template 黑色轮廓和 18pt 内容框，以及
-`dmg-background.png`、provider/partner 图标、截图等排除项未变。原生 Windows shell/安装器、
+`dmg-background.png`、第三方 provider 图标、截图等排除项未变。原生 Windows shell/安装器、
 macOS Dock/菜单栏的视觉正确性保留给人工验收。
 
 ## 2026-07-30 应用品牌图标替换记录
@@ -41,7 +41,7 @@ macOS Dock/菜单栏的视觉正确性保留给人工验收。
 | 源图 | `Get-FileHash C:\Users\Administrator\Desktop\fyagent.png -Algorithm SHA256`；Pillow 读取外部输入与 `assets/fyagent.png` 的 PNG metadata/alpha | 退出码 0；两者 SHA-256 均为 `17236EBB0DD38D8A9FE5C4BA8D1621E4048909B86F1BD8C88BA55E8DBA63C9BF`；1024×1024、RGBA、alpha 0..255，含抗锯齿值 |
 | 标准集合 | `pnpm tauri icon assets/fyagent.png --output src-tauri/icons` | 退出码 0；生成桌面、Windows Store、Android、iOS 共 50 个既有路径，包含 `64x64.png`；未新增额外生成路径 |
 | About / tray | `Copy-Item src-tauri\icons\32x32.png src\assets\icons\app-icon.png -Force`；Pillow 按源 alpha 非透明边界生成三个 macOS template | About 与 32×32 输出 SHA-256 同为 `A0E4AC31157CAA5B9DD893A38A558B3BD506A6DDD37A61174BFB05EE12B54C19`；template 为 24/48/72 RGBA、RGB 全黑、alpha 0..255 且含部分透明值，非透明 bbox 分别为 `(4,3,20,21)`、`(8,6,41,42)`、`(12,9,61,62)` |
-| 文件级验证 | 内联 Python/Pillow + `git ls-files`/`git diff --name-only` 校验 source、inventory、PNG/ICO/ICNS、About、template、排除资产与 ZIP | 退出码 0；53/53 个既有应用品牌路径均变化；51/51 PNG 可解码且为 RGBA；ICO 含 16/24/32/48/64/256；ICNS 最大 1024×1024；DMG 背景、partner、截图和其他 renderer icons 无 diff；`v1.zip` 19/19 Markdown 逐字节一致 |
+| 文件级验证 | 内联 Python/Pillow + `git ls-files`/`git diff --name-only` 校验 source、inventory、PNG/ICO/ICNS、About、template、排除资产与 ZIP | 退出码 0；53/53 个既有应用品牌路径均变化；51/51 PNG 可解码且为 RGBA；ICO 含 16/24/32/48/64/256；ICNS 最大 1024×1024；DMG 背景、第三方 provider、截图和其他 renderer icons 无 diff；`v1.zip` 19/19 Markdown 逐字节一致 |
 | Diff | `git diff --check` | 退出码 0 |
 | 前端 / Rust | `pnpm format:check`；`pnpm typecheck`；`pnpm build:renderer`；`cargo check --manifest-path src-tauri/Cargo.toml` | 全部退出码 0；renderer 构建 3305 modules / 13.36s，仅既有 warnings；cargo check 13.40s |
 | 聚焦回归 | `pnpm exec vitest run tests/releaseWorkflow.test.ts tests/components/AboutSection.test.tsx` | 退出码 0；2 files / 6 tests 通过 |
@@ -98,7 +98,7 @@ dead-code 等警告；上述命令均成功退出，且 `cargo clippy -D warning
 ### 2026-07-30 clean-break 当前工作树验证边界
 
 - 已做：Rust 格式检查、JSON/XML/plist/TOML/YAML/JavaScript 结构解析、身份残留分类、
-  合作方 URL/优惠码与历史版本逐项对比、`git diff --check`，以及 V1 ZIP 19/19
+  第三方 URL 查询数据与历史版本逐项对比、`git diff --check`，以及 V1 ZIP 19/19
   逐文件 SHA-256 一致性检查。
 - 未做：本地 lint、type-check、单元/集成测试、Rust/TypeScript 编译、应用构建或安装包
   构建。当前源码的这些结论必须由本次提交对应的 GitHub Actions 重新建立。

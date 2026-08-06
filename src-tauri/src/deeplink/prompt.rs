@@ -77,9 +77,9 @@ pub fn import_prompt_from_deeplink(
     // If enabled flag is set, enable this prompt (which will disable others)
     if should_enable {
         PromptService::enable_prompt(state, app_type, &id)?;
-        log::info!("Successfully imported and enabled prompt '{name}' for {app_str}");
+        log::info!("Imported and enabled prompt from deep link");
     } else {
-        log::info!("Successfully imported prompt '{name}' for {app_str} (disabled)");
+        log::info!("Imported disabled prompt from deep link");
     }
 
     Ok(id)

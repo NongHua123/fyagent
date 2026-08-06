@@ -12,6 +12,7 @@ use serde_json::Value;
 
 use crate::codex_config::{get_codex_config_dir, read_codex_config_text};
 use crate::codex_state_db::codex_state_db_paths;
+use crate::session_manager::terminal::session_resume_argument;
 use crate::session_manager::{SessionMessage, SessionMeta};
 
 use super::utils::{
@@ -411,7 +412,8 @@ fn parse_session_with_titles(
         created_at,
         last_active_at,
         source_path: Some(path.to_string_lossy().to_string()),
-        resume_command: Some(format!("codex resume {session_id}")),
+        resume_command: session_resume_argument(&session_id)
+            .map(|argument| format!("codex resume {argument}")),
     })
 }
 
@@ -528,14 +530,17 @@ mod tests {
     use tempfile::tempdir;
 
     fn write_codex_session(path: &Path, session_id: &str, message: &str) {
-        std::fs::write(
-            path,
-            format!(
-                "{{\"timestamp\":\"2026-03-06T21:50:12Z\",\"type\":\"session_meta\",\"payload\":{{\"id\":\"{session_id}\",\"cwd\":\"/tmp/project\"}}}}\n\
-                 {{\"timestamp\":\"2026-03-06T21:50:13Z\",\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"user\",\"content\":\"{message}\"}}}}\n",
-            ),
-        )
-        .expect("write session");
+        let metadata = serde_json::json!({
+            "timestamp": "2026-03-06T21:50:12Z",
+            "type": "session_meta",
+            "payload": { "id": session_id, "cwd": "/tmp/project" }
+        });
+        let user_message = serde_json::json!({
+            "timestamp": "2026-03-06T21:50:13Z",
+            "type": "response_item",
+            "payload": { "type": "message", "role": "user", "content": message }
+        });
+        std::fs::write(path, format!("{metadata}\n{user_message}\n")).expect("write session");
     }
 
     #[test]
@@ -600,6 +605,26 @@ mod tests {
 
         let meta = parse_session(&path).unwrap();
         assert_eq!(meta.title.as_deref(), Some("How do I deploy?"));
+        assert_eq!(meta.resume_command.as_deref(), Some("codex resume test-id"));
+    }
+
+    #[test]
+    fn parse_session_suppresses_unsafe_resume_commands() {
+        let temp = tempdir().expect("tempdir");
+        for (index, session_id) in [
+            "$(touch /tmp/fyagent-codex-session-id-injection)",
+            "session & calc.exe & rem",
+            "--dangerously-bypass-approvals-and-sandbox",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let path = temp.path().join(format!("session-{index}.jsonl"));
+            write_codex_session(&path, session_id, "hello");
+
+            let meta = parse_session(&path).expect("parse session");
+            assert_eq!(meta.resume_command, None, "unsafe id: {session_id}");
+        }
     }
 
     #[test]

@@ -4,7 +4,8 @@
 
 The renderer compiles with TypeScript strict mode. `tsconfig.json` also enables
 `noUnusedLocals`, `noUnusedParameters`, and `noFallthroughCasesInSwitch`, and
-maps `@/*` to `src/*`. Type-check renderer and test code with `pnpm typecheck`.
+maps `@/*` to `src/*`. Type-check renderer and test code with
+`mise exec -- pnpm typecheck`.
 
 ## Type Ownership
 

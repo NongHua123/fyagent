@@ -1,0 +1,41 @@
+min_version = "2026.8.0"
+
+[settings]
+lockfile = true
+task.run_auto_install = false
+lockfile_platforms = [
+  "linux-x64",
+  "linux-arm64",
+  "macos-x64",
+  "macos-arm64",
+  "windows-x64",
+  "windows-arm64",
+]
+
+[tools]
+node = "22.12.0"
+pnpm = "10.12.3"
+python = "3.12.8"
+rust = { version = "1.95.0", profile = "minimal", components = ["rustfmt", "clippy", "llvm-tools"], targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"] }
+
+[tasks."macos:preflight"]
+description = "Validate the project for the WSL macOS Universal DMG workflow"
+run = "python scripts/macos-cross/preflight.py ."
+
+[tasks."build:cross-windows:x64"]
+description = "Build the Windows x64 MSI cross-build candidate"
+run = "bash scripts/windows-cross/build-windows-msi.sh --arch x64"
+
+[tasks."build:cross-windows:arm64"]
+description = "Build the Windows arm64 MSI cross-build candidate"
+run = "bash scripts/windows-cross/build-windows-msi.sh --arch arm64"
+
+[tasks."build:cross-windows"]
+description = "Build the Windows x64 and arm64 MSI cross-build candidates"
+run = "bash scripts/windows-cross/build-windows-msi.sh --arch all"
+
+[tasks."build:cross-macos:universal"]
+description = "Build the experimental macOS Universal DMG cross-build artifact (prompts for risk acknowledgement)"
+interactive = true
+raw_args = true
+run = "bash scripts/macos-cross/build-universal-dmg.sh"

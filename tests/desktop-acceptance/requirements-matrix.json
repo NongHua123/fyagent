@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "QA-MOCK-001",
+      "requirements": ["QA-001", "QA-002", "QA-005", "QA-007"],
+      "validation": "mock-contract",
+      "evidence": [
+        "tests/desktop-acceptance/fixtures.ts",
+        "tests/desktop-acceptance/geometry.ts",
+        "tests/desktop-acceptance/desktopAcceptanceContract.test.ts"
+      ]
+    },
+    {
+      "id": "workbuddy-service",
+      "requirements": [
+        "WB-T01",
+        "WB-T02",
+        "WB-T03",
+        "WB-T04",
+        "WB-T05",
+        "WB-T06",
+        "WB-T07",
+        "WB-T08",
+        "WB-T09",
+        "WB-T10",
+        "WB-T11",
+        "WB-T12",
+        "WB-T13",
+        "WB-T14"
+      ],
+      "validation": "existing-test",
+      "evidence": [
+        "src-tauri/src/services/workbuddy/config.rs",
+        "src-tauri/src/services/workbuddy/document.rs",
+        "src-tauri/src/services/workbuddy/error.rs"
+      ]
+    },
+    {
+      "id": "workbuddy-renderer",
+      "requirements": [
+        "WB-UI01",
+        "WB-UI02",
+        "WB-UI03",
+        "WB-UI04",
+        "WB-UI08",
+        "WB-UI09"
+      ],
+      "validation": "existing-test",
+      "evidence": [
+        "tests/components/workbuddy/WorkBuddyPage.test.tsx",
+        "tests/components/workbuddy/WorkBuddyDuplicateConflictDialog.test.tsx",
+        "tests/components/workbuddy/urlSafety.test.ts"
+      ]
+    },
+    {
+      "id": "codex-restart",
+      "requirements": [
+        "CR-T01",
+        "CR-T02",
+        "CR-T03",
+        "CR-T04",
+        "CR-T05",
+        "CR-T06",
+        "CR-T07",
+        "CR-T08",
+        "CR-T09",
+        "CR-T10",
+        "CR-T11",
+        "CR-T12",
+        "CR-T13",
+        "CR-UI01",
+        "CR-UI02",
+        "CR-UI03",
+        "CR-UI04",
+        "CR-UI05",
+        "CR-UI06"
+      ],
+      "validation": "existing-test",
+      "evidence": [
+        "src-tauri/src/services/codex_desktop/mod.rs",
+        "src-tauri/src/services/codex_desktop/restart_plan.rs",
+        "tests/components/codex/CodexRestartDialog.test.tsx",
+        "tests/hooks/useCodexRestartCoordinator.test.tsx"
+      ]
+    },
+    {
+      "id": "codex-version-renderer",
+      "requirements": ["CV-T01", "CV-T02", "CV-T03", "CV-T04", "CV-T05"],
+      "validation": "existing-test",
+      "evidence": [
+        "tests/components/CodexDesktopInstallerCard.test.tsx",
+        "tests/hooks/useCodexDesktopInstaller.test.tsx"
+      ]
+    },
+    {
+      "id": "header-window-support",
+      "requirements": [
+        "UI-E01",
+        "UI-E02",
+        "UI-E03",
+        "UI-E04",
+        "UI-E05",
+        "UI-E06",
+        "UI-E07",
+        "UI-E08",
+        "UI-E10"
+      ],
+      "validation": "supporting-test",
+      "evidence": [
+        "tests/components/AppSwitcher.test.tsx",
+        "tests/components/topbar/TopLevelHeader.test.tsx",
+        "tests/hooks/useWindowLayoutMode.test.tsx",
+        "src-tauri/tests/window_layout.rs"
+      ]
+    },
+    {
+      "id": "windows-static-boundary",
+      "requirements": [
+        "WIN-T01",
+        "WIN-T06",
+        "WIN-T09",
+        "WIN-T10",
+        "WIN-T12",
+        "WIN-T14",
+        "WIN-T15"
+      ],
+      "validation": "existing-test",
+      "evidence": [
+        "tests/desktopSecurityBoundary.test.ts",
+        "src-tauri/src/windows_runtime/mod.rs",
+        "src-tauri/src/platform/process_launch.rs",
+        "src-tauri/src/deeplink/tests.rs"
+      ]
+    },
+    {
+      "id": "locale-schema",
+      "requirements": ["I18N-T01", "I18N-T03"],
+      "validation": "existing-test",
+      "evidence": ["tests/config/localeKeyParity.test.ts"]
+    },
+    {
+      "id": "desktop-candidate-e2e",
+      "requirements": [
+        "UI-E01",
+        "UI-E02",
+        "UI-E03",
+        "UI-E04",
+        "UI-E05",
+        "UI-E06",
+        "UI-E07",
+        "UI-E08",
+        "UI-E09",
+        "UI-E10",
+        "WB-E01",
+        "WB-E02",
+        "WB-E03",
+        "WB-E04",
+        "I18N-T02"
+      ],
+      "validation": "candidate-only",
+      "evidence": [
+        "tests/desktop-acceptance/fixtures.ts",
+        "tests/desktop-acceptance/geometry.ts",
+        "tests/e2e/visual-baselines/manifest.json"
+      ]
+    },
+    {
+      "id": "windows-release-candidate",
+      "requirements": [
+        "WIN-T01",
+        "WIN-T02",
+        "WIN-T03",
+        "WIN-T04",
+        "WIN-T05",
+        "WIN-T06",
+        "WIN-T07",
+        "WIN-T08",
+        "WIN-T09",
+        "WIN-T10",
+        "WIN-T11",
+        "WIN-T12",
+        "WIN-T13",
+        "WIN-T14",
+        "WIN-T15"
+      ],
+      "validation": "candidate-only",
+      "evidence": [
+        "docs/fyagent/dev/v1-0.2/07-验收标准与自动化测试计划.md",
+        "tests/desktop-acceptance/requirements-matrix.json"
+      ]
+    }
+  ]
+}

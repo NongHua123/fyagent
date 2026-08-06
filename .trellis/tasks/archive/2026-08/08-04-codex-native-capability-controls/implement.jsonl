@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/fyagent-v1-0-1-config-domains.md", "reason": "Codex capability TOML, provider mutation warning DTO, and proxy projection contract"}
+{"file": ".trellis/spec/backend/development-environment.md", "reason": "Privilege-independent filesystem failure fixtures and poison recovery contract discovered during validation"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Advanced-section capability controls and diagnostic presentation"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Draft analysis and serialized patch queue behavior"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Provider mutation and toast state flow"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Cross-layer warning and feature DTO typing"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Rust IPC to renderer localization consistency"}

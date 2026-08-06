@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  CodexDesktopRestartOutcome,
   JobSnapshot,
   LocalInstallStatus,
   RemoteReleaseStatus,
@@ -40,5 +41,31 @@ export const codexDesktopApi = {
 
   async openLogDirectory(): Promise<void> {
     await invoke("codex_desktop_open_log_directory");
+  },
+
+  async requestRestart(): Promise<CodexDesktopRestartOutcome> {
+    return await invoke("request_codex_desktop_restart");
+  },
+
+  /**
+   * Consume either the initial confirmation capability or an incomplete
+   * operation's retry capability. Both values are opaque, short-lived and
+   * single-use; the renderer only echoes them to this trusted command.
+   */
+  async continueRestartWithForce(
+    token: string,
+  ): Promise<CodexDesktopRestartOutcome> {
+    return await invoke("continue_codex_desktop_restart_with_force", {
+      token,
+    });
+  },
+
+  /**
+   * Cancels only the pending backend continuation identified by this opaque
+   * token. It is intentionally a no-result capability: the renderer cannot
+   * learn whether a process or token still exists.
+   */
+  async cancelRestartWithForce(token: string): Promise<void> {
+    await invoke("cancel_codex_desktop_restart_with_force", { token });
   },
 };

@@ -4,10 +4,12 @@
 
 The Codex desktop installer spans Rust domain/source/platform code, seven Tauri
 commands, TypeScript query/hook/card consumers, and platform-specific
-verification. The frozen product requirements are in docs/fyagent/dev/v1/;
-this specification preserves the executable cross-layer boundary so later work
-does not reintroduce user-controlled installer inputs, drift the wire format,
-or label a platform card with a version from another platform's release.
+verification. The historical v1.0.0 requirements are in
+`docs/fyagent/dev/v1-0.0/`. For the active v1.0.2 scope,
+`docs/fyagent/dev/v1-0.2/` is authoritative where it changes a contract. This
+specification preserves the executable cross-layer boundary so later work does
+not reintroduce user-controlled installer inputs, drift the wire format, or
+label a platform card with a version from another platform's release.
 
 ## 2. Signatures
 

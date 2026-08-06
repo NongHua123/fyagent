@@ -30,6 +30,18 @@ export interface WebDavSyncResult {
   status: string;
 }
 
+/**
+ * Read-only host privilege state. The backend deliberately withholds account,
+ * SID, token, process, and path data from this renderer-facing DTO.
+ */
+export interface RuntimePrivilegeStatus {
+  platform: "windows" | "other";
+  supported: boolean;
+  elevated: boolean;
+  localAdministrator: boolean;
+  interactiveUserMatch: "match" | "mismatch" | "unavailable";
+}
+
 export const settingsApi = {
   async get(): Promise<Settings> {
     return await invoke("get_settings");
@@ -55,6 +67,10 @@ export const settingsApi = {
 
   async isPortable(): Promise<boolean> {
     return await invoke("is_portable_mode");
+  },
+
+  async getRuntimePrivilegeStatus(): Promise<RuntimePrivilegeStatus> {
+    return await invoke("get_runtime_privilege_status");
   },
 
   async getConfigDir(appId: AppId): Promise<string> {

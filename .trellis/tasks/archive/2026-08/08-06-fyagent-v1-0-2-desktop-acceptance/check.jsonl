@@ -1,0 +1,8 @@
+{"file":"docs/fyagent/dev/v1-0.2/07-验收标准与自动化测试计划.md","reason":"P0 场景、视觉稳定性、制品和验收报告标准。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"测试、格式和 i18n 完整性检查。"}
+{"file":".trellis/tasks/08-06-fyagent-v1-0-2-desktop-acceptance/prd.md","reason":"`mise exec -- pnpm test:desktop:mock` 通过 7/7；含失败关闭更新门禁断言，所有调用为 fixture/Node/jsdom，不启动真实桌面应用、Codex/ChatGPT、安装器、UAC 或网络端点。"}
+{"file":"tests/e2e/visual-baselines/manifest.json","reason":"`mise exec -- pnpm test:desktop:visual:preflight` 通过，输出 read-only-preflight / ready-for-candidate-capture，未创建或接受任何 PNG。"}
+{"file":"package.json","reason":"`mise exec -- pnpm test:i18n` 通过 3/3，新增脚本与现有 locale parity 检查一致。"}
+{"file":".github/workflows/ci.yml","reason":"指定 workflow 测试通过 3/3；确认验收 job 仅在手动 CI 路径执行且不调用 test:e2e。"}
+{"file":"tests/desktop-acceptance/","type":"directory","reason":"`mise exec -- pnpm typecheck` 通过；`mise exec -- pnpm test:unit` 最终通过 115 files / 763 tests。首次全量运行有一例既有 Codex 安装器速率断言时序失败，单文件 34/34 和完整复跑均通过，未为该无关波动修改产品逻辑。"}
+{"file":"tests/e2e/visual-baselines/README.md","reason":"真实 WebDriver、签名 Windows 候选、UAC、安装器和截图比较仍未运行，因当前用户明确禁止本机真实 Codex/桌面测试；它们保留为候选环境人工/自动验收项。"}

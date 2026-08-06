@@ -5,7 +5,7 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { server } from "./msw/server";
 import { resetProviderState } from "./msw/state";
-import "./msw/tauriMocks";
+import { clearTauriInvocations } from "./msw/tauriMocks";
 
 beforeAll(async () => {
   server.listen({ onUnhandledRequest: "warn" });
@@ -26,6 +26,7 @@ afterEach(() => {
   cleanup();
   resetProviderState();
   server.resetHandlers();
+  clearTauriInvocations();
   vi.clearAllMocks();
 });
 

@@ -1,0 +1,8 @@
+{"file":"docs/fyagent/dev/v1-0.2/07-验收标准与自动化测试计划.md","reason":"CR/CV 服务、前端和人工验证场景。"}
+{"file":"docs/fyagent/dev/v1-0.2/08-ADR与外部资料.md","reason":"身份、比较器、一次确认和风险取舍。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"前端状态、测试、翻译与可访问性质量门。"}
+{"file":"src-tauri/src/services/codex_desktop/mod.rs","reason":"`mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --offline --locked --lib services::codex_desktop -- --test-threads=1` 通过 23/23 fake 单元测试，覆盖 capability 过期/复用、身份歧义、强制失败、单次启动和验证失败。"}
+{"file":"src/components/codex/CodexRestartDialog.tsx","reason":"Codex restart、installer version state、App 接线与壳层相关的 Vitest 指定集通过 10 files / 83 tests；所有 Tauri invoke 由 MSW fake handlers 响应。"}
+{"file":"src/types/codexDesktop.ts","reason":"`mise exec -- pnpm typecheck` 通过，验证 Rust/TS DTO 消费侧类型一致性。"}
+{"file":"tests/msw/tauriMocks.ts","reason":"补齐窗口 API fake，集成测试不访问真实桌面窗口；未运行任何真实 Codex/ChatGPT、PackageManager 或进程控制。"}
+{"file":"src-tauri/src/codex_desktop/platform/windows/runtime.rs","reason":"仅由 rustfmt 解析；当前环境没有 Windows Rust target，因此没有声称完成 Windows 原生编译或行为验证。"}

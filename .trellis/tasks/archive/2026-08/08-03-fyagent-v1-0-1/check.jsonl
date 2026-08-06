@@ -1,0 +1,6 @@
+{"file":"docs/fyagent/dev/v1-0.1/04-验收标准与测试场景.md","reason":"检查 P0、回归和平台人工验收边界。"}
+{"file":".trellis/spec/backend/index.md","reason":"Rust/Tauri 后端规范索引。"}
+{"file":".trellis/spec/backend/application-identity.md","reason":"产品版本与身份跨层一致性检查。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"前端格式、类型、单元测试和本地化质量规则。"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"表单、对话框、翻译与可访问性组件约定。"}
+{"file":".trellis/tasks/archive/2026-08/08-03-fyagent-v1-0-1/research/implementation-baseline.md","reason":"检查当前代码基线与本地环境限制。"}

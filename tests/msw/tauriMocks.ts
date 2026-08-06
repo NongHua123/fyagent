@@ -3,9 +3,17 @@ import { vi } from "vitest";
 import { server } from "./server";
 
 const TAURI_ENDPOINT = "http://tauri.local";
+const invokedCommands: string[] = [];
+
+export const clearTauriInvocations = () => {
+  invokedCommands.length = 0;
+};
+
+export const getTauriInvocations = (): readonly string[] => invokedCommands;
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: async (command: string, payload: Record<string, unknown> = {}) => {
+    invokedCommands.push(command);
     const response = await fetch(`${TAURI_ENDPOINT}/${command}`, {
       method: "POST",
       headers: {
@@ -62,4 +70,17 @@ void server;
 vi.mock("@tauri-apps/api/path", () => ({
   homeDir: async () => "/home/mock",
   join: async (...segments: string[]) => segments.join("/"),
+}));
+
+const mockCurrentWindow = {
+  close: async () => undefined,
+  isMaximized: async () => false,
+  minimize: async () => undefined,
+  onResized: async (_handler: () => void) => () => undefined,
+  setDecorations: async (_decorations: boolean) => undefined,
+  toggleMaximize: async () => undefined,
+};
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => mockCurrentWindow,
 }));

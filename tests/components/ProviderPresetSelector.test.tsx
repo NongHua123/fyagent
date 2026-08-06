@@ -60,8 +60,6 @@ type TestPresetEntry = {
     websiteUrl: string;
     settingsConfig: Record<string, never>;
     category: ProviderCategory;
-    primePartner?: boolean;
-    isPartner?: boolean;
   };
 };
 
@@ -208,7 +206,7 @@ describe("ProviderPresetSelector pure helpers", () => {
 
     const original = sortPresetEntries(presetEntries, originalMode, t);
     expect(original).not.toBe(presetEntries);
-    // original 模式置顶官方分类（alpha）；其余均非赞助商，按显示名排序
+    // original 模式置顶官方分类（alpha）；其余按显示名排序
     // （Beta Gateway < Delta Mirror < Gamma 本地名）。
     expect(getIds(original)).toEqual(["alpha", "beta", "delta", "gamma"]);
 
@@ -231,15 +229,7 @@ describe("ProviderPresetSelector pure helpers", () => {
     ).toEqual(["alpha", "beta", "delta", "gamma"]);
   });
 
-  it("original 模式按「官方 → 尊享伙伴 → 赞助商 → 非赞助商」四段排序，前三组保序、末组按显示名，双重身份不重复", () => {
-    // 故意打乱传入顺序，验证：
-    // - official 组置顶（officialOnly、officialPrime 按出现顺序）；
-    // - 非官方且 primePartner 的预设次之（primeAndPartner）；
-    // - 赞助商（isPartner）第三段，保持传入（预设文件）顺序：
-    //   partnerZeta 在 partnerAlpha 前，不按字母重排；
-    // - 非赞助商按显示名排序：restAlpha 排到 restZulu 前；
-    // - 既是 official 又是 primePartner 的只归入官方组；
-    //   既是 primePartner 又是 isPartner 的只归入 prime 组、不在赞助商组重复。
+  it("original 模式保持官方预设的输入顺序，并按显示名排列其他预设", () => {
     const mixed: TestPresetEntry[] = [
       {
         id: "restZulu",
@@ -251,24 +241,12 @@ describe("ProviderPresetSelector pure helpers", () => {
         },
       },
       {
-        id: "partnerZeta",
+        id: "gatewayZeta",
         preset: {
-          name: "Zeta Partner",
-          websiteUrl: "https://partner-zeta.example.com",
+          name: "Zeta Gateway",
+          websiteUrl: "https://gateway-zeta.example.com",
           settingsConfig: {},
           category: "aggregator",
-          isPartner: true,
-        },
-      },
-      {
-        id: "primeAndPartner",
-        preset: {
-          name: "Prime And Partner",
-          websiteUrl: "https://prime-and-partner.example.com",
-          settingsConfig: {},
-          category: "cn_official",
-          primePartner: true,
-          isPartner: true,
         },
       },
       {
@@ -281,23 +259,21 @@ describe("ProviderPresetSelector pure helpers", () => {
         },
       },
       {
-        id: "officialPrime",
+        id: "officialSecond",
         preset: {
-          name: "Official Prime",
-          websiteUrl: "https://official-prime.example.com",
+          name: "Official Second",
+          websiteUrl: "https://official-second.example.com",
           settingsConfig: {},
           category: "official",
-          primePartner: true,
         },
       },
       {
-        id: "partnerAlpha",
+        id: "gatewayAlpha",
         preset: {
-          name: "Alpha Partner",
-          websiteUrl: "https://partner-alpha.example.com",
+          name: "Alpha Gateway",
+          websiteUrl: "https://gateway-alpha.example.com",
           settingsConfig: {},
           category: "third_party",
-          isPartner: true,
         },
       },
       {
@@ -313,18 +289,17 @@ describe("ProviderPresetSelector pure helpers", () => {
 
     expect(getIds(sortPresetEntries(mixed, "original", t))).toEqual([
       "officialOnly",
-      "officialPrime",
-      "primeAndPartner",
-      "partnerZeta",
-      "partnerAlpha",
+      "officialSecond",
+      "gatewayAlpha",
       "restAlpha",
+      "gatewayZeta",
       "restZulu",
     ]);
   });
 });
 
 describe("ProviderPresetSelector", () => {
-  it("默认（original 模式）将官方分类置顶，非赞助商按显示名排序", () => {
+  it("默认（original 模式）将官方分类置顶，其余按显示名排序", () => {
     renderSelector();
 
     // 组件内 t() 未配置翻译资源，显示名回退为 key 字面量：

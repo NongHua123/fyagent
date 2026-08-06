@@ -309,6 +309,21 @@ impl Database {
         Ok(())
     }
 
+    /// Clear the database-level current-provider fallback for exactly one app.
+    ///
+    /// The Codex current-provider deletion path uses this after its live
+    /// projection has been cleared, so `settings` cannot fall back to a
+    /// provider that is no longer represented in live configuration.
+    pub(crate) fn clear_current_provider(&self, app_type: &str) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        conn.execute(
+            "UPDATE providers SET is_current = 0 WHERE app_type = ?1",
+            params![app_type],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     pub fn update_provider_settings_config(
         &self,
         app_type: &str,
@@ -714,6 +729,8 @@ mod ensure_official_seed_tests {
         Database, CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID, CODEX_OFFICIAL_PROVIDER_ID,
         GROKBUILD_OFFICIAL_PROVIDER_ID,
     };
+    use crate::provider::{Provider, ProviderMeta};
+    use serde_json::json;
 
     #[test]
     fn ensure_inserts_when_missing() {
@@ -789,6 +806,66 @@ mod ensure_official_seed_tests {
             .expect("Codex official restored");
         assert_eq!(provider.category.as_deref(), Some("official"));
         assert_eq!(provider.settings_config["auth"], serde_json::json!({}));
+    }
+
+    #[test]
+    fn clear_current_provider_only_clears_the_requested_app() {
+        let db = Database::memory().expect("memory db");
+        db.init_default_official_providers().expect("seed");
+        db.set_current_provider(AppType::Codex.as_str(), CODEX_OFFICIAL_PROVIDER_ID)
+            .expect("set Codex current");
+        db.set_current_provider(
+            AppType::ClaudeDesktop.as_str(),
+            CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID,
+        )
+        .expect("set Claude Desktop current");
+
+        db.clear_current_provider(AppType::Codex.as_str())
+            .expect("clear Codex current");
+
+        assert_eq!(
+            db.get_current_provider(AppType::Codex.as_str())
+                .expect("get Codex current"),
+            None
+        );
+        assert_eq!(
+            db.get_current_provider(AppType::ClaudeDesktop.as_str())
+                .expect("get Claude Desktop current"),
+            Some(CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID.to_owned())
+        );
+    }
+
+    #[test]
+    fn saving_provider_never_persists_false_image_extension_marker() {
+        let db = Database::memory().expect("memory db");
+        let mut provider = Provider::with_id(
+            "codex-custom".to_owned(),
+            "Codex custom".to_owned(),
+            json!({ "auth": {}, "config": "" }),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            image_extension_configured: Some(false),
+            ..ProviderMeta::default()
+        });
+
+        db.save_provider(AppType::Codex.as_str(), &provider)
+            .expect("save provider");
+
+        let stored_meta: String = db
+            .conn
+            .lock()
+            .expect("lock database")
+            .query_row(
+                "SELECT meta FROM providers WHERE id = ?1 AND app_type = ?2",
+                rusqlite::params!["codex-custom", AppType::Codex.as_str()],
+                |row| row.get(0),
+            )
+            .expect("read stored meta");
+        assert!(
+            !stored_meta.contains("imageExtensionConfigured"),
+            "the persistence boundary must omit unfinished false markers"
+        );
     }
 
     #[test]

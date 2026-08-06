@@ -1,21 +1,24 @@
-MIT License
+# FyAgent Licensing Notice
 
-Copyright (c) 2025 Jason Young
+FyAgent is a mixed-license project.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+FyAgent-owned original components and modifications produced from this licensing
+cutover are licensed under the PolyForm Noncommercial License 1.0.0. Commercial
+use of those components requires separate written commercial authorization from
+NongHua123.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+CC Switch-derived portions remain available under the MIT License. Other
+third-party contents retain their own license terms. Historical versions that
+were released under the repository-wide MIT declaration are not retrospectively
+affected.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Required Notice: Copyright 2026 NongHua123
+
+See:
+
+- `LICENSES/PolyForm-Noncommercial-1.0.0.txt` for the PolyForm Noncommercial
+  License 1.0.0 terms.
+- `LICENSES/MIT-CC-SWITCH.txt` for the CC Switch MIT License.
+- `LICENSING.md` for the licensing model and cutover details.
+- `THIRD_PARTY_NOTICES.md` for attribution and third-party notices.
+- `COMMERCIAL-LICENSE.md` for commercial licensing information.

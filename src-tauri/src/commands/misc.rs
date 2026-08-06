@@ -10,7 +10,6 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use tauri::AppHandle;
 use tauri::State;
-use tauri_plugin_opener::OpenerExt;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -21,15 +20,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 /// 打开外部链接
 #[tauri::command]
 pub async fn open_external(app: AppHandle, url: String) -> Result<bool, String> {
-    let url = if url.starts_with("http://") || url.starts_with("https://") {
-        url
-    } else {
-        format!("https://{url}")
-    };
-
-    app.opener()
-        .open_url(&url, None::<String>)
-        .map_err(|e| format!("打开链接失败: {e}"))?;
+    crate::platform::process_launch::open_http_url_as_user(app, url).await?;
 
     Ok(true)
 }
@@ -104,6 +95,30 @@ const VALID_TOOLS: [&str; 7] = [
 const CODEX_CLI_LIFECYCLE_DISABLED_MESSAGE: &str =
     "Codex CLI lifecycle management is disabled in FyAgent V1; version detection remains read-only.";
 
+/// A signed Windows release runs elevated by design.  It must never inspect or
+/// execute a CLI found through the interactive user's profile, PATH, WSL, or
+/// tool-manager shims: any of those locations can be controlled by a
+/// medium-integrity process with the same user SID.  Until an ordinary-user
+/// worker with an authenticated return channel exists, the release boundary is
+/// deliberately fail-closed for every local CLI probe and lifecycle action.
+const ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE: &str =
+    "CLI inspection and lifecycle actions are unavailable in the elevated Windows release.";
+
+#[cfg(any(target_os = "windows", test))]
+const fn elevated_windows_cli_boundary_active_for(formal_windows_build: bool) -> bool {
+    formal_windows_build
+}
+
+#[cfg(target_os = "windows")]
+fn elevated_windows_cli_boundary_active() -> bool {
+    elevated_windows_cli_boundary_active_for(crate::windows_runtime::formal_windows_build())
+}
+
+#[cfg(not(target_os = "windows"))]
+const fn elevated_windows_cli_boundary_active() -> bool {
+    false
+}
+
 /// 生命周期写权限比只读探测更窄。Codex 保留在 `VALID_TOOLS`，因此版本和安装分布
 /// 诊断仍可用；但不得规划或执行 install/update/repair 命令。
 fn is_lifecycle_writable(tool: &str) -> bool {
@@ -159,6 +174,17 @@ pub async fn get_tool_versions(
     } else {
         VALID_TOOLS.to_vec()
     };
+
+    // This guard intentionally comes before WSL discovery, path enumeration,
+    // process creation, and network client setup.  The public response keeps
+    // the cards renderable without treating an unexecuted local CLI as broken.
+    if elevated_windows_cli_boundary_active() {
+        return Ok(requested
+            .into_iter()
+            .map(elevated_windows_tool_version_unavailable)
+            .collect());
+    }
+
     let mut results = Vec::new();
 
     for tool in requested {
@@ -178,6 +204,12 @@ pub async fn run_tool_lifecycle_action(
     action: String,
     wsl_shell_by_tool: Option<HashMap<String, WslShellPreferenceInput>>,
 ) -> Result<(), String> {
+    // Do not let a release build reach build_tool_lifecycle_command: its
+    // discovery phase intentionally examines user-scoped CLI installations.
+    if elevated_windows_cli_boundary_active() {
+        return Err(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE.to_string());
+    }
+
     // 在解析 `action` 前拒绝，确保旧版直接 IPC 的 install/update/repair 都得到同一稳定错误。
     if tools
         .iter()
@@ -197,44 +229,63 @@ pub async fn run_tool_lifecycle_action(
         ToolLifecycleAction::Update => "tool_update",
     };
 
+    // Non-release Windows and non-Windows lifecycle whitelist: install/update
+    // is intentionally distinct from ordinary-user external application
+    // launches.  The formal Windows release returned above and never reaches
+    // this discovery/execution path.
     // build 阶段含锚定探测（对每个工具跑 `--version` 定位命令行实际命中那处），
     // 与执行一并放进 blocking 线程，避免阻塞 async runtime。
     tokio::task::spawn_blocking(move || {
         let command_line =
             build_tool_lifecycle_command(&requested, action, wsl_shell_by_tool.as_ref())?;
-        run_tool_lifecycle_silently(&command_line, label)
+        run_elevated_cli_lifecycle_whitelist(&command_line, label)
     })
     .await
     .map_err(|e| format!("tool lifecycle task join error: {e}"))?
 }
 
-/// 静默执行工具安装/更新脚本：直接捕获子进程输出并阻塞到命令真正结束，
+/// 提权 CLI 生命周期白名单的静默执行边界：直接捕获子进程输出并阻塞到命令真正结束，
 /// 不再弹出可见终端窗口（与 `launch_terminal_running` 的"开窗即返回"形成对比，
 /// 后者仍保留给 provider 切换等需要交互式终端的场景）。
 /// 失败时回传 stderr/stdout 末尾若干行，供前端 toast 提示。
+///
+/// 这不是泛化的命令执行入口：`command_line` 只能由同模块私有的
+/// `build_tool_lifecycle_command` 为 `VALID_TOOLS` 与 `ToolLifecycleAction` 构造；
+/// 普通用户应用启动必须走 `platform::process_launch`，不能使用本函数。
 #[cfg(not(target_os = "windows"))]
-fn run_tool_lifecycle_silently(command_line: &str, _label: &str) -> Result<(), String> {
+fn run_elevated_cli_lifecycle_whitelist(command_line: &str, _label: &str) -> Result<(), String> {
     use std::process::Command;
     // command_line 是 bash 风格脚本（含 `set -e` 与多行命令）；强制用 bash 执行，
     // 避免用户默认 shell 为 fish/zsh 时 `set -e` 等语义不一致。
-    let output = Command::new("bash")
-        .arg("-c")
-        .arg(command_line)
-        .output()
-        .map_err(|e| format!("启动安装进程失败: {e}"))?;
+    let mut cmd = Command::new("bash");
+    cmd.arg("-c").arg(command_line);
+    // GUI App 继承的是 launchd 的窄 PATH，而锚定探测用的是登录 shell —— 见
+    // `login_shell_path` doc。命令自身用绝对路径不受影响，但工具**内部** spawn 的
+    // npm/node 等子进程、以及 install 链里裸的 npm fallback 都需要真实 PATH。
+    if let Some(login_path) = login_shell_path() {
+        let inherited = std::env::var("PATH").unwrap_or_default();
+        cmd.env("PATH", merge_path_segments(&login_path, &inherited));
+    }
+    let output = cmd.output().map_err(|e| format!("启动安装进程失败: {e}"))?;
     finish_lifecycle_output(&output)
 }
 
 /// Windows 静默执行：command_line 是 .bat 内容（@echo off + call/wsl 行，CRLF 分隔），
 /// 写临时 .bat 后用 `cmd /C` 执行，`CREATE_NO_WINDOW` 抑制 console 窗口。
 #[cfg(target_os = "windows")]
-fn run_tool_lifecycle_silently(command_line: &str, label: &str) -> Result<(), String> {
+fn run_elevated_cli_lifecycle_whitelist(command_line: &str, label: &str) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     use std::process::Command;
 
-    let bat_file =
-        std::env::temp_dir().join(format!("fyagent_{}_{}.bat", label, std::process::id()));
-    std::fs::write(&bat_file, command_line).map_err(|e| format!("写入批处理文件失败: {e}"))?;
+    // Keep the private executor closed as well.  The IPC caller is guarded
+    // above, but this prevents a future internal call site from accidentally
+    // making a user-controlled command reachable from an elevated release.
+    if elevated_windows_cli_boundary_active() {
+        return Err(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE.to_string());
+    }
+
+    let prefix = format!("fyagent_{label}_");
+    let bat_file = write_persisted_temp_file(&prefix, ".bat", command_line.as_bytes())?;
 
     let output = Command::new("cmd")
         .arg("/C")
@@ -358,6 +409,8 @@ fn normalize_requested_tools(tools: &[String]) -> Vec<&'static str> {
         .collect()
 }
 
+/// Q4 提权 CLI 生命周期动作白名单。此枚举是 install/update 的完整可写集合；
+/// 它不代表一般外部应用、终端或编辑器启动能力。
 #[derive(Debug, Clone, Copy)]
 enum ToolLifecycleAction {
     Install,
@@ -376,6 +429,8 @@ impl FromStr for ToolLifecycleAction {
     }
 }
 
+/// 私有、确定性的白名单命令构造器。前端不能传入命令行，且工具集合会再次由
+/// `VALID_TOOLS` / `is_lifecycle_writable` 收敛后才抵达执行边界。
 fn build_tool_lifecycle_command(
     tools: &[&str],
     action: ToolLifecycleAction,
@@ -831,6 +886,18 @@ async fn get_single_tool_version_impl(
         installed_but_broken,
         env_type,
         wsl_distro,
+    }
+}
+
+fn elevated_windows_tool_version_unavailable(tool: &str) -> ToolVersion {
+    ToolVersion {
+        name: tool.to_string(),
+        version: None,
+        latest_version: None,
+        error: Some(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE.to_string()),
+        installed_but_broken: false,
+        env_type: "windows".to_string(),
+        wsl_distro: None,
     }
 }
 
@@ -1873,6 +1940,73 @@ fn first_abs_path_line(raw: &str) -> Option<&str> {
     raw.lines().map(str::trim).find(|l| l.starts_with('/'))
 }
 
+/// 从 `env` 输出里取 `PATH=` 那行的值。要求值以 `/` 开头——PATH 首段必是绝对路径，
+/// 这条约束顺带跳过"某个多行值的环境变量恰好有一行以 `PATH=` 开头"的污染，
+/// 与 `first_abs_path_line` 对交互式 shell 噪音的容错同理。
+#[cfg(not(target_os = "windows"))]
+fn path_line_from_env_output(raw: &str) -> Option<&str> {
+    raw.lines()
+        .filter_map(|line| line.strip_prefix("PATH="))
+        .find(|value| value.starts_with('/'))
+}
+
+/// 合并两段 PATH：`primary` 全部保留在前，`extra` 中未出现过的段按序追加。
+/// 空段直接丢弃（`a::b` 里的空段在 POSIX 下语义是"当前目录"，注入时不该带上）。
+#[cfg(not(target_os = "windows"))]
+fn merge_path_segments(primary: &str, extra: &str) -> String {
+    let mut seen = std::collections::HashSet::new();
+    let mut merged: Vec<&str> = Vec::new();
+    for segment in primary.split(':').chain(extra.split(':')) {
+        if segment.is_empty() || !seen.insert(segment) {
+            continue;
+        }
+        merged.push(segment);
+    }
+    merged.join(":")
+}
+
+/// 用与 `resolve_path_default` 相同的登录 shell 解析用户的真实 PATH，
+/// 供 `run_elevated_cli_lifecycle_whitelist` 注入给安装/升级脚本。
+///
+/// **要解决的不对称**：探测阶段（`try_get_version` / `resolve_path_default`）跑的是
+/// `$SHELL -lic`，会读 `.zshrc`/`.zprofile`，看得到 nvm / homebrew / volta；而执行阶段
+/// 是非登录 `bash -c`，继承的是 launchd 给 GUI App 的 PATH，通常只有
+/// `/usr/bin:/bin:/usr/sbin:/sbin`。锚定命令自己用绝对路径调用执行体，本不受这条影响
+/// ——但有两类漏网：
+/// 1. **执行体在内部再 spawn 第三方 CLI**：`grok update` 靠 `npm view` 查最新版本
+///    （见 `grok_native_update_command`），npm 又是 `#!/usr/bin/env node` 脚本；
+///    未来任何 self-update 内部调 node/git/python 同理。
+/// 2. **install 分支的 `<官方 installer> || npm i -g <pkg>@latest`**：`||` 右侧是裸命令，
+///    窄 PATH 下必然 exit 127，等于没有兜底。
+///
+/// 把执行阶段的 PATH 拉平到探测阶段的水平，一次消除这两类。
+///
+/// **用 `/usr/bin/env` 而不是 `echo $PATH`**：`$PATH` 在 fish 里是 list 类型，
+/// `"$PATH"` 展开成空格分隔而非冒号分隔；`env` 打印的则是子进程的真实环境，
+/// 任何 shell 下格式都正确。写绝对路径又绕过了 alias / function / PATH 三重不确定性
+/// （交互式 shell 会加载用户 alias）。
+///
+/// 解析不到时返回 `None`，调用方保持原有行为（不注入），不引入新的失败模式。
+#[cfg(not(target_os = "windows"))]
+fn login_shell_path() -> Option<String> {
+    use std::process::Command;
+    let shell = std::env::var("SHELL")
+        .ok()
+        .filter(|s| is_valid_shell(s))
+        .unwrap_or_else(|| "sh".to_string());
+    let flag = default_flag_for_shell(&shell);
+    let out = Command::new(shell)
+        .arg(flag)
+        .arg("/usr/bin/env")
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let raw = decode_command_output(&out.stdout);
+    Some(path_line_from_env_output(&raw)?.to_string())
+}
+
 /// 用与 `try_get_version` 相同的登录 shell 解析 PATH 默认命中的可执行文件路径，
 /// canonicalize 后作为"命令行默认 / 升级目标"的锚点（与升级会作用的那处对齐）。
 #[cfg(not(target_os = "windows"))]
@@ -2222,6 +2356,64 @@ fn anchored_official_update_command(tool: &str, bin_path: &str) -> Option<String
     official_update_args(tool).map(|args| format!("{} {args}", win_quote_path_for_batch(bin_path)))
 }
 
+/// Grok Build 原生安装的升级命令 = `<bin 绝对> update || <官方 installer>`。
+///
+/// **为什么唯独 native Grok 的 self-update 需要 fallback**（claude native / hermes 都没有）：
+/// `grok update` 虽然是自包含 Rust 二进制的子命令，**却把 npm 当成自己的分发管道**——
+/// 先 spawn `npm view @xai-official/grok version --json` 查最新版，再 spawn
+/// `npm i -g @xai-official/grok@<version>` 安装，由该包的 `postinstall.js` 从平台 optional
+/// 依赖里解出二进制、安置成 `~/.grok/bin/grok-<version>` 并 relink `grok`。而 `npm` 自身是
+/// `#!/usr/bin/env node` 脚本 → **native 安装也隐式硬依赖 PATH 里同时有 `npm` + `node`**。
+/// GUI 进程 PATH 由 launchd 给、`run_elevated_cli_lifecycle_whitelist` 又是非登录 `bash -c`，
+/// nvm/homebrew 下的 node+npm 均不可见 → grok 内部 spawn 得到 ENOENT，只向用户抛出
+/// 费解的 `Error: No such file or directory (os error 2)`（实测复现）。
+///
+/// **这是上游换了机制**：0.2.111 及更早版本自更新是直接下载二进制到 `~/.grok/downloads/`
+/// （彼时 `is_grok_native_install` 假设的 "native = 不碰 npm" 成立），0.2.112 起改走上述 npm
+/// 管道（落点随之从 `downloads/` 变为 `bin/`）。**副作用**：npm 全局包那一处安装是
+/// `grok update` 自己装出来的，非用户手动所为，故 native 用户也会被 enumerate 到两处；
+/// 两处由同一次 postinstall 同步，版本恒等。
+///
+/// 这正是 `anchored_command_from_paths` 那条"绝对路径 + 必要时把解释器目录放 PATH 首位"
+/// 不变量没覆盖的第三类：**执行体自身既不需要解释器、也已用绝对路径，却在内部再 spawn
+/// 第三方 CLI**。`login_shell_path` 的 PATH 注入已让绝大多数机器上的 primary 直接成功；
+/// 这条 fallback 覆盖的是"这台机器根本没装 node"——用官方 installer 装的用户完全可能如此。
+///
+/// **fallback 必须是官方 installer，不能是 `npm i -g`**：后者与 primary **同源**——primary
+/// 失败的两种现实原因（本机无 node；npm registry 指向未同步该 tarball 的镜像，见
+/// npmmirror dist-tag 事故）都会让 npm fallback 一并失败，`||` 形同虚设。官方 installer
+/// 是唯一 node-free 的独立路径（只需 `curl`，在 `/usr/bin`，窄 PATH 下可用），且落点同为
+/// `~/.grok/bin`，锚定语义分毫不动 —— 真正的降级冗余要求 fallback 与 primary **失败模式不相关**。
+///
+/// **这条 fallback 还兼具第三重作用：修复上游锚点（勿在重构时丢掉）**。
+/// grok 的更新路径由 `~/.grok/config.toml` 的 `[cli] installer` 决定（`npm` / `internal` /
+/// `gh-release`），而官方 install.sh 会**无条件把该字段覆写为 `internal`**（其 awk 段落先插入
+/// `installer = "internal"`、再跳过 `[cli]` 段里已有的 `installer`/`channel` 行）。于是：
+/// 用户一旦因 install 端的 npm fallback 被切进 npm 模式（postinstall.js 会写 `installer = "npm"`
+/// 并在每次 npm 更新时重写，自我巩固），只要 npm 路径出任何问题，这里的 `||` 就会把他拉回
+/// node-free 的 internal 模式，并顺带修好 npm 模式漏更新的 `~/.grok/bin/agent` launcher。
+/// **实测验证**（2026-07-30，窄 PATH + `installer = "npm"`）：primary 抛 `os error 2` → fallback
+/// 接管 → 装上最新版 → config 写回 `internal` → agent 对齐 → `.zshrc` 幂等更新不重复。
+/// ⇒ install 端保留 npm fallback 是安全的（它是 x.ai 不可达时的唯一退路，防火墙场景需要），
+/// 其副作用由本链自愈；**把这里换成 npm fallback 会同时废掉降级冗余和这条自愈路径**。
+#[cfg(not(target_os = "windows"))]
+fn grok_native_update_command(update: String) -> String {
+    chain_update_commands(
+        update,
+        GROK_INSTALL_UNIX.to_string(),
+        LifecycleCommandShell::Posix,
+    )
+}
+
+/// Windows 版同上，fallback 换成官方 PowerShell installer。
+/// **不走 `chain_update_commands`**：它会给 `||` 右侧加 `call`，而这里的 fallback 是
+/// `powershell.exe`（不是 `.cmd`/`.bat`），不需要 `call`——与 `hermes_update_windows_command`
+/// 同一理由。
+#[cfg(target_os = "windows")]
+fn grok_native_update_command(update: String) -> String {
+    format!("{update} || {}", grok_install_windows_command())
+}
+
 /// 哪些工具的"官方 self-update"优先于包管理器升级（生成 `<tool> update || <pkg-mgr>`）。
 fn prefers_official_update(tool: &str, shell: LifecycleCommandShell) -> bool {
     match shell {
@@ -2281,7 +2473,7 @@ fn package_manager_anchored_command_from_paths(
 ///
 /// **关键不变量：返回的命令必须用绝对路径调用执行体；若执行体通过
 /// `#!/usr/bin/env` 查找解释器，还必须把其同级 bin 目录显式放到 PATH 首位**。
-/// 这条命令最终在 `run_tool_lifecycle_silently` 的非登录 `bash -c` 里执行——
+/// 这条命令最终在 `run_elevated_cli_lifecycle_whitelist` 的非登录 `bash -c` 里执行——
 /// GUI App 启动的进程 PATH 由 launchd / Windows Service / systemd 给,通常**不含**
 /// `~/.local/bin` / `/opt/homebrew/bin` / `~/.volta/bin` 等用户级 bin 目录;而探测
 /// 阶段 `try_get_version` 用的是 `$SHELL -lic`(登录+交互式,会读 .zshrc/.zprofile),
@@ -2320,7 +2512,9 @@ fn anchored_command_from_paths(tool: &str, bin_path: &str, real_target: &str) ->
         return anchored_official_update_command(tool, bin_path);
     }
     if tool == "grok" && is_grok_native_install(bin_path, real_target) {
-        return anchored_official_update_command(tool, bin_path);
+        return Some(grok_native_update_command(
+            anchored_official_update_command(tool, bin_path)?,
+        ));
     }
     let package_command = package_manager_anchored_command_from_paths(tool, bin_path, real_target);
     if brew_formula_from_path(real_target).is_some() {
@@ -2403,7 +2597,9 @@ fn anchored_command_from_paths(tool: &str, bin_path: &str, real_target: &str) ->
         return anchored_official_update_command(tool, bin_path);
     }
     if tool == "grok" && is_grok_native_install(bin_path, real_target) {
-        return anchored_official_update_command(tool, bin_path);
+        return Some(grok_native_update_command(
+            anchored_official_update_command(tool, bin_path)?,
+        ));
     }
     let package_command = package_manager_anchored_command_from_paths(tool, bin_path);
     if prefers_official_update(tool, LifecycleCommandShell::WindowsBatch) {
@@ -2493,6 +2689,11 @@ fn installer_with_npm_fallback(installer: &str, tool: &str) -> String {
 fn posix_install_command_for(tool: &str) -> String {
     match tool {
         "claude" => installer_with_npm_fallback(CLAUDE_INSTALL_UNIX, tool),
+        // Grok 的 npm fallback **会切换用户的分发模式**（该包 postinstall 把
+        // `~/.grok/config.toml` 的 `[cli] installer` 写成 `npm`，此后 `grok update` 一律走
+        // npm、隐式依赖 node）。仍然保留它：官方 installer 不可达（防火墙 / x.ai 被拦）时
+        // 这是唯一退路，而副作用可自愈——`grok_native_update_command` 的 `||` 官方 installer
+        // 会在 npm 路径出问题时把 `installer` 覆写回 `internal`（见该函数 doc 的实测记录）。
         "grok" => installer_with_npm_fallback(GROK_INSTALL_UNIX, tool),
         "opencode" => installer_with_npm_fallback(OPENCODE_INSTALL_UNIX, tool),
         "hermes" => HERMES_INSTALL_UNIX.to_string(),
@@ -2576,6 +2777,12 @@ pub struct ToolInstallationReport {
 pub async fn probe_tool_installations(
     tools: Vec<String>,
 ) -> Result<Vec<ToolInstallationReport>, String> {
+    // This command performs the same path/PATH scan and `--version` execution
+    // as lifecycle planning, so it shares the exact elevated-release boundary.
+    if elevated_windows_cli_boundary_active() {
+        return Err(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE.to_string());
+    }
+
     let requested = normalize_requested_tools(&tools);
     if requested.is_empty() {
         return Err("No supported tools selected".to_string());
@@ -2670,8 +2877,8 @@ pub async fn open_provider_terminal(
     let config = &provider.settings_config;
     let env_vars = extract_env_vars_from_config(config, &app_type);
 
-    // 根据平台启动终端，传入提供商ID用于生成唯一的配置文件名
-    launch_terminal_with_env(env_vars, &providerId, launch_cwd.as_deref())
+    // 根据平台启动终端；配置文件名由安全的随机临时文件创建器生成。
+    launch_terminal_with_env(env_vars, launch_cwd.as_deref())
         .map_err(|e| format!("启动终端失败: {e}"))?;
 
     Ok(true)
@@ -2768,18 +2975,9 @@ fn resolve_launch_cwd(cwd: Option<String>) -> Result<Option<PathBuf>, String> {
 /// 使用 --settings 参数传入提供商特定的 API 配置
 fn launch_terminal_with_env(
     env_vars: Vec<(String, String)>,
-    provider_id: &str,
     cwd: Option<&Path>,
 ) -> Result<(), String> {
-    let temp_dir = std::env::temp_dir();
-    let config_file = temp_dir.join(format!(
-        "claude_{}_{}.json",
-        provider_id,
-        std::process::id()
-    ));
-
-    // 创建并写入配置文件
-    write_claude_config(&config_file, &env_vars)?;
+    let config_file = create_claude_config(&env_vars)?;
 
     #[cfg(target_os = "macos")]
     {
@@ -2795,19 +2993,22 @@ fn launch_terminal_with_env(
 
     #[cfg(target_os = "windows")]
     {
-        launch_windows_terminal(&temp_dir, &config_file, cwd)?;
+        launch_windows_terminal(&config_file, cwd)?;
         Ok(())
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-    Err("不支持的操作系统".to_string())
+    {
+        let _ = std::fs::remove_file(&config_file);
+        Err("不支持的操作系统".to_string())
+    }
 }
 
-/// 写入 claude 配置文件
-fn write_claude_config(
-    config_file: &std::path::Path,
-    env_vars: &[(String, String)],
-) -> Result<(), String> {
+/// 创建包含 Claude provider 设置的随机、原子临时配置文件。
+///
+/// 这类配置可能含凭据，因此不能使用只含 PID 的可预测文件名。文件会在启动
+/// 失败时立即删除，或由已启动的用户会话脚本在 Claude 退出后删除。
+fn create_claude_config(env_vars: &[(String, String)]) -> Result<PathBuf, String> {
     let mut config_obj = serde_json::Map::new();
     let mut env_obj = serde_json::Map::new();
 
@@ -2820,7 +3021,33 @@ fn write_claude_config(
     let config_json =
         serde_json::to_string_pretty(&config_obj).map_err(|e| format!("序列化配置失败: {e}"))?;
 
-    std::fs::write(config_file, config_json).map_err(|e| format!("写入配置文件失败: {e}"))
+    write_persisted_temp_file("fyagent_claude_", ".json", config_json.as_bytes())
+}
+
+/// Atomically creates a random named temporary file that must outlive the
+/// elevated process long enough for the interactive user's Explorer hand-off.
+/// The caller owns removal after a failed hand-off; terminal scripts remove
+/// themselves after successful execution.
+fn write_persisted_temp_file(
+    prefix: &str,
+    suffix: &str,
+    content: &[u8],
+) -> Result<PathBuf, String> {
+    use std::io::Write;
+
+    let mut file = tempfile::Builder::new()
+        .prefix(prefix)
+        .suffix(suffix)
+        .tempfile()
+        .map_err(|error| format!("创建临时文件失败: {error}"))?;
+    file.write_all(content)
+        .map_err(|error| format!("写入临时文件失败: {error}"))?;
+    file.flush()
+        .map_err(|error| format!("刷新临时文件失败: {error}"))?;
+    let (_, path) = file
+        .keep()
+        .map_err(|error| format!("保留临时文件失败: {error}"))?;
+    Ok(path)
 }
 
 /// macOS: 根据用户首选终端启动
@@ -3260,61 +3487,45 @@ fn which_command(cmd: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Windows: 根据用户首选终端启动
+/// Windows: 由 Explorer 的交互用户会话打开固定、后端生成的批处理脚本。
+///
+/// 主进程在 Windows 上可能已提升。这里不能再由主进程选择 `cmd`、PowerShell
+/// 或 Windows Terminal 并启动它们，否则普通用户终端会继承管理员令牌。批处理
+/// 本身只承载本函数生成的可信 Claude 配置路径，且没有参数或解释器入口给 IPC。
 #[cfg(target_os = "windows")]
 fn launch_windows_terminal(
-    temp_dir: &std::path::Path,
     config_file: &std::path::Path,
     cwd: Option<&Path>,
 ) -> Result<(), String> {
-    let preferred = crate::settings::get_preferred_terminal();
-    let terminal = preferred.as_deref().unwrap_or("cmd");
-
-    let bat_file = temp_dir.join(format!("fyagent_claude_{}.bat", std::process::id()));
     let config_path_for_batch = escape_windows_batch_value(&config_file.to_string_lossy());
     let cwd_command = build_windows_cwd_command(cwd);
 
+    // The generated provider config can contain credentials. Delete it before
+    // the interactive `pause`; only the batch self-cleanup waits for the user
+    // to read terminal diagnostics.
     let content = format!(
-        "@echo off
-{cwd_command}
-echo Using provider-specific claude config:
-echo {}
-claude --settings \"{}\"
-del \"{}\" >nul 2>&1
-del \"%~f0\" >nul 2>&1
-",
-        config_path_for_batch,
-        config_path_for_batch,
-        config_path_for_batch,
+        "@echo off\r\n{cwd_command}echo Using provider-specific claude config:\r\necho {config_path}\r\nclaude --settings \"{config_path}\"\r\ndel \"{config_path}\" >nul 2>&1\r\necho.\r\necho [fyagent] Command exited. Press any key to close.\r\npause >nul\r\ndel \"%~f0\" >nul 2>&1\r\n",
+        config_path = config_path_for_batch,
         cwd_command = cwd_command,
     );
 
-    std::fs::write(&bat_file, &content).map_err(|e| format!("写入批处理文件失败: {e}"))?;
-
-    let bat_path = bat_file.to_string_lossy();
-    let ps_cmd = format!("& '{}'", bat_path);
-
-    // Try the preferred terminal first
-    let result = match terminal {
-        "powershell" => run_windows_start_command(
-            &["powershell", "-NoExit", "-Command", &ps_cmd],
-            "PowerShell",
-        ),
-        "wt" => run_windows_start_command(&["wt", "cmd", "/K", &bat_path], "Windows Terminal"),
-        _ => run_windows_start_command(&["cmd", "/K", &bat_path], "cmd"), // "cmd" or default
+    let bat_file = match write_persisted_temp_file("fyagent_claude_", ".bat", content.as_bytes()) {
+        Ok(bat_file) => bat_file,
+        Err(error) => {
+            let _ = std::fs::remove_file(config_file);
+            return Err(error);
+        }
     };
 
-    // If preferred terminal fails and it's not the default, try cmd as fallback
-    if result.is_err() && terminal != "cmd" {
-        log::warn!(
-            "首选终端 {} 启动失败，回退到 cmd: {:?}",
-            terminal,
-            result.as_ref().err()
-        );
-        return run_windows_start_command(&["cmd", "/K", &bat_path], "cmd");
+    let result = crate::platform::process_launch::launch_terminal_script_as_user(&bat_file);
+    if result.is_err() {
+        // Explorer unavailable means no user-owned process can consume the
+        // script. Remove the provider configuration instead of retrying under
+        // the elevated parent process.
+        let _ = std::fs::remove_file(&bat_file);
+        let _ = std::fs::remove_file(config_file);
     }
-
-    result
+    result.map_err(|error| format!("普通用户终端启动失败: {error}"))
 }
 
 #[cfg_attr(windows, allow(dead_code))]
@@ -3357,33 +3568,6 @@ fn escape_windows_batch_value(value: &str) -> String {
         .replace('(', "^(")
         .replace(')', "^)")
 }
-/// Windows: Run a start command with common error handling
-#[cfg(target_os = "windows")]
-fn run_windows_start_command(args: &[&str], terminal_name: &str) -> Result<(), String> {
-    use std::process::Command;
-
-    let mut full_args = vec!["/C", "start"];
-    full_args.extend(args);
-
-    let output = Command::new("cmd")
-        .args(&full_args)
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| format!("启动 {} 失败: {e}", terminal_name))?;
-
-    if !output.status.success() {
-        let stderr = decode_command_output(&output.stderr);
-        return Err(format!(
-            "{} 启动失败 (exit code: {:?}): {}",
-            terminal_name,
-            output.status.code(),
-            stderr
-        ));
-    }
-
-    Ok(())
-}
-
 /// 打开用户首选终端并在其中执行一段可信命令脚本。脚本尾部 `read -r` / `pause`
 /// 是刻意设计的——让命令退出后窗口不要瞬间关闭，用户才看得到 `command
 /// not found` / `ModuleNotFoundError` 这类诊断信息。
@@ -3391,7 +3575,9 @@ fn run_windows_start_command(args: &[&str], terminal_name: &str) -> Result<(), S
 /// **Security**：`command_line` 会被原样拼进 shell/batch 脚本，调用方必须
 /// 保证它是可信字符串（当前只由后端硬编码调用）。
 pub(crate) fn launch_terminal_running(command_line: &str, label: &str) -> Result<(), String> {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let temp_dir = std::env::temp_dir();
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let pid = std::process::id();
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -3519,52 +3705,26 @@ read -r _
 
     #[cfg(target_os = "windows")]
     {
-        let preferred = crate::settings::get_preferred_terminal();
-        let terminal = preferred.as_deref().unwrap_or("cmd");
-
-        let bat_file = temp_dir.join(format!("fyagent_{}_{}.bat", label, pid));
         let content = format!(
             "@echo off\r\necho [fyagent] Starting: {label}\r\necho.\r\n{cmd}\r\necho.\r\necho [fyagent] Command exited. Press any key to close.\r\npause >nul\r\ndel \"%~f0\" >nul 2>&1\r\n",
             label = label,
             cmd = command_line,
         );
-        std::fs::write(&bat_file, &content).map_err(|e| format!("写入批处理文件失败: {e}"))?;
+        let bat_file = write_persisted_temp_file("fyagent_terminal_", ".bat", content.as_bytes())?;
 
-        let bat_path = bat_file.to_string_lossy();
-        let ps_cmd = format!("& '{}'", bat_path);
-
-        let result = match terminal {
-            "powershell" => run_windows_start_command(
-                &["powershell", "-NoExit", "-Command", &ps_cmd],
-                "PowerShell",
-            ),
-            "wt" => run_windows_start_command(&["wt", "cmd", "/K", &bat_path], "Windows Terminal"),
-            _ => run_windows_start_command(&["cmd", "/K", &bat_path], "cmd"),
-        };
-
-        let final_result = if result.is_err() && terminal != "cmd" {
-            log::warn!(
-                "首选终端 {} 启动失败，回退到 cmd: {:?}",
-                terminal,
-                result.as_ref().err()
-            );
-            run_windows_start_command(&["cmd", "/K", &bat_path], "cmd")
-        } else {
-            result
-        };
-
-        // The .bat self-deletes (`del "%~f0"`) after it runs, but that only
-        // fires if *some* terminal actually launched it. If every attempt
-        // failed, sweep the temp file ourselves to avoid pollution.
-        if final_result.is_err() {
+        let result = crate::platform::process_launch::launch_terminal_script_as_user(&bat_file);
+        if result.is_err() {
+            // The .bat self-deletes only after Explorer successfully hands it
+            // to the interactive user. Never fall back to an elevated terminal
+            // when that hand-off is unavailable.
             let _ = std::fs::remove_file(&bat_file);
         }
-        final_result
+        result.map_err(|error| format!("普通用户终端启动失败: {error}"))
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
-        let _ = (temp_dir, pid, command_line, label);
+        let _ = (command_line, label);
         Err("不支持的操作系统".to_string())
     }
 }
@@ -3769,6 +3929,24 @@ mod tests {
             plan_command_for("codex", &[]),
             (String::new(), false, false)
         );
+    }
+
+    #[test]
+    fn formal_windows_cli_boundary_is_fail_closed_without_a_native_runtime() {
+        assert!(elevated_windows_cli_boundary_active_for(true));
+        assert!(!elevated_windows_cli_boundary_active_for(false));
+
+        let unavailable = elevated_windows_tool_version_unavailable("claude");
+        assert_eq!(unavailable.name, "claude");
+        assert_eq!(unavailable.version, None);
+        assert_eq!(unavailable.latest_version, None);
+        assert_eq!(
+            unavailable.error.as_deref(),
+            Some(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE)
+        );
+        assert!(!unavailable.installed_but_broken);
+        assert_eq!(unavailable.env_type, "windows");
+        assert_eq!(unavailable.wsl_distro, None);
     }
 
     #[tokio::test]
@@ -4040,11 +4218,24 @@ mod tests {
         }
 
         #[test]
-        fn grok_native_windows_uses_self_update() {
+        fn grok_native_windows_uses_self_update_with_installer_fallback() {
+            // sibling 有 npm.cmd 也**不能**拿它当 fallback:`grok update` 本身就是靠 npm
+            // 分发的(见 grok_native_update_command doc),npm fallback 与 primary 同源、
+            // 会一起失败。fallback 必须是官方 PowerShell installer —— 唯一不经 npm 的路径。
             let (_dir, _sub, bin_path) = setup_sibling(".grok/bin", "grok.exe", &["npm.cmd"]);
-            let cmd = anchored_command_from_paths("grok", &bin_path, &bin_path);
-            let expected = format!("{} update", expect_quoted_path(&bin_path));
-            assert_eq!(cmd.as_deref(), Some(expected.as_str()));
+            let cmd = anchored_command_from_paths("grok", &bin_path, &bin_path).unwrap();
+            let expected = format!(
+                "{} update || {}",
+                expect_quoted_path(&bin_path),
+                grok_install_windows_command()
+            );
+            assert_eq!(cmd, expected);
+            // fallback 是 powershell.exe 不是 .cmd/.bat —— `||` 右侧不该有 `call`。
+            assert!(
+                !cmd.contains("|| call"),
+                "powershell needs no `call`: {cmd}"
+            );
+            assert!(!cmd.contains("npm"), "npm must not be the fallback: {cmd}");
         }
 
         #[test]
@@ -4509,7 +4700,7 @@ mod tests {
         }
 
         #[test]
-        fn grok_native_installer_uses_self_update() {
+        fn grok_native_installer_uses_self_update_with_installer_fallback() {
             // ~/.grok/bin/grok is a launcher symlink into ~/.grok/downloads.
             // Updating it through npm would create or mutate a different install.
             let cmd = anchored_command_from_paths(
@@ -4517,7 +4708,25 @@ mod tests {
                 "/Users/me/.grok/bin/grok",
                 "/Users/me/.grok/downloads/grok-macos-aarch64",
             );
-            assert_eq!(cmd.as_deref(), Some("/Users/me/.grok/bin/grok update"));
+            assert_eq!(
+                cmd.as_deref(),
+                Some(format!("/Users/me/.grok/bin/grok update || {GROK_INSTALL_UNIX}").as_str())
+            );
+        }
+
+        #[test]
+        fn grok_native_update_falls_back_to_installer_not_npm() {
+            // 反向锁定:`grok update` 内部靠 `npm view` + `npm i -g` 完成升级,GUI 的窄
+            // PATH 下会 ENOENT。fallback 必须是官方 installer —— 换成 `npm i -g` 就与
+            // primary 同源(无 node / 镜像缺 tarball 时一起失败),`||` 形同虚设。
+            let cmd = anchored_command_from_paths(
+                "grok",
+                "/Users/me/.grok/bin/grok",
+                "/Users/me/.grok/downloads/grok-macos-aarch64",
+            )
+            .expect("native grok should anchor");
+            assert!(cmd.contains("x.ai/cli/install.sh"), "{cmd}");
+            assert!(!cmd.contains("npm"), "npm must not be the fallback: {cmd}");
         }
 
         #[test]
@@ -4527,7 +4736,10 @@ mod tests {
                 "/Users/me/bin/grok",
                 "/Users/me/.grok/downloads/grok-macos-aarch64",
             );
-            assert_eq!(cmd.as_deref(), Some("/Users/me/bin/grok update"));
+            assert_eq!(
+                cmd.as_deref(),
+                Some(format!("/Users/me/bin/grok update || {GROK_INSTALL_UNIX}").as_str())
+            );
         }
 
         #[test]
@@ -4895,6 +5107,35 @@ mod tests {
             );
             // 输出里没有任何绝对路径 → None。
             assert_eq!(first_abs_path_line("welcome\nbye\n"), None);
+        }
+
+        #[test]
+        fn path_line_from_env_output_survives_shell_noise() {
+            // `$SHELL -lic /usr/bin/env` 的 stdout 前面可能有交互式 rc 的欢迎语。
+            let raw = "🚀 Welcome back, Jason!\nSHELL=/bin/zsh\nPATH=/opt/homebrew/bin:/usr/bin\nHOME=/Users/me\n";
+            assert_eq!(
+                path_line_from_env_output(raw),
+                Some("/opt/homebrew/bin:/usr/bin")
+            );
+            // 多行值的环境变量里恰好有一行以 `PATH=` 开头时，「值须以 / 开头」把它筛掉。
+            let poisoned = "SOME_SCRIPT=line1\nPATH=not-a-path\nPATH=/usr/bin:/bin\n";
+            assert_eq!(path_line_from_env_output(poisoned), Some("/usr/bin:/bin"));
+            // 完全没有 PATH 行 → None，调用方保持不注入。
+            assert_eq!(path_line_from_env_output("HOME=/Users/me\n"), None);
+        }
+
+        #[test]
+        fn merge_path_segments_dedupes_preserving_login_order() {
+            // 登录 shell 的段全部在前且保序；继承 PATH 里的新段追加在后。
+            assert_eq!(
+                merge_path_segments(
+                    "/Users/me/.nvm/versions/node/v22/bin:/usr/bin:/bin",
+                    "/usr/bin:/bin:/usr/sbin"
+                ),
+                "/Users/me/.nvm/versions/node/v22/bin:/usr/bin:/bin:/usr/sbin"
+            );
+            // 空段（`a::b` 在 POSIX 下意为当前目录）不该被注入。
+            assert_eq!(merge_path_segments("/usr/bin::/bin", ""), "/usr/bin:/bin");
         }
 
         #[test]

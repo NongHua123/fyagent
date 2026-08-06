@@ -10,6 +10,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import {
+  blocksInstallOrUpdate,
+  canRetryRemoteVersion,
+  deriveLocalVersionState,
+  deriveRemoteVersionState,
+  type LocalVersionState,
+  type RemoteVersionState,
+} from "@/components/codex/versionState";
 import { codexDesktopApi } from "@/lib/api/codex-desktop";
 import {
   codexDesktopKeys,
@@ -19,7 +27,6 @@ import {
 } from "@/lib/query/codex-desktop";
 import {
   comparePlatformVersions,
-  displayPlatformVersion,
   isInstalledLocalStatus,
   isTerminalJobStage,
   type InstallerErrorDto,
@@ -95,16 +102,23 @@ function deriveDownloadSpeed(
 
 export interface CodexDesktopInstallerViewModel {
   state: InstallerViewState;
-  localVersion?: string;
-  remoteVersion?: string;
+  localVersion: LocalVersionState;
+  remoteVersion: RemoteVersionState;
+  canInstall: boolean;
+  canUpdate: boolean;
+  canLaunch: boolean;
+  canRetryRemote: boolean;
+  statusMessageKey: string;
   progress?: CodexDesktopProgress;
   primaryAction: InstallerPrimaryAction;
   primaryDisabled: boolean;
   canCancel: boolean;
   error: InstallerErrorDto | null;
+  isActing: boolean;
   isRefreshing: boolean;
   refresh(): Promise<void>;
   runPrimaryAction(): Promise<void>;
+  launch(): Promise<void>;
   cancel(): Promise<void>;
   copyErrorDetails(): Promise<void>;
   openLogs(): Promise<void>;
@@ -185,7 +199,10 @@ export function deriveInstallerViewState(
     return "checking";
   }
 
-  if (options.localFailed || options.remoteFailed || !remote) {
+  // A background remote failure retains the previously validated descriptor.
+  // Its dedicated version state disables install/update while the known local
+  // application remains launchable; it must not collapse into unavailable.
+  if (options.localFailed || !remote) {
     return isInstalledLocalStatus(local)
       ? "remote_unavailable_installed"
       : "remote_unavailable";
@@ -222,6 +239,8 @@ function primaryActionFor(
     case "remote_unavailable_installed":
     case "succeeded":
       return "launch";
+    case "checking":
+      return isInstalledLocalStatus(local) ? "launch" : null;
     case "remote_unavailable":
       return "retry";
     case "failed":
@@ -246,6 +265,71 @@ function primaryActionFor(
       );
     default:
       return null;
+  }
+}
+
+const installerStateMessageKeys: Record<InstallerViewState, string> = {
+  hidden: "codexDesktop.state.hidden",
+  checking: "codexDesktop.state.checking",
+  unsupported_architecture: "codexDesktop.state.unsupportedArchitecture",
+  ambiguous: "codexDesktop.state.ambiguous",
+  ready_install: "codexDesktop.state.readyInstall",
+  ready_update: "codexDesktop.state.updateAvailable",
+  ready_launch: "codexDesktop.state.upToDate",
+  local_newer: "codexDesktop.state.localNewer",
+  remote_unavailable: "codexDesktop.state.remoteUnavailable",
+  remote_unavailable_installed: "codexDesktop.state.remoteUnavailableInstalled",
+  job_checking: "codexDesktop.state.checking",
+  job_preflight: "codexDesktop.state.preflight",
+  job_downloading: "codexDesktop.state.downloading",
+  job_verifying_download: "codexDesktop.state.verifyingDownload",
+  job_installing: "codexDesktop.state.installing",
+  job_verifying_installation: "codexDesktop.state.verifyingInstallation",
+  succeeded: "codexDesktop.state.succeeded",
+  failed: "codexDesktop.state.failed",
+  cancelled: "codexDesktop.state.cancelled",
+};
+
+function statusMessageKeyFor(
+  state: InstallerViewState,
+  localVersion: LocalVersionState,
+  remoteVersion: RemoteVersionState,
+): string {
+  if (
+    state.startsWith("job_") ||
+    state === "succeeded" ||
+    state === "failed" ||
+    state === "cancelled" ||
+    state === "hidden" ||
+    state === "unsupported_architecture" ||
+    state === "ambiguous"
+  ) {
+    return installerStateMessageKeys[state];
+  }
+
+  switch (remoteVersion.kind) {
+    case "refreshing":
+      return "codexDesktop.version.refreshing";
+    case "refetch_error":
+      return "codexDesktop.version.refreshNetworkFailed";
+    case "initial_network_error":
+      return "codexDesktop.version.fetchFailed";
+    case "platform_unavailable":
+      return "codexDesktop.version.platformUnavailable";
+    case "metadata_error":
+      return "codexDesktop.version.metadataInvalid";
+    case "loading":
+      return localVersion.kind === "loading"
+        ? "codexDesktop.version.localLoading"
+        : "codexDesktop.version.remoteLoading";
+    case "available":
+      if (localVersion.kind === "loading") {
+        return "codexDesktop.version.localLoading";
+      }
+      if (localVersion.kind === "error") {
+        return "codexDesktop.version.localError";
+      }
+      return installerStateMessageKeys[state];
   }
 }
 
@@ -357,6 +441,17 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
   const local = localQuery.data;
   const remote = remoteQuery.data;
   const job = jobQuery.data;
+  const localVersion = deriveLocalVersionState(local, {
+    isLoading: localQuery.isLoading,
+    isError: localQuery.isError,
+  });
+  const remoteVersion = deriveRemoteVersionState(remote, {
+    isLoading: remoteQuery.isLoading,
+    isError: remoteQuery.isError,
+    isRefetching: remoteQuery.isRefetching,
+    isRefetchError: remoteQuery.isRefetchError,
+    errorCode: asInstallerError(remoteQuery.error)?.code ?? null,
+  });
 
   useLayoutEffect(() => {
     const next = deriveDownloadSpeed(downloadSpeedSampleRef.current, job);
@@ -396,7 +491,28 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
     localQuery.error,
     remoteQuery.error,
   ]);
-  const primaryAction = primaryActionFor(state, local, remote, error);
+  const defaultPrimaryAction = primaryActionFor(state, local, remote, error);
+  const canInstall =
+    localVersion.kind === "not_installed" && remoteVersion.kind === "available";
+  const canUpdate =
+    isInstalledLocalStatus(local) &&
+    remoteVersion.kind === "available" &&
+    remote !== undefined &&
+    comparePlatformVersions(
+      local.application.platformVersion,
+      remote.platformVersion,
+    ) === -1;
+  const canLaunch = localVersion.kind === "installed";
+  const canRetryRemote = canRetryRemoteVersion(remoteVersion);
+  const primaryAction =
+    state === "remote_unavailable" && !canRetryRemote
+      ? null
+      : defaultPrimaryAction;
+  const statusMessageKey = statusMessageKeyFor(
+    state,
+    localVersion,
+    remoteVersion,
+  );
 
   useEffect(() => {
     if (!job || !isTerminalJobStage(job.stage)) return;
@@ -452,6 +568,19 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
     const snapshot = await codexDesktopApi.startInstall(expectedReleaseId);
     mergeJobSnapshot(snapshot);
   }, [job?.release.releaseId, mergeJobSnapshot, refresh, remote?.releaseId]);
+
+  const launch = useCallback(async () => {
+    if (isActing) return;
+    setActionError(null);
+    setIsActing(true);
+    try {
+      await codexDesktopApi.launch();
+    } catch (error) {
+      setActionError(error);
+    } finally {
+      setIsActing(false);
+    }
+  }, [isActing]);
 
   const runPrimaryAction = useCallback(async () => {
     if (!primaryAction || isActing) return;
@@ -540,19 +669,29 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
 
   return {
     state,
-    localVersion: isInstalledLocalStatus(local)
-      ? (local.application.displayVersion ??
-        displayPlatformVersion(local.application.platformVersion))
-      : undefined,
-    remoteVersion: remote?.displayVersion,
+    localVersion,
+    remoteVersion,
+    canInstall,
+    canUpdate,
+    canLaunch,
+    canRetryRemote,
+    statusMessageKey,
     progress,
     primaryAction,
-    primaryDisabled: !primaryAction || isActing,
+    primaryDisabled:
+      !primaryAction ||
+      isActing ||
+      ((primaryAction === "install" || primaryAction === "update") &&
+        (blocksInstallOrUpdate(remoteVersion) ||
+          (primaryAction === "install" && !canInstall) ||
+          (primaryAction === "update" && !canUpdate))),
     canCancel: Boolean(job?.cancellable) && !isActing,
     error,
+    isActing,
     isRefreshing: remoteQuery.isFetching,
     refresh,
     runPrimaryAction,
+    launch,
     cancel,
     copyErrorDetails,
     openLogs,

@@ -44,6 +44,55 @@ export interface InstalledApplicationSummary {
 
 export type UnsupportedReason = "platform" | "architecture" | "os_version";
 
+/**
+ * Fixed, renderer-safe runtime summary for a possible Codex Desktop restart.
+ * It deliberately carries no process identifier, executable path, or launch
+ * command; all process identity decisions remain in the backend.
+ */
+export type CodexDesktopRuntimeStatus =
+  | { state: "not_installed" }
+  | { state: "not_running" }
+  | { state: "running" }
+  | {
+      state: "ambiguous";
+      reason: "installations" | "instances" | "identity_verification";
+    }
+  | {
+      state: "unsupported";
+      reason: UnsupportedReason;
+    }
+  | { state: "untrusted_target" };
+
+/**
+ * Renderer-safe reason for the single destructive restart confirmation.
+ * `unique_runtime` deliberately avoids claiming that multiple applications
+ * were found when the backend has one exact, trusted runtime target.
+ */
+export type CodexDesktopRestartPromptReason =
+  | "unique_runtime"
+  | "multiple_instances"
+  | "multiple_installations"
+  | "identity_binding_ambiguous";
+
+export type CodexDesktopManualRestartReason =
+  | "untrusted_target"
+  | "unsupported";
+
+/** The opaque force token is returned only to the trusted backend verbatim. */
+export type CodexDesktopRestartOutcome =
+  | { state: "restarted" }
+  | {
+      state: "confirmation_required";
+      token: string;
+      reason: CodexDesktopRestartPromptReason;
+    }
+  | { state: "not_running" }
+  | {
+      state: "manual_restart_required";
+      reason: CodexDesktopManualRestartReason;
+    }
+  | { state: "incomplete"; retryToken: string };
+
 export type InstallerErrorCode =
   | "PLATFORM_UNSUPPORTED"
   | "OS_VERSION_UNSUPPORTED"

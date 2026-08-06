@@ -21,7 +21,7 @@ from pathlib import Path
 # Force UTF-8 on stdin/stdout/stderr on Windows. Default codepage there is
 # cp936 / cp1252 / etc. — non-ASCII content (Chinese task names, prd snippets)
 # both in stdin (hook payload from host CLI) and stdout (our emitted blocks)
-# raises UnicodeDecodeError / UnicodeEncodeError. Equivalent to `python -X utf8`
+# raises UnicodeDecodeError / UnicodeEncodeError. Equivalent to `python3 -X utf8`
 # but applied per-stream so we don't depend on host CLI's command wiring.
 if sys.platform.startswith("win"):
     import io as _io
@@ -240,7 +240,7 @@ def _get_task_status(trellis_dir: Path, hook_input: dict) -> str:
     if active.stale or not task_dir.is_dir():
         return (
             f"Status: STALE POINTER\nTask: {task_ref}\n"
-            "Next: Task directory not found. Run: python ./.trellis/scripts/task.py finish"
+            "Next: Task directory not found. Run: python3 ./.trellis/scripts/task.py finish"
         )
 
     task_json_path = task_dir / "task.json"
@@ -257,7 +257,7 @@ def _get_task_status(trellis_dir: Path, hook_input: dict) -> str:
     if task_status == "completed":
         return (
             f"Status: COMPLETED\nTask: {task_title}\n"
-            f"Next: Archive with `python ./.trellis/scripts/task.py archive {task_dir.name}` "
+            f"Next: Archive with `python3 ./.trellis/scripts/task.py archive {task_dir.name}` "
             "or start a new task."
         )
 
@@ -401,7 +401,7 @@ def _build_compact_current_state(
         try:
             task_count = sum(1 for _ in iter_active_tasks(get_tasks_dir(repo_root)))
             lines.append(
-                f"Active tasks: {task_count} total. Use `python ./.trellis/scripts/task.py list --mine` only if needed."
+                f"Active tasks: {task_count} total. Use `python3 ./.trellis/scripts/task.py list --mine` only if needed."
             )
         except Exception:
             pass  # Optional task summary; keep compact state available.
@@ -460,7 +460,7 @@ def _build_workflow_toc(workflow_path: Path) -> str:
 
     out_lines = [
         "# Development Workflow - Session Summary",
-        "Full guide: .trellis/workflow.md. Step detail: `python ./.trellis/scripts/get_context.py --mode phase --step <X.Y>`.",
+        "Full guide: .trellis/workflow.md. Step detail: `python3 ./.trellis/scripts/get_context.py --mode phase --step <X.Y>`.",
         "",
     ]
 
@@ -523,7 +523,7 @@ Trellis compact SessionStart context. Use it to orient the session; load details
 
     output.write(
         "Discover more via: "
-        "`python ./.trellis/scripts/get_context.py --mode packages`\n"
+        "`python3 ./.trellis/scripts/get_context.py --mode packages`\n"
     )
     output.write("</guidelines>\n\n")
 

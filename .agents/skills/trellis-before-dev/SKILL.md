@@ -14,7 +14,7 @@ Execute these steps:
 
 2. **Discover packages and their spec layers**:
    ```bash
-   python ./.trellis/scripts/get_context.py --mode packages
+   python3 ./.trellis/scripts/get_context.py --mode packages
    ```
 
 3. **Identify which specs apply** to your task based on:

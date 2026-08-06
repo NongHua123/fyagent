@@ -62,6 +62,193 @@ where
 /// An owned, cloneable progress reporter suitable for platform async work.
 pub type PlatformProgressSink = Arc<dyn PlatformProgressReporter>;
 
+/// Opaque, platform-bound runtime evidence. It is deliberately crate-private
+/// and non-serializable so IPC callers cannot select a process, bundle, path,
+/// AUMID, or package family for a shutdown operation.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) enum TrustedRuntimeInstance {
+    /// The one visible top-level window process for the verified Windows
+    /// package family. Renderer/helper processes are deliberately excluded;
+    /// more than one top-level window is reported as ambiguous instead of
+    /// being collapsed into a process-name-style group.
+    #[cfg_attr(
+        not(any(target_os = "windows", test)),
+        expect(
+            dead_code,
+            reason = "the Windows adapter constructs this evidence only on Windows"
+        )
+    )]
+    Windows {
+        package_family_name: String,
+        process_id: u32,
+        /// The process creation timestamp prevents a recycled numeric PID from
+        /// being mistaken for the runtime that passed the initial identity
+        /// check.
+        creation_time: u64,
+    },
+    /// macOS represents an app instance by an NSRunningApplication PID plus
+    /// the canonical bundle path verified against the installed bundle.
+    #[cfg_attr(
+        not(any(target_os = "macos", test)),
+        expect(
+            dead_code,
+            reason = "the macOS adapter constructs this evidence only on macOS"
+        )
+    )]
+    Macos {
+        process_id: i32,
+        bundle_path: PathBuf,
+        reported_bundle_path: PathBuf,
+        /// Like the Windows creation timestamp, this distinguishes a newly
+        /// launched app that reused a PID from the instance approved for the
+        /// current restart operation.
+        launch_timestamp_ms: u64,
+    },
+}
+
+impl fmt::Debug for TrustedRuntimeInstance {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Windows { .. } => formatter
+                .debug_struct("TrustedRuntimeInstance::Windows")
+                .finish(),
+            Self::Macos { .. } => formatter
+                .debug_struct("TrustedRuntimeInstance::Macos")
+                .finish(),
+        }
+    }
+}
+
+impl TrustedRuntimeInstance {
+    /// Produces an internal-only identity key used to deduplicate a close set
+    /// and revision a restart plan. This value is never serialized, logged, or
+    /// returned across IPC: it can contain process identity evidence.
+    pub(crate) fn restart_identity_key(&self) -> String {
+        match self {
+            Self::Windows {
+                package_family_name,
+                process_id,
+                creation_time,
+            } => format!("windows:{package_family_name}:{process_id}:{creation_time}"),
+            Self::Macos {
+                process_id,
+                bundle_path,
+                launch_timestamp_ms,
+                ..
+            } => format!(
+                "macos:{}:{process_id}:{launch_timestamp_ms}",
+                bundle_path.to_string_lossy()
+            ),
+        }
+    }
+}
+
+/// Runtime detection uses only [`TrustedRuntimeInstance`] evidence. A platform
+/// may report ambiguity instead of trying to disambiguate with an executable
+/// or display-name heuristic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(
+    not(any(target_os = "windows", target_os = "macos", test)),
+    expect(
+        dead_code,
+        reason = "runtime inspection states are constructed only by supported platform adapters"
+    )
+)]
+pub(crate) enum RuntimeInspection {
+    NotRunning,
+    Running(Vec<TrustedRuntimeInstance>),
+    // Exact PFN inspection on Windows reports only running/not-running. macOS
+    // and platform-neutral tests retain the explicit ambiguity state.
+    #[cfg_attr(all(target_os = "windows", not(test)), allow(dead_code))]
+    Ambiguous,
+}
+
+/// Trust scope used only to resolve a deterministic restart launch target.
+/// It is never serialized to the renderer because scope can reveal an
+/// installation arrangement that is irrelevant to the user-facing dialog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    not(any(target_os = "windows", target_os = "macos", test)),
+    expect(
+        dead_code,
+        reason = "system scope is constructed by supported platform adapters and fake tests"
+    )
+)]
+pub(crate) enum RestartInstallationScope {
+    // The comparator retains system scope as an explicit ordering input even
+    // though current platform adapters report current-user installations.
+    #[cfg_attr(all(target_os = "windows", not(test)), allow(dead_code))]
+    System,
+    CurrentUser,
+}
+
+impl RestartInstallationScope {
+    pub(crate) const fn priority(self) -> u8 {
+        match self {
+            Self::System => 0,
+            Self::CurrentUser => 1,
+        }
+    }
+}
+
+/// A platform-verified installation candidate. `stable_key` is kept private
+/// to the backend and derives from an exact platform target (PFN/AUMID or a
+/// verified bundle record), never a display name, title, executable name, or
+/// path fallback supplied by IPC.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct TrustedInstallationCandidate {
+    pub(crate) application: InstalledApplication,
+    pub(crate) scope: RestartInstallationScope,
+    pub(crate) stable_key: String,
+}
+
+impl fmt::Debug for TrustedInstallationCandidate {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("TrustedInstallationCandidate")
+            .field("stable_identity", &self.application.stable_identity)
+            .field("scope", &self.scope)
+            .field("stable_key", &"<redacted>")
+            .finish()
+    }
+}
+
+/// Candidate discovery is deliberately separate from legacy local installer
+/// discovery. An adapter that cannot produce an exact lifecycle identity must
+/// return `UntrustedTarget`; the service will then do zero close/launch work.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RestartCandidateInspection {
+    NotInstalled,
+    Trusted(Vec<TrustedInstallationCandidate>),
+    UntrustedTarget,
+    Unsupported(UnsupportedReason),
+}
+
+fn stable_restart_key(application: &InstalledApplication) -> String {
+    let launch_component = match &application.launch_target {
+        super::types::LaunchTarget::WindowsAumid(aumid) => format!("windows:{aumid}"),
+        super::types::LaunchTarget::MacBundlePath(path) => {
+            format!("macos:{}", path.to_string_lossy())
+        }
+    };
+    format!(
+        "{}:{}:{launch_component}",
+        application.stable_identity,
+        application.platform_version.canonical()
+    )
+}
+
+fn default_restart_candidate(application: InstalledApplication) -> TrustedInstallationCandidate {
+    TrustedInstallationCandidate {
+        stable_key: stable_restart_key(&application),
+        application,
+        // Legacy `inspect_local` can only discover the active user scope. A
+        // platform that can enumerate more scopes must override the method
+        // below rather than allowing ambiguity to select one accidentally.
+        scope: RestartInstallationScope::CurrentUser,
+    }
+}
+
 /// Platform-specific preflight output consumed by the service's shared disk
 /// check.  Paths are crate-private and intentionally omitted from `Debug` so
 /// they cannot leak a user's home directory through diagnostics.
@@ -247,12 +434,43 @@ const fn installed_platform(version: &super::types::PlatformVersion) -> DesktopP
 /// `BoxFuture` keeps this trait object-safe without adding `async-trait`.
 /// `platform` is optional because Linux and other unsupported hosts cannot be
 /// misrepresented by the V1 Windows/macOS enum.
-pub trait CodexDesktopPlatform: Send + Sync {
+pub(crate) trait CodexDesktopPlatform: Send + Sync {
     fn platform(&self) -> Option<DesktopPlatform>;
 
     fn architecture(&self) -> CpuArchitecture;
 
     fn inspect_local(&self) -> BoxFuture<'_, Result<LocalInstallStatus, InstallerError>>;
+
+    /// Enumerate only candidates with exact lifecycle identity evidence. The
+    /// default supports the old unique-installation adapters but treats their
+    /// ambiguous result as untrusted rather than selecting an arbitrary
+    /// candidate. Windows overrides this to retain all exact PFN-bound records
+    /// for the restart-plan comparator; macOS presently fails closed until its
+    /// target bundle identity is independently validated.
+    fn inspect_restart_candidates(
+        &self,
+    ) -> BoxFuture<'_, Result<RestartCandidateInspection, InstallerError>> {
+        Box::pin(async move {
+            match self.inspect_local().await? {
+                LocalInstallStatus::NotInstalled { .. } => {
+                    Ok(RestartCandidateInspection::NotInstalled)
+                }
+                LocalInstallStatus::Installed { application } => {
+                    Ok(RestartCandidateInspection::Trusted(vec![
+                        default_restart_candidate(application),
+                    ]))
+                }
+                LocalInstallStatus::Unsupported { reason } => {
+                    Ok(RestartCandidateInspection::Unsupported(reason))
+                }
+                // Legacy discovery exposes summaries but not the exact
+                // restart identity that would bind every close/launch action.
+                LocalInstallStatus::Ambiguous { .. } => {
+                    Ok(RestartCandidateInspection::UntrustedTarget)
+                }
+            }
+        })
+    }
 
     fn preflight<'a>(
         &'a self,
@@ -281,23 +499,69 @@ pub trait CodexDesktopPlatform: Send + Sync {
         &'a self,
         installed: &'a InstalledApplication,
     ) -> BoxFuture<'a, Result<(), InstallerError>>;
+
+    /// Detect runtime instances that are bound to `installed`'s already
+    /// verified identity. The default fails closed so a platform adapter cannot
+    /// accidentally gain restart control merely by implementing installer
+    /// discovery and launch.
+    fn inspect_runtime<'a>(
+        &'a self,
+        _installed: &'a InstalledApplication,
+    ) -> BoxFuture<'a, Result<RuntimeInspection, InstallerError>> {
+        Box::pin(async {
+            Err(InstallerError::new(InstallerErrorCode::PlatformUnsupported)
+                .with_diagnostic_message("trusted runtime inspection is unavailable"))
+        })
+    }
+
+    /// Force only the previously verified runtime instance(s) after the one
+    /// explicit renderer confirmation. Implementations must revalidate exact
+    /// identity immediately before terminating anything; graceful shutdown is
+    /// intentionally absent from v1.0.2's lifecycle contract.
+    fn force_shutdown<'a>(
+        &'a self,
+        _installed: &'a InstalledApplication,
+        _instances: &'a [TrustedRuntimeInstance],
+    ) -> BoxFuture<'a, Result<(), InstallerError>> {
+        Box::pin(async {
+            Err(InstallerError::new(InstallerErrorCode::PlatformUnsupported)
+                .with_diagnostic_message("trusted force shutdown is unavailable"))
+        })
+    }
+
+    /// Check whether the exact runtime evidence captured before a force request
+    /// is still alive. Unlike general runtime discovery, this is
+    /// allowed to observe a just-closed primary process while package helper
+    /// processes finish their own shutdown; it must never select a replacement
+    /// PID or a different instance.
+    fn is_runtime_instance_running<'a>(
+        &'a self,
+        _installed: &'a InstalledApplication,
+        _instances: &'a [TrustedRuntimeInstance],
+    ) -> BoxFuture<'a, Result<bool, InstallerError>> {
+        Box::pin(async {
+            Err(InstallerError::new(InstallerErrorCode::PlatformUnsupported)
+                .with_diagnostic_message("trusted runtime liveness inspection is unavailable"))
+        })
+    }
 }
 
 /// A fail-closed adapter for hosts V1 cannot install on.
 ///
-/// It remains available on every target so Linux builds can report a stable
-/// unsupported state without importing Windows/macOS APIs or pretending that a
-/// platform operation succeeded.
+/// Supported-host production construction never needs this type. Unit tests
+/// still compile it so the unsupported result remains covered on every host.
+#[cfg(any(not(any(target_os = "windows", target_os = "macos")), test))]
 #[derive(Debug, Clone)]
-pub struct UnsupportedPlatformAdapter {
+pub(crate) struct UnsupportedPlatformAdapter {
     platform: Option<DesktopPlatform>,
     architecture: CpuArchitecture,
     reason: UnsupportedReason,
     error_code: InstallerErrorCode,
 }
 
+#[cfg(any(not(any(target_os = "windows", target_os = "macos")), test))]
 impl UnsupportedPlatformAdapter {
-    pub fn platform_unsupported(architecture: CpuArchitecture) -> Self {
+    pub(crate) fn platform_unsupported(architecture: CpuArchitecture) -> Self {
         Self {
             platform: None,
             architecture,
@@ -306,7 +570,8 @@ impl UnsupportedPlatformAdapter {
         }
     }
 
-    pub fn architecture_unsupported(
+    #[cfg(test)]
+    pub(crate) fn architecture_unsupported(
         platform: DesktopPlatform,
         architecture: CpuArchitecture,
     ) -> Self {
@@ -325,6 +590,7 @@ impl UnsupportedPlatformAdapter {
     }
 }
 
+#[cfg(any(not(any(target_os = "windows", target_os = "macos")), test))]
 impl CodexDesktopPlatform for UnsupportedPlatformAdapter {
     fn platform(&self) -> Option<DesktopPlatform> {
         self.platform

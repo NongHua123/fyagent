@@ -1,0 +1,10 @@
+{"file":"docs/fyagent/dev/v1-0.2/07-验收标准与自动化测试计划.md","reason":"E2E、视觉、发布、I18N 和报告的主验收设计。"}
+{"file":"docs/fyagent/dev/v1-0.2/08-ADR与外部资料.md","reason":"ADR-020 的手动 CI、平台基线和视觉取舍。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"前端测试与本地化质量约定。"}
+{"file":".trellis/spec/backend/development-environment.md","reason":"可运行工具与平台验证边界。"}
+{"file":".trellis/tasks/08-06-fyagent-v1-0-2-desktop-acceptance/design.md","reason":"落实固定时间、时区、随机种子、网络、字体、动画、版本和 WorkBuddy 数据的 mock-only fixture；IPC 仅允许 fixture/read-models 两条命令，未知调用失败关闭。"}
+{"file":"docs/fyagent/dev/v1-0.2/07-验收标准与自动化测试计划.md","reason":"落实可由未来候选 WebDriver runner 复用的可视区域、重叠、横向滚动、1 CSS px 位移和 Tab 禁止项断言 helper。"}
+{"file":"tests/e2e/visual-baselines/manifest.json","reason":"定义平台、缩放、四语言和关键区域基线矩阵；当前无 PNG，避免把本机 mock 运行误收录为视觉基线。"}
+{"file":"scripts/desktop-acceptance/","type":"directory","reason":"新增只读 mock 契约/视觉前置验证器和显式候选证据审核门禁；审核命令绝不写入 PNG。"}
+{"file":"tests/desktop-acceptance/requirements-matrix.json","reason":"建立 WB/CR/CV/UI/WIN/I18N 与既有测试、mock contract、候选环境项目的可追踪映射。"}
+{"file":".github/workflows/ci.yml","reason":"增加仍仅 workflow_dispatch 的 desktop-acceptance-contract job，只运行 jsdom/Vitest 和只读 manifest 检查。"}

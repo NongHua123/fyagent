@@ -15,9 +15,9 @@ compatibility layer from making old and new state appear interchangeable.
 
 Repository provenance is a separate contract: the repository remains
 `NongHua123/cc-switch`. Real repository URLs, release links, historical facts,
-licenses, upstream attribution, and third-party referral or coupon tokens must
-remain factual even when they contain the former name. Never invent a FyAgent
-domain, repository, package listing, or attribution to make text look uniform.
+licenses, and upstream attribution must remain factual even when they contain
+the former name. Never invent a FyAgent domain, repository, package listing,
+or attribution to make text look uniform.
 
 ## 2. Signatures
 
@@ -83,10 +83,12 @@ releases:   https://github.com/NongHua123/cc-switch/releases
 - User-facing current-product text says FyAgent, but links to source, issues,
   releases, and contribution history use the real repository location.
 - Historical changelogs, release notes, design baselines, copyright notices,
-  licenses, and upstream issue references remain historically accurate.
-- Partner referral URLs, `utm_*` values, coupons, and promotion codes are
-  external opaque data. Preserve their exact bytes unless the partner changes
-  them; an identity refactor does not authorize rewriting them.
+  licenses, and upstream issue references remain historically accurate, except
+  that commercial campaign material is removed under the repository's current
+  product-content policy.
+- Commercially attributed URLs and attached tracking query data are not
+  provenance or compatibility requirements. Remove them rather than carrying
+  them into runtime configuration, public documentation, or release history.
 - Installation documentation may advertise only distribution channels that
   actually exist. Do not infer `fyagent.io`, a renamed GitHub repository,
   Homebrew cask, AUR package, Pages deployment, signing, or notarization.
@@ -99,7 +101,8 @@ releases:   https://github.com/NongHua123/cc-switch/releases
 | A former installation or data directory exists | FyAgent ignores it and starts with independent state; no automatic migration or cleanup. |
 | A former deep link is opened | It is not registered or accepted as a FyAgent import. |
 | A current release workflow expects the former executable or bundle ID | Static release tests or CI fail before publication. |
-| A real repository URL, LICENSE line, historical record, upstream reference, or opaque partner token contains the former name | Preserve it and record it as an evidence-backed exception; do not cosmetically rewrite it. |
+| A real repository URL, LICENSE line, historical record, or upstream reference contains the former name | Preserve it and record it as an evidence-backed exception; do not cosmetically rewrite it. |
+| Runtime configuration, public documentation, or release history contains commercial campaign material | Remove it; it does not establish an identity or provenance exception. |
 | Public text points to an unverified FyAgent domain, repository, package manager entry, signature, or notarization claim | Remove the claim and link to the verified repository/release surface instead. |
 | The identity changes on only one layer | Reject as incomplete; verify package, Rust, Tauri, OS integration, storage, UI, tests, docs, and release workflow together. |
 | Static checks pass but native installation/launch was not exercised | Report native acceptance as pending; do not claim installation, signing, or upgrade compatibility. |
@@ -113,8 +116,8 @@ releases:   https://github.com/NongHua123/cc-switch/releases
 - Base: the machine also contains the former application and its data. FyAgent
   leaves both untouched and presents independent fresh state.
 - Bad: startup checks the former data directory, accepts the former URL scheme,
-  deletes a former autostart entry, rewrites a partner coupon, changes LICENSE
-  attribution, or links users to an assumed FyAgent website.
+  deletes a former autostart entry, changes LICENSE attribution, or links
+  users to an assumed FyAgent website.
 
 ## 6. Tests Required
 
@@ -131,7 +134,7 @@ releases:   https://github.com/NongHua123/cc-switch/releases
 - Static identity audits classify every former-name hit. Active code and
   current instructions must have none unless the token is an external fact;
   negative assertions, repository URLs, history, legal attribution, upstream
-  references, and exact partner tokens are reviewed exceptions.
+  references are reviewed exceptions.
 - Parse changed JSON, plist/XML, TOML, YAML, and locale files. Run format,
   type-check, unit/integration, Rust, and platform packaging checks in the
   authorized environment; keep native install/launch and signed/notarized
@@ -149,7 +152,6 @@ let root = find_existing(".cc-switch").unwrap_or(home.join(".fyagent"));
 ```text
 # A blind text replacement corrupts facts outside application identity.
 https://github.com/NongHua123/fyagent
-coupon: FYAGENT
 ```
 
 ### Correct
@@ -163,5 +165,4 @@ let root = home.join(".fyagent");
 # Product identity and repository provenance are deliberately independent.
 product:    FyAgent
 repository: https://github.com/NongHua123/cc-switch
-coupon:     <the partner's exact existing token>
 ```

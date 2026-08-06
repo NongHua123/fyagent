@@ -19,8 +19,6 @@ export interface Provider {
   sortIndex?: number; // 排序索引（用于自定义拖拽排序）
   // 备注信息
   notes?: string;
-  // 新增：是否为商业合作伙伴
-  isPartner?: boolean;
   // 可选：供应商元数据（仅存于 ~/.fyagent/config.json，不写入 live 配置）
   meta?: ProviderMeta;
   // 图标配置
@@ -182,10 +180,6 @@ export interface ProviderMeta {
   usage_script?: UsageScript;
   // 请求地址管理：测速后自动选择最佳端点
   endpointAutoSelect?: boolean;
-  // 是否为官方合作伙伴
-  isPartner?: boolean;
-  // 合作伙伴促销 key（用于后端识别 PackyCode 等）
-  partnerPromotionKey?: string;
   // 供应商成本倍率
   costMultiplier?: string;
   // 供应商计费模式来源
@@ -231,6 +225,13 @@ export interface ProviderMeta {
   providerType?: string;
   // GitHub Copilot 关联账号 ID（旧字段，保留兼容读取）
   githubAccountId?: string;
+  // Codex native image-extension state has been explicitly saved. This
+  // distinguishes a historical missing header (default-on migration) from an
+  // explicit user choice to keep the feature off.
+  imageExtensionConfigured?: boolean;
+  // Private ownership marker for the minimal official Codex provider table
+  // generated solely to carry native capability fields.
+  codexNativeCapabilitiesGeneratedProvider?: boolean;
 }
 
 // Skill 同步方式
@@ -279,6 +280,11 @@ export interface VisibleApps {
   claude: boolean;
   "claude-desktop": boolean;
   codex: boolean;
+  /**
+   * Kept optional so settings written by releases before FyAgent v0.1 remain
+   * readable; consumers resolve an omitted value to the visible default.
+   */
+  workbuddy?: boolean;
   gemini: boolean;
   grokbuild: boolean;
   opencode: boolean;

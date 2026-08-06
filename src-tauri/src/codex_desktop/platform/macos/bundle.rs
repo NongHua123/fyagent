@@ -17,6 +17,7 @@ use super::{
 };
 use crate::codex_desktop::{
     error::{InstallerError, InstallerErrorCode},
+    platform::{RuntimeInspection, TrustedRuntimeInstance},
     types::{
         CpuArchitecture, DesktopPlatform, InstalledApplication, InstalledApplicationSummary,
         LaunchTarget, LocalInstallStatus, PlatformVersion, ReleaseDescriptor,
@@ -44,9 +45,54 @@ for (let index = 0; index < applications.count; index += 1) {
   result.push({
     bundleIdentifier: application.bundleIdentifier ? ObjC.unwrap(application.bundleIdentifier) : null,
     bundlePath: url ? ObjC.unwrap(url.path) : null,
+    processIdentifier: application.processIdentifier,
+    launchTimestampMs: application.launchDate
+      ? Math.floor(Number(application.launchDate.timeIntervalSince1970) * 1000)
+      : null,
+    isFinishedLaunching: ObjC.unwrap(application.isFinishedLaunching),
   });
 }
 JSON.stringify(result);
+"#;
+
+/// Fixed JXA program used only after Rust has re-enumerated an exact trusted
+/// running application. The mode, PID, and expected bundle path are internal
+/// direct `osascript` arguments (never shell input or IPC fields). The script
+/// repeats the Stable bundle-ID/path checks immediately before asking AppKit
+/// to terminate the NSRunningApplication.
+const TERMINATE_RUNNING_APPLICATION_JXA: &str = r#"
+ObjC.import('AppKit');
+const args = ObjC.unwrap($.NSProcessInfo.processInfo.arguments);
+const [mode, pidText, expectedBundlePath, expectedLaunchTimestampText] = args.slice(-4);
+const pid = Number(pidText);
+const expectedLaunchTimestamp = Number(expectedLaunchTimestampText);
+if (!Number.isSafeInteger(pid) || pid <= 0) {
+  $.exit(2);
+}
+if (!Number.isSafeInteger(expectedLaunchTimestamp) || expectedLaunchTimestamp <= 0) {
+  $.exit(7);
+}
+if (mode !== 'normal' && mode !== 'force') {
+  $.exit(3);
+}
+const application = $.NSRunningApplication.runningApplicationWithProcessIdentifier(pid);
+if (!application || !application.bundleIdentifier || !application.bundleURL) {
+  $.exit(4);
+}
+const bundleIdentifier = ObjC.unwrap(application.bundleIdentifier);
+const bundlePath = ObjC.unwrap(application.bundleURL.path);
+const launchTimestamp = application.launchDate
+  ? Math.floor(Number(application.launchDate.timeIntervalSince1970) * 1000)
+  : 0;
+if (bundleIdentifier !== 'com.openai.codex'
+  || bundlePath !== expectedBundlePath
+  || launchTimestamp !== expectedLaunchTimestamp) {
+  $.exit(5);
+}
+const accepted = mode === 'force' ? application.forceTerminate() : application.terminate();
+if (!accepted) {
+  $.exit(6);
+}
 "#;
 
 #[derive(Debug, Clone)]
@@ -110,6 +156,22 @@ struct RawBundleIdentityPlist {
 struct RunningApplication {
     bundle_identifier: Option<String>,
     bundle_path: Option<String>,
+    process_identifier: Option<i32>,
+    launch_timestamp_ms: Option<u64>,
+    is_finished_launching: Option<bool>,
+}
+
+#[derive(Debug, Clone)]
+struct TrustedRunningApplication {
+    instance: TrustedRuntimeInstance,
+    is_finished_launching: bool,
+}
+
+#[derive(Debug, Clone)]
+enum TrustedRunningApplications {
+    NotRunning,
+    Candidates(Vec<TrustedRunningApplication>),
+    Ambiguous,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -656,6 +718,266 @@ pub(crate) fn ensure_not_running(
                 "the Stable application is running",
             ));
         }
+    }
+    Ok(())
+}
+
+/// Inspect only running applications that match both the Stable bundle ID and
+/// the canonical path of an already verified installation. A matching bundle
+/// ID at a different path is intentionally ambiguous; it is never selected by
+/// display name or process name.
+pub(crate) fn inspect_runtime(
+    runner: &dyn CommandRunner,
+    filesystem: &dyn MacosFilesystem,
+    installed: &InstalledApplication,
+) -> Result<RuntimeInspection, InstallerError> {
+    match inspect_trusted_running_applications(runner, filesystem, installed)? {
+        TrustedRunningApplications::NotRunning => Ok(RuntimeInspection::NotRunning),
+        TrustedRunningApplications::Ambiguous => Ok(RuntimeInspection::Ambiguous),
+        TrustedRunningApplications::Candidates(applications) => match applications.as_slice() {
+            [application] if application.is_finished_launching => {
+                Ok(RuntimeInspection::Running(vec![application
+                    .instance
+                    .clone()]))
+            }
+            [_] => {
+                // NSWorkspace can enumerate the new process before AppKit has
+                // finished launching it. It is not restart success evidence;
+                // the service keeps polling this non-ready state for its full
+                // bounded verification window.
+                Ok(RuntimeInspection::NotRunning)
+            }
+            _ => Ok(RuntimeInspection::Ambiguous),
+        },
+    }
+}
+
+pub(crate) fn force_shutdown(
+    runner: &dyn CommandRunner,
+    filesystem: &dyn MacosFilesystem,
+    installed: &InstalledApplication,
+    instances: &[TrustedRuntimeInstance],
+) -> Result<(), InstallerError> {
+    terminate_runtime(runner, filesystem, installed, instances, "force")
+}
+
+/// Re-enumerate only to compare against the opaque instance evidence captured
+/// by the restart operation. A new matching app, PID reuse, or another Stable
+/// app is an identity failure rather than evidence that the original exited.
+pub(crate) fn is_runtime_instance_running(
+    runner: &dyn CommandRunner,
+    filesystem: &dyn MacosFilesystem,
+    installed: &InstalledApplication,
+    instances: &[TrustedRuntimeInstance],
+) -> Result<bool, InstallerError> {
+    // Liveness is stricter than readiness: an app that was already bound to a
+    // restart operation remains alive even if a subsequent AppKit snapshot is
+    // not ready. Treating it as exited could launch a second instance before
+    // the original identity has actually gone away.
+    match inspect_trusted_running_applications(runner, filesystem, installed)? {
+        TrustedRunningApplications::NotRunning => Ok(false),
+        TrustedRunningApplications::Candidates(current)
+            if current
+                .iter()
+                .map(|application| &application.instance)
+                .eq(instances.iter()) =>
+        {
+            Ok(true)
+        }
+        TrustedRunningApplications::Candidates(_) | TrustedRunningApplications::Ambiguous => {
+            Err(error(
+                InstallerErrorCode::MacAppRunning,
+                "the trusted runtime changed before restart verification",
+            ))
+        }
+    }
+}
+
+fn inspect_trusted_running_applications(
+    runner: &dyn CommandRunner,
+    filesystem: &dyn MacosFilesystem,
+    installed: &InstalledApplication,
+) -> Result<TrustedRunningApplications, InstallerError> {
+    let expected_bundle_path = trusted_installed_bundle_path(filesystem, installed)?;
+    let applications = running_applications(runner)?;
+    let mut candidates = Vec::new();
+
+    for application in applications {
+        if application.bundle_identifier.as_deref() != Some(stable_bundle_id()) {
+            continue;
+        }
+        let raw_bundle_path = application.bundle_path.ok_or_else(|| {
+            error(
+                InstallerErrorCode::MacAppRunning,
+                "running Stable application path could not be determined",
+            )
+        })?;
+        let process_id = application
+            .process_identifier
+            .filter(|pid| *pid > 0)
+            .ok_or_else(|| {
+                error(
+                    InstallerErrorCode::MacAppRunning,
+                    "running Stable application process identity could not be determined",
+                )
+            })?;
+        let launch_timestamp_ms = application
+            .launch_timestamp_ms
+            .filter(|timestamp| *timestamp > 0)
+            .ok_or_else(|| {
+                error(
+                    InstallerErrorCode::MacAppRunning,
+                    "running Stable application launch identity could not be determined",
+                )
+            })?;
+        let reported_bundle_path = PathBuf::from(&raw_bundle_path);
+        let bundle_path = filesystem
+            .canonicalize(Path::new(&raw_bundle_path))
+            .map_err(|_| {
+                error(
+                    InstallerErrorCode::MacAppRunning,
+                    "running Stable application path could not be determined",
+                )
+            })?;
+        if bundle_path != expected_bundle_path {
+            return Ok(TrustedRunningApplications::Ambiguous);
+        }
+        candidates.push(TrustedRunningApplication {
+            instance: TrustedRuntimeInstance::Macos {
+                process_id,
+                bundle_path,
+                reported_bundle_path,
+                launch_timestamp_ms,
+            },
+            // A missing/invalid readiness value is never upgraded to a ready
+            // runtime. The JXA program above always emits this field, so this
+            // branch remains fail-closed if its output changes unexpectedly.
+            is_finished_launching: application.is_finished_launching == Some(true),
+        });
+    }
+
+    if candidates.is_empty() {
+        Ok(TrustedRunningApplications::NotRunning)
+    } else {
+        Ok(TrustedRunningApplications::Candidates(candidates))
+    }
+}
+
+fn trusted_installed_bundle_path(
+    filesystem: &dyn MacosFilesystem,
+    installed: &InstalledApplication,
+) -> Result<PathBuf, InstallerError> {
+    if installed.stable_identity != stable_bundle_id() {
+        return Err(error(
+            InstallerErrorCode::MacBundleIdMismatch,
+            "runtime inspection was requested for a non-Stable bundle identity",
+        ));
+    }
+    let LaunchTarget::MacBundlePath(path) = &installed.launch_target else {
+        return Err(error(
+            InstallerErrorCode::MacBundleIdMismatch,
+            "runtime inspection was requested for a non-macOS launch target",
+        ));
+    };
+    filesystem.canonicalize(path).map_err(|_| {
+        error(
+            InstallerErrorCode::MacAppRunning,
+            "verified Stable bundle path is no longer available",
+        )
+    })
+}
+
+fn running_applications(
+    runner: &dyn CommandRunner,
+) -> Result<Vec<RunningApplication>, InstallerError> {
+    let output = runner
+        .run(&command(
+            "osascript",
+            vec![
+                OsString::from("-l"),
+                OsString::from("JavaScript"),
+                OsString::from("-e"),
+                OsString::from(RUNNING_APPLICATIONS_JXA),
+            ],
+        ))
+        .map_err(|_| {
+            error(
+                InstallerErrorCode::MacAppRunning,
+                "running Stable application state could not be determined",
+            )
+        })?;
+    if !output.is_success() {
+        return Err(error(
+            InstallerErrorCode::MacAppRunning,
+            "running Stable application state could not be determined",
+        ));
+    }
+    serde_json::from_slice::<Vec<RunningApplication>>(output.stdout()).map_err(|_| {
+        error(
+            InstallerErrorCode::MacAppRunning,
+            "running Stable application state could not be determined",
+        )
+    })
+}
+
+fn terminate_runtime(
+    runner: &dyn CommandRunner,
+    filesystem: &dyn MacosFilesystem,
+    installed: &InstalledApplication,
+    instances: &[TrustedRuntimeInstance],
+    mode: &'static str,
+) -> Result<(), InstallerError> {
+    let RuntimeInspection::Running(current) = inspect_runtime(runner, filesystem, installed)?
+    else {
+        return Err(error(
+            InstallerErrorCode::MacAppRunning,
+            "the trusted runtime changed before termination",
+        ));
+    };
+    if current != instances {
+        return Err(error(
+            InstallerErrorCode::MacAppRunning,
+            "the trusted runtime changed before termination",
+        ));
+    }
+    let [TrustedRuntimeInstance::Macos {
+        process_id,
+        reported_bundle_path,
+        launch_timestamp_ms,
+        ..
+    }] = instances
+    else {
+        return Err(error(
+            InstallerErrorCode::MacAppRunning,
+            "the requested runtime is not one verified macOS application",
+        ));
+    };
+    let output = runner
+        .run(&command(
+            "osascript",
+            vec![
+                OsString::from("-l"),
+                OsString::from("JavaScript"),
+                OsString::from("-e"),
+                OsString::from(TERMINATE_RUNNING_APPLICATION_JXA),
+                OsString::from("--"),
+                OsString::from(mode),
+                OsString::from(process_id.to_string()),
+                reported_bundle_path.clone().into_os_string(),
+                OsString::from(launch_timestamp_ms.to_string()),
+            ],
+        ))
+        .map_err(|_| {
+            error(
+                InstallerErrorCode::MacAppRunning,
+                "the trusted Stable application could not be asked to terminate",
+            )
+        })?;
+    if !output.is_success() {
+        return Err(error(
+            InstallerErrorCode::MacAppRunning,
+            "the trusted Stable application rejected the termination request",
+        ));
     }
     Ok(())
 }
@@ -1217,6 +1539,57 @@ mod tests {
         assert_eq!(invocation.arguments()[1], "JavaScript");
         assert_eq!(invocation.arguments()[2], "-e");
         assert_ne!(invocation.arguments()[3], bundle_path.as_os_str());
+        runner.assert_drained();
+    }
+
+    #[test]
+    fn runtime_requires_a_matching_bundle_to_finish_launching_before_it_is_ready() {
+        let filesystem = FakeFilesystem::new();
+        let bundle_path = Path::new(SYSTEM_APPLICATIONS).join("ChatGPT.app");
+        filesystem.add_dir(&bundle_path);
+        let installed = InstalledApplication {
+            stable_identity: stable_bundle_id().to_owned(),
+            display_name: Some("Codex".to_owned()),
+            display_version: Some("1.0".to_owned()),
+            platform_version: PlatformVersion::parse_mac_bundle("5848").unwrap(),
+            architecture: CpuArchitecture::Aarch64,
+            location: None,
+            launch_target: LaunchTarget::MacBundlePath(bundle_path.clone()),
+        };
+        let runner = FakeRunner::new();
+
+        for is_finished_launching in [false, true] {
+            runner.queue_success(
+                "osascript",
+                serde_json::json!([{
+                    "bundleIdentifier": stable_bundle_id(),
+                    "bundlePath": bundle_path.to_string_lossy(),
+                    "processIdentifier": 4242,
+                    "launchTimestampMs": 1000,
+                    "isFinishedLaunching": is_finished_launching,
+                }])
+                .to_string()
+                .into_bytes(),
+            );
+        }
+
+        assert!(matches!(
+            inspect_runtime(&runner, &filesystem, &installed).unwrap(),
+            RuntimeInspection::NotRunning,
+        ));
+        let ready = inspect_runtime(&runner, &filesystem, &installed).unwrap();
+        assert!(matches!(
+            ready,
+            RuntimeInspection::Running(ref instances) if instances.len() == 1,
+        ));
+
+        let invocations = runner.invocations();
+        assert!(invocations.iter().all(|invocation| {
+            invocation.program() == "osascript"
+                && invocation.arguments()[3]
+                    .to_string_lossy()
+                    .contains("isFinishedLaunching")
+        }));
         runner.assert_drained();
     }
 

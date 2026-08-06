@@ -7,9 +7,19 @@ export interface DeepLinkImportRequest {
   resource: ResourceType;
 
   // Common fields
-  app?: "claude" | "codex" | "gemini";
+  app?:
+    | "claude"
+    | "codex"
+    | "gemini"
+    | "grokbuild"
+    | "opencode"
+    | "openclaw"
+    | "hermes";
   name?: string;
   enabled?: boolean;
+  // Set only by the in-app confirmation UI. Protocol URLs may request
+  // activation through `enabled`, but cannot authorize it.
+  activationApproved?: boolean;
 
   // Provider fields
   homepage?: string;
@@ -27,7 +37,7 @@ export interface DeepLinkImportRequest {
   description?: string;
 
   // MCP fields
-  apps?: string; // "claude,codex,gemini"
+  apps?: string; // Comma-separated application IDs
 
   // Skill fields
   repo?: string;

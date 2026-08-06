@@ -1,0 +1,648 @@
+<?if $(sys.BUILDARCH)="x86"?>
+    <?define Win64 = "no" ?>
+    <?define PlatformProgramFilesFolder = "ProgramFilesFolder" ?>
+<?elseif $(sys.BUILDARCH)="x64"?>
+    <?define Win64 = "yes" ?>
+    <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
+<?elseif $(sys.BUILDARCH)="arm64"?>
+    <?define Win64 = "yes" ?>
+    <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
+<?else?>
+    <?error Unsupported value of sys.BUILDARCH=$(sys.BUILDARCH)?>
+<?endif?>
+
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product
+            Id="*"
+            Name="{{product_name}}"
+            UpgradeCode="{{upgrade_code}}"
+            Language="!(loc.TauriLanguage)"
+            Manufacturer="{{manufacturer}}"
+            Version="{{version}}">
+
+        <Package Id="*"
+                 Keywords="Installer"
+                 InstallerVersion="450"
+                 Languages="0"
+                 Compressed="yes"
+                 InstallScope="perMachine"
+                 InstallPrivileges="elevated"
+                 SummaryCodepage="!(loc.TauriCodepage)"/>
+
+        <!-- https://docs.microsoft.com/en-us/windows/win32/msi/reinstallmode -->
+        <!-- reinstall all files; rewrite all registry entries; reinstall all shortcuts -->
+        <Property Id="REINSTALLMODE" Value="amus" />
+
+        <!-- Auto launch app after installation, useful for passive mode which usually used in updates -->
+        <Property Id="AUTOLAUNCHAPP" Secure="yes" />
+        <!-- Property to forward cli args to the launched app to not lose those of the pre-update instance -->
+        <Property Id="LAUNCHAPPARGS" Secure="yes" />
+
+        {{#if allow_downgrades}}
+            <MajorUpgrade Schedule="afterInstallInitialize" AllowDowngrades="yes" />
+        {{else}}
+            <MajorUpgrade Schedule="afterInstallInitialize" DowngradeErrorMessage="!(loc.DowngradeErrorMessage)" AllowSameVersionUpgrades="yes" />
+        {{/if}}
+
+        <InstallExecuteSequence>
+            <RemoveShortcuts>Installed AND NOT UPGRADINGPRODUCTCODE</RemoveShortcuts>
+            <Custom Action="ValidateInstallDirectory" After="CostFinalize">NOT Installed</Custom>
+        </InstallExecuteSequence>
+
+        <InstallUISequence>
+            <Custom Action="ValidateInstallDirectory" After="CostFinalize">NOT Installed</Custom>
+        </InstallUISequence>
+
+        <Media Id="1" Cabinet="app.cab" EmbedCab="yes" />
+
+        {{#if banner_path}}
+        <WixVariable Id="WixUIBannerBmp" Value="{{banner_path}}" />
+        {{/if}}
+        {{#if dialog_image_path}}
+        <WixVariable Id="WixUIDialogBmp" Value="{{dialog_image_path}}" />
+        {{/if}}
+        {{#if license}}
+        <WixVariable Id="WixUILicenseRtf" Value="{{license}}" />
+        {{/if}}
+
+        <Icon Id="ProductIcon" SourceFile="{{icon_path}}"/>
+        <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
+        <Property Id="ARPNOREPAIR" Value="yes" Secure="yes" />      <!-- Remove repair -->
+        <SetProperty Id="ARPNOMODIFY" Value="1" After="InstallValidate" Sequence="execute"/>
+
+        {{#if homepage}}
+        <Property Id="ARPURLINFOABOUT" Value="{{homepage}}"/>
+        <Property Id="ARPHELPLINK" Value="{{homepage}}"/>
+        <Property Id="ARPURLUPDATEINFO" Value="{{homepage}}"/>
+        {{/if}}
+
+        <!-- A v1 per-user install cannot safely share the elevated product path.
+             Detect it, explain the manual-uninstall requirement, and leave its
+             user data untouched.  Do not look for the former product identity. -->
+        <Property Id="LEGACY_FYAGENT_PER_USER_INSTALLDIR" Secure="yes">
+          <RegistrySearch Id="LegacyPerUserInstallDir" Root="HKCU" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="InstallDir" Type="raw" />
+        </Property>
+        <Property Id="LEGACY_FYAGENT_PER_USER_PATH" Secure="yes">
+          <RegistrySearch Id="LegacyPerUserPath" Root="HKCU" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="PathComponent" Type="raw" />
+        </Property>
+        <Condition Message="A previous per-user FyAgent test installation was found. Uninstall it manually before installing this machine-wide version; your user data will not be removed.">
+          NOT LEGACY_FYAGENT_PER_USER_INSTALLDIR AND NOT LEGACY_FYAGENT_PER_USER_PATH
+        </Condition>
+
+        <!-- This action runs in both UI and execute sequences.  It is deliberately
+             before InstallValidate so command-line installs cannot bypass the same
+             local-fixed-drive, user-directory, reparse-point, and writable-ACL
+             checks that the InstallDir dialog uses. -->
+        <CustomAction Id="ValidateInstallDirectory" Script="vbscript" Execute="immediate" Return="check"><![CDATA[
+Option Explicit
+
+Const DRIVE_FIXED = 2
+Const FILE_ATTRIBUTE_REPARSE_POINT = 1024
+Const ACCESS_WRITE_DATA = 2
+Const ACCESS_APPEND_DATA = 4
+Const ACCESS_WRITE_EA = 16
+Const ACCESS_DELETE_CHILD = 64
+Const ACCESS_WRITE_ATTRIBUTES = 256
+Const ACCESS_DELETE = 65536
+Const ACCESS_WRITE_DAC = 262144
+Const ACCESS_WRITE_OWNER = 524288
+Const ACCESS_GENERIC_ALL = 268435456
+Const ACCESS_GENERIC_WRITE = 1073741824
+Const ACE_TYPE_ACCESS_ALLOWED = 0
+Const ACE_TYPE_ACCESS_DENIED = 1
+Const ACE_FLAG_INHERIT_ONLY = 8
+Const SID_SYSTEM = "s-1-5-18"
+Const SID_ADMINISTRATORS = "s-1-5-32-544"
+Const SID_TRUSTED_INSTALLER = "s-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"
+Const SID_CREATOR_OWNER = "s-1-3-0"
+
+Dim fso
+Set fso = CreateObject("Scripting.FileSystemObject")
+
+Function NormalizedPath(ByVal value)
+  Dim result
+  result = LCase(fso.GetAbsolutePathName(value))
+  Do While Len(result) > 3 And Right(result, 1) = "\"
+    result = Left(result, Len(result) - 1)
+  Loop
+  NormalizedPath = result
+End Function
+
+Function IsSameOrChild(ByVal candidate, ByVal root)
+  Dim normalizedCandidate, normalizedRoot
+  If Len(root) = 0 Then
+    IsSameOrChild = False
+    Exit Function
+  End If
+  normalizedCandidate = NormalizedPath(candidate)
+  normalizedRoot = NormalizedPath(root)
+  IsSameOrChild = normalizedCandidate = normalizedRoot Or _
+    Left(normalizedCandidate, Len(normalizedRoot) + 1) = normalizedRoot & "\"
+End Function
+
+Sub Reject(ByVal reason)
+  Session.Property("FYAGENT_INSTALLDIR_ERROR") = reason
+  Err.Raise vbObjectError + 513, "FyAgentInstallDirectoryPolicy", _
+    "Unsafe FyAgent installation directory: " & reason
+End Sub
+
+Function IsFixedLocalDrive(ByVal path)
+  Dim driveName, drive
+  If Left(path, 2) = "\\" Then
+    IsFixedLocalDrive = False
+    Exit Function
+  End If
+  On Error Resume Next
+  driveName = fso.GetDriveName(path)
+  Set drive = fso.GetDrive(driveName)
+  IsFixedLocalDrive = Err.Number = 0 And drive.DriveType = DRIVE_FIXED
+  Err.Clear
+  On Error GoTo 0
+End Function
+
+Function HasReparseAncestor(ByVal path)
+  Dim current, parent, folder
+  current = NormalizedPath(path)
+  Do While Not fso.FolderExists(current)
+    parent = fso.GetParentFolderName(current)
+    If Len(parent) = 0 Or parent = current Then Exit Do
+    current = parent
+  Loop
+  Do While Len(current) > 0
+    On Error Resume Next
+    Set folder = fso.GetFolder(current)
+    If Err.Number <> 0 Then
+      Err.Clear
+      On Error GoTo 0
+      HasReparseAncestor = True
+      Exit Function
+    End If
+    If (folder.Attributes And FILE_ATTRIBUTE_REPARSE_POINT) <> 0 Then
+      On Error GoTo 0
+      HasReparseAncestor = True
+      Exit Function
+    End If
+    On Error GoTo 0
+    parent = fso.GetParentFolderName(current)
+    If Len(parent) = 0 Or parent = current Then Exit Do
+    current = parent
+  Loop
+  HasReparseAncestor = False
+End Function
+
+Function WmiEscape(ByVal value)
+  WmiEscape = Replace(Replace(value, "\", "\\"), "'", "''")
+End Function
+
+Function TrusteeSid(ByVal trustee)
+  Dim sid
+  TrusteeSid = ""
+  On Error Resume Next
+  sid = LCase(CStr(trustee.SIDString))
+  If Err.Number <> 0 Or Len(sid) = 0 Then
+    Err.Clear
+    On Error GoTo 0
+    Exit Function
+  End If
+  On Error GoTo 0
+  TrusteeSid = sid
+End Function
+
+Function IsTrustedAclPrincipal(ByVal trustee)
+  Dim sid
+  sid = TrusteeSid(trustee)
+  IsTrustedAclPrincipal = sid = SID_SYSTEM Or _
+    sid = SID_ADMINISTRATORS Or _
+    sid = SID_TRUSTED_INSTALLER
+End Function
+
+Function IsInheritanceOnlyCreatorOwner(ByVal ace)
+  Dim sid, aceFlags
+  IsInheritanceOnlyCreatorOwner = False
+  On Error Resume Next
+  aceFlags = CLng(ace.AceFlags)
+  If Err.Number <> 0 Then
+    Err.Clear
+    On Error GoTo 0
+    Exit Function
+  End If
+  On Error GoTo 0
+  sid = TrusteeSid(ace.Trustee)
+  IsInheritanceOnlyCreatorOwner = sid = SID_CREATOR_OWNER And _
+    (aceFlags And ACE_FLAG_INHERIT_ONLY) <> 0
+End Function
+
+Function HasWritableAcl(ByVal path)
+  Dim security, result, descriptor, ace, mask, aceType, current, parent
+  current = NormalizedPath(path)
+  Do While Not fso.FolderExists(current)
+    parent = fso.GetParentFolderName(current)
+    If Len(parent) = 0 Or parent = current Then Exit Do
+    current = parent
+  Loop
+
+  Do While Len(current) > 0
+    On Error Resume Next
+    Set security = GetObject("winmgmts:\\.\root\cimv2:Win32_LogicalFileSecuritySetting.Path='" & WmiEscape(current) & "'")
+    Set result = security.GetSecurityDescriptor()
+    If Err.Number <> 0 Or result.ReturnValue <> 0 Or IsNull(result.Descriptor.DACL) Then
+      Err.Clear
+      On Error GoTo 0
+      HasWritableAcl = True
+      Exit Function
+    End If
+    Set descriptor = result.Descriptor
+    If Not IsTrustedAclPrincipal(descriptor.Owner) Then
+      On Error GoTo 0
+      HasWritableAcl = True
+      Exit Function
+    End If
+    For Each ace In descriptor.DACL
+      On Error Resume Next
+      aceType = CLng(ace.AceType)
+      mask = CLng(ace.AccessMask)
+      If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        HasWritableAcl = True
+        Exit Function
+      End If
+      On Error GoTo 0
+      ' Unknown/object/callback ACE forms are deliberately rejected.  This
+      ' validator cannot calculate their effective rights safely.
+      If aceType <> ACE_TYPE_ACCESS_ALLOWED And aceType <> ACE_TYPE_ACCESS_DENIED Then
+        HasWritableAcl = True
+        Exit Function
+      End If
+      ' A deny ACE cannot grant a standard user write access.  An inherit-only
+      ' CREATOR OWNER ACE is also harmless for this existing ancestor and is a
+      ' normal Program Files pattern; the installed child receives a protected
+      ' DACL below.
+      If aceType = ACE_TYPE_ACCESS_DENIED Then
+        ' no-op
+      ElseIf IsInheritanceOnlyCreatorOwner(ace) Then
+        ' no-op
+      Else
+        If (mask And (ACCESS_WRITE_DATA Or ACCESS_APPEND_DATA Or ACCESS_WRITE_EA Or _
+          ACCESS_DELETE_CHILD Or ACCESS_WRITE_ATTRIBUTES Or ACCESS_DELETE Or _
+          ACCESS_WRITE_DAC Or ACCESS_WRITE_OWNER Or ACCESS_GENERIC_ALL Or _
+          ACCESS_GENERIC_WRITE)) <> 0 And Not IsTrustedAclPrincipal(ace.Trustee) Then
+          HasWritableAcl = True
+          Exit Function
+        End If
+      End If
+    Next
+    On Error GoTo 0
+    parent = fso.GetParentFolderName(current)
+    If Len(parent) = 0 Or parent = current Then Exit Do
+    current = parent
+  Loop
+  HasWritableAcl = False
+End Function
+
+Sub ValidateInstallDirectory()
+  Dim installDir, unsafeRoots, root
+  installDir = Session.Property("INSTALLDIR")
+  If Len(installDir) = 0 Then Reject "no installation directory was supplied"
+  If Left(installDir, 2) = "\\" Then Reject "UNC and network paths are not allowed"
+  If Not IsFixedLocalDrive(installDir) Then Reject "the path is not on a local fixed drive"
+  If HasReparseAncestor(installDir) Then Reject "the path contains a junction or symbolic-link ancestor"
+
+  unsafeRoots = Array( _
+    Session.Property("UserProfileFolder"), _
+    Session.Property("DesktopFolder"), _
+    Session.Property("PersonalFolder"), _
+    Session.Property("LocalAppDataFolder"), _
+    Session.Property("TempFolder"))
+  For Each root In unsafeRoots
+    If IsSameOrChild(installDir, CStr(root)) Then Reject "user profile, desktop, downloads, or temporary paths are not allowed"
+  Next
+  If HasWritableAcl(installDir) Then Reject "an existing path ancestor is not provably administrator controlled"
+End Sub
+
+ValidateInstallDirectory
+        ]]></CustomAction>
+
+        <!-- launch app checkbox -->
+        <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="!(loc.LaunchApp)" />
+        <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1"/>
+        <CustomAction Id="LaunchApplication" Impersonate="yes" FileKey="Path" ExeCommand="[LAUNCHAPPARGS]" Return="asyncNoWait" />
+
+        <UI>
+            <!-- launch app checkbox -->
+            <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed</Publish>
+
+            <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+
+            {{#unless license}}
+            <!-- Skip license dialog -->
+            <Publish Dialog="WelcomeDlg"
+                     Control="Next"
+                     Event="NewDialog"
+                     Value="InstallDirDlg"
+                     Order="2">1</Publish>
+            <Publish Dialog="InstallDirDlg"
+                     Control="Back"
+                     Event="NewDialog"
+                     Value="WelcomeDlg"
+                     Order="2">1</Publish>
+            {{/unless}}
+        </UI>
+
+        <UIRef Id="WixUI_InstallDir" />
+
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="$(var.PlatformProgramFilesFolder)">
+                <Directory Id="INSTALLDIR" Name="{{product_name}}"/>
+            </Directory>
+            <!-- The early elevated-instance protocol stores only opaque
+                 descriptors here.  Both this parent and its runtime child use
+                 protected DACLs so a standard user cannot pre-create, replace,
+                 or delete the descriptor/lock files before an elevated launch. -->
+            <Directory Id="CommonAppDataFolder">
+                <Directory Id="FYAGENTCOMMONDATA" Name="FyAgent">
+                    <Directory Id="FYAGENTRUNTIME" Name="runtime"/>
+                </Directory>
+            </Directory>
+            <Directory Id="DesktopFolder" Name="Desktop">
+                <Component Id="ApplicationShortcutDesktop" Guid="*" Win64="$(var.Win64)">
+                    <Shortcut Id="ApplicationDesktopShortcut"
+                        Name="{{product_name}}"
+                        Description="Runs {{product_name}}"
+                        Target="[!Path]"
+                        Icon="ProductIcon"
+                        WorkingDirectory="INSTALLDIR">
+                        <ShortcutProperty Key="System.AppUserModel.ID" Value="{{bundle_id}}"/>
+                    </Shortcut>
+                    <RemoveFolder Id="DesktopFolder" On="uninstall" />
+                    <RegistryValue Root="HKLM" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+                </Component>
+            </Directory>
+            <Directory Id="ProgramMenuFolder">
+                <Directory Id="ApplicationProgramsFolder" Name="{{product_name}}"/>
+            </Directory>
+        </Directory>
+
+        <DirectoryRef Id="INSTALLDIR">
+            <!-- Lock the application root down even when it is created beneath
+                 an allowed non-default fixed-drive directory.  The validator
+                 above rejects a pre-existing user-writable ancestor first. -->
+            <Component Id="InstallDirectoryAcl" Guid="*" Win64="$(var.Win64)">
+                <CreateFolder>
+                    <!-- Use MsiLockPermissionsEx instead of the legacy
+                         LockPermissions table so the DACL is protected rather
+                         than merely appending explicit ACEs to inherited ACLs. -->
+                    <PermissionEx Sddl="O:SYD:P(A;OICI;0x1200a9;;;BU)(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)" />
+                </CreateFolder>
+                <RegistryValue Root="HKLM" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="InstallDirectoryAcl" Type="integer" Value="1" KeyPath="yes" />
+            </Component>
+            <Component Id="RegistryEntries" Guid="*">
+                <RegistryKey Root="HKLM" Key="Software\\{{manufacturer}}\\{{product_name}}">
+                    <RegistryValue Name="InstallDir" Type="string" Value="[INSTALLDIR]" KeyPath="yes" />
+                </RegistryKey>
+                {{#each deep_link_protocols as |protocol| ~}}
+                <RegistryKey Root="HKLM" Key="Software\Classes\\{{protocol}}">
+                    <RegistryValue Type="string" Name="URL Protocol" Value=""/>
+                    <RegistryValue Type="string" Value="URL:{{bundle_id}} protocol"/>
+                    <RegistryKey Key="DefaultIcon">
+                        <RegistryValue Type="string" Value="&quot;[!Path]&quot;,0" />
+                    </RegistryKey>
+                    <RegistryKey Key="shell\open\command">
+                        <RegistryValue Type="string" Value="&quot;[!Path]&quot; &quot;%1&quot;" />
+                    </RegistryKey>
+                </RegistryKey>
+                {{/each~}}
+            </Component>
+            <Component Id="Path" Guid="{{path_component_guid}}" Win64="$(var.Win64)">
+                <File Id="Path" Source="{{main_binary_path}}" KeyPath="no" Checksum="yes"/>
+                <RegistryValue Root="HKLM" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="PathComponent" Type="integer" Value="1" KeyPath="yes" />
+                {{#each file_associations as |association| ~}}
+                {{#each association.ext as |ext| ~}}
+                <ProgId Id="{{../../product_name}}.{{ext}}" Advertise="yes" Description="{{association.description}}">
+                    <Extension Id="{{ext}}" Advertise="yes">
+                        <Verb Id="open" Command="Open with {{../../product_name}}" Argument="&quot;%1&quot;" />
+                    </Extension>
+                </ProgId>
+                {{/each~}}
+                {{/each~}}
+            </Component>
+            {{#each binaries as |bin| ~}}
+            <Component Id="{{ bin.id }}" Guid="{{bin.guid}}" Win64="$(var.Win64)">
+                <File Id="Bin_{{ bin.id }}" Source="{{bin.path}}" KeyPath="no"/>
+                <RegistryValue Root="HKLM" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="BundledBinary_{{ bin.id }}" Type="integer" Value="1" KeyPath="yes" />
+            </Component>
+            {{/each~}}
+            {{#if enable_elevated_update_task}}
+            <Component Id="UpdateTask" Guid="C492327D-9720-4CD5-8DB8-F09082AF44BE" Win64="$(var.Win64)">
+                <File Id="UpdateTask" Source="update.xml" KeyPath="yes" Checksum="yes"/>
+            </Component>
+            <Component Id="UpdateTaskInstaller" Guid="011F25ED-9BE3-50A7-9E9B-3519ED2B9932" Win64="$(var.Win64)">
+                <File Id="UpdateTaskInstaller" Source="install-task.ps1" KeyPath="yes" Checksum="yes"/>
+            </Component>
+            <Component Id="UpdateTaskUninstaller" Guid="D4F6CC3F-32DC-5FD0-95E8-782FFD7BBCE1" Win64="$(var.Win64)">
+                <File Id="UpdateTaskUninstaller" Source="uninstall-task.ps1" KeyPath="yes" Checksum="yes"/>
+            </Component>
+            {{/if}}
+            {{resources}}
+            <Component Id="CMP_UninstallShortcut" Guid="*" Win64="$(var.Win64)">
+
+                <Shortcut Id="UninstallShortcut"
+						  Name="Uninstall {{product_name}}"
+						  Description="Uninstalls {{product_name}}"
+						  Target="[System64Folder]msiexec.exe"
+						  Arguments="/x [ProductCode]" />
+
+				<RemoveFolder Id="INSTALLDIR"
+							  On="uninstall" />
+
+				<RegistryValue Root="HKLM"
+							   Key="Software\\{{manufacturer}}\\{{product_name}}"
+							   Name="UninstallerShortcut"
+							   Type="integer"
+							   Value="1"
+							   KeyPath="yes" />
+            </Component>
+        </DirectoryRef>
+
+        <DirectoryRef Id="FYAGENTCOMMONDATA">
+            <Component Id="RuntimeStateParentDirectoryAcl" Guid="*" Win64="$(var.Win64)">
+                <CreateFolder>
+                    <PermissionEx Sddl="O:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" />
+                </CreateFolder>
+                <RegistryValue Root="HKLM" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="RuntimeStateParentDirectoryAcl" Type="integer" Value="1" KeyPath="yes" />
+            </Component>
+        </DirectoryRef>
+
+        <DirectoryRef Id="FYAGENTRUNTIME">
+            <Component Id="RuntimeStateDirectoryAcl" Guid="*" Win64="$(var.Win64)">
+                <CreateFolder>
+                    <PermissionEx Sddl="O:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" />
+                </CreateFolder>
+                <RegistryValue Root="HKLM" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="RuntimeStateDirectoryAcl" Type="integer" Value="1" KeyPath="yes" />
+            </Component>
+        </DirectoryRef>
+
+        <DirectoryRef Id="ApplicationProgramsFolder">
+            <Component Id="ApplicationShortcut" Guid="*" Win64="$(var.Win64)">
+                <Shortcut Id="ApplicationStartMenuShortcut"
+                    Name="{{product_name}}"
+                    Description="Runs {{product_name}}"
+                    Target="[!Path]"
+                    Icon="ProductIcon"
+                    WorkingDirectory="INSTALLDIR">
+                    <ShortcutProperty Key="System.AppUserModel.ID" Value="{{bundle_id}}"/>
+                </Shortcut>
+                <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
+                <RegistryValue Root="HKLM" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes"/>
+           </Component>
+        </DirectoryRef>
+
+        {{#each merge_modules as |msm| ~}}
+        <DirectoryRef Id="TARGETDIR">
+            <Merge Id="{{ msm.name }}" SourceFile="{{ msm.path }}" DiskId="1" Language="!(loc.TauriLanguage)" />
+        </DirectoryRef>
+
+        <Feature Id="{{ msm.name }}" Title="{{ msm.name }}" AllowAdvertise="no" Display="hidden" Level="1">
+            <MergeRef Id="{{ msm.name }}"/>
+        </Feature>
+        {{/each~}}
+
+        <Feature
+                Id="MainProgram"
+                Title="Application"
+                Description="!(loc.InstallAppFeature)"
+                Level="1"
+                ConfigurableDirectory="INSTALLDIR"
+                AllowAdvertise="no"
+                Display="expand"
+                Absent="disallow">
+
+            <ComponentRef Id="InstallDirectoryAcl"/>
+            <ComponentRef Id="RuntimeStateParentDirectoryAcl"/>
+            <ComponentRef Id="RuntimeStateDirectoryAcl"/>
+            <ComponentRef Id="RegistryEntries"/>
+
+            {{#each resource_file_ids as |resource_file_id| ~}}
+                <ComponentRef Id="{{ resource_file_id }}"/>
+            {{/each~}}
+
+            {{#if enable_elevated_update_task}}
+                <ComponentRef Id="UpdateTask" />
+                <ComponentRef Id="UpdateTaskInstaller" />
+                <ComponentRef Id="UpdateTaskUninstaller" />
+            {{/if}}
+
+            <Feature Id="ShortcutsFeature"
+                Title="Shortcuts"
+                Level="1">
+                <ComponentRef Id="Path"/>
+                <ComponentRef Id="CMP_UninstallShortcut" />
+                <ComponentRef Id="ApplicationShortcut" />
+                <ComponentRef Id="ApplicationShortcutDesktop" />
+            </Feature>
+
+            <Feature
+                Id="Environment"
+                Title="PATH Environment Variable"
+                Description="!(loc.PathEnvVarFeature)"
+                Level="1"
+                Absent="allow">
+            <ComponentRef Id="Path"/>
+            {{#each binaries as |bin| ~}}
+            <ComponentRef Id="{{ bin.id }}"/>
+            {{/each~}}
+            </Feature>
+        </Feature>
+
+        <Feature Id="External" AllowAdvertise="no" Absent="disallow">
+            {{#each component_group_refs as |id| ~}}
+            <ComponentGroupRef Id="{{ id }}"/>
+            {{/each~}}
+            {{#each component_refs as |id| ~}}
+            <ComponentRef Id="{{ id }}"/>
+            {{/each~}}
+            {{#each feature_group_refs as |id| ~}}
+            <FeatureGroupRef Id="{{ id }}"/>
+            {{/each~}}
+            {{#each feature_refs as |id| ~}}
+            <FeatureRef Id="{{ id }}"/>
+            {{/each~}}
+            {{#each merge_refs as |id| ~}}
+            <MergeRef Id="{{ id }}"/>
+            {{/each~}}
+        </Feature>
+
+        {{#if install_webview}}
+        <!-- WebView2 -->
+        <Property Id="WVRTINSTALLED">
+            <RegistrySearch Id="WVRTInstalledSystem" Root="HKLM" Key="SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" Name="pv" Type="raw" Win64="no" />
+            <RegistrySearch Id="WVRTInstalledUser" Root="HKCU" Key="SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" Name="pv" Type="raw"/>
+        </Property>
+
+        {{#if download_bootstrapper}}
+        <CustomAction Id='DownloadAndInvokeBootstrapper' Directory="INSTALLDIR" Execute="deferred" ExeCommand='powershell.exe -NoProfile -windowstyle hidden try [\{] [\[]Net.ServicePointManager[\]]::SecurityProtocol = [\[]Net.SecurityProtocolType[\]]::Tls12 [\}] catch [\{][\}]; Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile "$env:TEMP\MicrosoftEdgeWebview2Setup.exe" ; Start-Process -FilePath "$env:TEMP\MicrosoftEdgeWebview2Setup.exe" -ArgumentList ({{webview_installer_args}} &apos;/install&apos;) -Wait' Return='check'/>
+        <InstallExecuteSequence>
+            <Custom Action='DownloadAndInvokeBootstrapper' Before='InstallFinalize'>
+                <![CDATA[NOT(REMOVE OR WVRTINSTALLED)]]>
+            </Custom>
+        </InstallExecuteSequence>
+        {{/if}}
+
+        <!-- Embedded webview bootstrapper mode -->
+        {{#if webview2_bootstrapper_path}}
+        <Binary Id="MicrosoftEdgeWebview2Setup.exe" SourceFile="{{webview2_bootstrapper_path}}"/>
+        <CustomAction Id='InvokeBootstrapper' BinaryKey='MicrosoftEdgeWebview2Setup.exe' Execute="deferred" ExeCommand='{{webview_installer_args}} /install' Return='check' />
+        <InstallExecuteSequence>
+            <Custom Action='InvokeBootstrapper' Before='InstallFinalize'>
+                <![CDATA[NOT(REMOVE OR WVRTINSTALLED)]]>
+            </Custom>
+        </InstallExecuteSequence>
+        {{/if}}
+
+        <!-- Embedded offline installer -->
+        {{#if webview2_installer_path}}
+        <Binary Id="MicrosoftEdgeWebView2RuntimeInstaller.exe" SourceFile="{{webview2_installer_path}}"/>
+        <CustomAction Id='InvokeStandalone' BinaryKey='MicrosoftEdgeWebView2RuntimeInstaller.exe' Execute="deferred" ExeCommand='{{webview_installer_args}} /install' Return='check' />
+        <InstallExecuteSequence>
+            <Custom Action='InvokeStandalone' Before='InstallFinalize'>
+                <![CDATA[NOT(REMOVE OR WVRTINSTALLED)]]>
+            </Custom>
+        </InstallExecuteSequence>
+        {{/if}}
+
+        {{/if}}
+
+        {{#if enable_elevated_update_task}}
+        <!-- Install an elevated update task within Windows Task Scheduler -->
+        <CustomAction
+            Id="CreateUpdateTask"
+            Return="check"
+            Directory="INSTALLDIR"
+            Execute="commit"
+            Impersonate="yes"
+            ExeCommand="powershell.exe -WindowStyle hidden .\install-task.ps1" />
+        <InstallExecuteSequence>
+            <Custom Action='CreateUpdateTask' Before='InstallFinalize'>
+                NOT(REMOVE)
+            </Custom>
+        </InstallExecuteSequence>
+        <!-- Remove elevated update task during uninstall -->
+        <CustomAction
+            Id="DeleteUpdateTask"
+            Return="check"
+            Directory="INSTALLDIR"
+            ExeCommand="powershell.exe -WindowStyle hidden .\uninstall-task.ps1" />
+        <InstallExecuteSequence>
+            <Custom Action="DeleteUpdateTask" Before='InstallFinalize'>
+                (REMOVE = "ALL") AND NOT UPGRADINGPRODUCTCODE
+            </Custom>
+        </InstallExecuteSequence>
+        {{/if}}
+
+        <InstallExecuteSequence>
+          <Custom Action="LaunchApplication" After="InstallFinalize">AUTOLAUNCHAPP AND NOT Installed</Custom>
+        </InstallExecuteSequence>
+
+        <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLDIR]" After="CostFinalize"/>
+    </Product>
+</Wix>

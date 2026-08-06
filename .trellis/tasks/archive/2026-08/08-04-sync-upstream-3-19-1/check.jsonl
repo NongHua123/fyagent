@@ -1,0 +1,10 @@
+{"file":".trellis/spec/backend/application-identity.md","reason":"Verify current identity, former-state rejection, and factual provenance exceptions."}
+{"file":".trellis/spec/backend/fyagent-v1-0-1-config-domains.md","reason":"Verify version, Codex, trusted restart, WorkBuddy, and local full-gate contracts."}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Verify merged installer and security behavior retains all frozen invariants."}
+{"file":".trellis/spec/backend/github-release-workflow.md","reason":"Verify push/release workflow changes do not restore automatic or updater publication."}
+{"file":"tests/versionConsistency.test.ts","reason":"Guard FyAgent 0.1.0 across npm, Cargo, and Tauri manifests."}
+{"file":"tests/releaseWorkflow.test.ts","reason":"Guard FyAgent artifact names, no-updater behavior, and platform release structure."}
+{"file":"tests/githubWorkflowTriggers.test.ts","reason":"Guard manual-only CI and release trigger policy."}
+{"file":"tests/macosCrossWorkflow.test.ts","reason":"Guard WSL macOS cross-build supply-chain and experimental artifact boundary."}
+{"file":"tests/integration/App.test.tsx","reason":"Verify App/query/WorkBuddy integration after upstream query and dead-code convergence."}
+{"file":"src-tauri/tests/provider_service.rs","reason":"Verify upstream Provider changes compile against fyagent_lib and preserve local Provider behavior."}

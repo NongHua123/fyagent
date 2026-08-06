@@ -27,10 +27,10 @@ mod model_capabilities;
 mod openclaw_config;
 mod opencode_config;
 mod panic_hook;
+mod platform;
 mod prompt;
 mod prompt_files;
 mod provider;
-mod provider_defaults;
 mod proxy;
 mod services;
 mod session_manager;
@@ -40,10 +40,14 @@ mod store;
 mod tray;
 mod usage_events;
 mod usage_script;
+mod window_layout;
+mod windows_runtime;
 
 use crate::codex_desktop::types::JobStage;
 pub use app_config::{AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps};
-pub use codex_config::{get_codex_auth_path, get_codex_config_path, write_codex_live_atomic};
+pub use codex_config::{
+    get_codex_auth_path, get_codex_config_path, read_codex_live_settings, write_codex_live_atomic,
+};
 pub use commands::open_provider_terminal;
 pub use commands::*;
 pub use config::{get_claude_mcp_path, get_claude_settings_path, read_json_file};
@@ -71,15 +75,22 @@ pub use settings::{update_settings, AppSettings};
 pub use store::AppState;
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-use tauri_plugin_opener::OpenerExt;
+pub use windows_runtime::{early_windows_startup_gate, WindowsStartupDisposition};
 
-use std::{fmt, sync::Arc};
+use std::{
+    fmt,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 #[cfg(target_os = "macos")]
 use tauri::image::Image;
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::RunEvent;
 use tauri::{Emitter, Manager};
-use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+use tauri_plugin_window_state::{AppHandleExt, StateFlags, WindowExt};
 
 /// Handles the two reserved experimental all-users installer flags before the
 /// Tauri runtime exists.  This public binary-facing shim deliberately exposes
@@ -134,14 +145,6 @@ impl fmt::Display for RedactedUrl<'_> {
             self.url,
             self.known_secrets,
         ))
-    }
-}
-
-/// 为日志提供惰性 URL 脱敏包装；只有日志实际输出时才解析和重建 URL。
-pub(crate) fn url_for_log(url: &str) -> RedactedUrl<'_> {
-    RedactedUrl {
-        url,
-        known_secrets: &[],
     }
 }
 
@@ -248,6 +251,158 @@ fn runtime_log_level_allows(level: log::Level, max_level: log::LevelFilter) -> b
     max_level.to_level().is_some_and(|maximum| level <= maximum)
 }
 
+const WINDOW_LAYOUT_EVENT: &str = "layout-mode-changed";
+const WINDOW_LAYOUT_DEBOUNCE: Duration = Duration::from_millis(150);
+
+fn layout_mode_label(mode: window_layout::LayoutMode) -> &'static str {
+    match mode {
+        window_layout::LayoutMode::Normal => "normal",
+        window_layout::LayoutMode::Constrained => "constrained",
+    }
+}
+
+/// Converts the monitor work area to logical pixels before the layout policy
+/// sees it. The policy is deliberately independent of monitor identity so the
+/// diagnostic path never needs to retain a display name or serial number.
+fn current_logical_work_area(
+    window: &tauri::WebviewWindow,
+) -> Option<(window_layout::LogicalWorkArea, f64)> {
+    let monitor = match window.current_monitor() {
+        Ok(Some(monitor)) => monitor,
+        Ok(None) => return None,
+        Err(error) => {
+            log::debug!("Unable to read main-window monitor for layout policy: {error}");
+            return None;
+        }
+    };
+    let scale_factor = monitor.scale_factor();
+    if !scale_factor.is_finite() || scale_factor <= 0.0 {
+        log::debug!("Ignoring invalid main-window scale factor for layout policy");
+        return None;
+    }
+
+    let work_area = monitor.work_area();
+    Some((
+        window_layout::LogicalWorkArea {
+            x: f64::from(work_area.position.x) / scale_factor,
+            y: f64::from(work_area.position.y) / scale_factor,
+            width: f64::from(work_area.size.width) / scale_factor,
+            height: f64::from(work_area.size.height) / scale_factor,
+        },
+        scale_factor,
+    ))
+}
+
+fn emit_main_window_layout_mode(
+    window: &tauri::WebviewWindow,
+    work_area: window_layout::LogicalWorkArea,
+    scale_factor: f64,
+) -> tauri::Result<()> {
+    let mode = window_layout::layout_mode(work_area.width);
+    window.emit(WINDOW_LAYOUT_EVENT, layout_mode_label(mode))?;
+    log::debug!(
+        "Main window layout policy v{} updated: logical_work_area_width={:.0}, scale_factor={scale_factor:.2}, mode={}",
+        window_layout::LAYOUT_VERSION,
+        work_area.width,
+        layout_mode_label(mode),
+    );
+    Ok(())
+}
+
+/// Re-evaluates only the current monitor constraint. It intentionally does not
+/// reset size or position: after returning to a large work area a legal user
+/// size stays untouched, while the product minimum becomes available again.
+fn refresh_main_window_layout(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    let Some((work_area, scale_factor)) = current_logical_work_area(window) else {
+        return Ok(());
+    };
+    let minimum = window_layout::effective_minimum_size(work_area);
+    window.set_min_size(Some(tauri::LogicalSize::new(minimum.width, minimum.height)))?;
+    emit_main_window_layout_mode(window, work_area, scale_factor)
+}
+
+/// Restores the main window while it is still hidden, normalizes legacy saved
+/// geometry, and only then restores maximization. `window-state` continues to
+/// own persistence; this is a controlled migration layer above its raw state.
+fn restore_hidden_main_window_layout(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    if let Err(error) = window.restore_state(window_state_flags()) {
+        // A corrupt or unavailable persisted state must not block startup.
+        log::warn!("Unable to restore saved main-window state; using current geometry: {error}");
+    }
+
+    let Some((work_area, scale_factor)) = current_logical_work_area(window) else {
+        return Ok(());
+    };
+
+    let was_maximized = window.is_maximized().unwrap_or(false);
+    if was_maximized {
+        window.unmaximize()?;
+    }
+
+    let size = window.inner_size()?;
+    let position = window.outer_position()?;
+    let geometry = window_layout::clamp_window_geometry(
+        window_layout::WindowGeometry {
+            x: f64::from(position.x) / scale_factor,
+            y: f64::from(position.y) / scale_factor,
+            width: f64::from(size.width) / scale_factor,
+            height: f64::from(size.height) / scale_factor,
+            maximized: was_maximized,
+        },
+        work_area,
+    );
+    let minimum = window_layout::effective_minimum_size(work_area);
+
+    window.set_min_size(Some(tauri::LogicalSize::new(minimum.width, minimum.height)))?;
+    window.set_size(tauri::LogicalSize::new(geometry.width, geometry.height))?;
+    window.set_position(tauri::LogicalPosition::new(geometry.x, geometry.y))?;
+    if geometry.maximized {
+        window.maximize()?;
+    }
+    emit_main_window_layout_mode(window, work_area, scale_factor)
+}
+
+/// Coalesces monitor/DPI changes so transient move events cannot repeatedly
+/// apply constraints or flood the renderer with layout-mode notifications.
+fn install_main_window_layout_listener(window: &tauri::WebviewWindow) {
+    let generation = Arc::new(AtomicU64::new(0));
+    let window_for_events = window.clone();
+
+    window.on_window_event(move |event| {
+        if !matches!(
+            event,
+            tauri::WindowEvent::Moved(_) | tauri::WindowEvent::ScaleFactorChanged { .. }
+        ) {
+            return;
+        }
+
+        let revision = generation.fetch_add(1, Ordering::AcqRel).wrapping_add(1);
+        let generation = generation.clone();
+        let window = window_for_events.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(WINDOW_LAYOUT_DEBOUNCE).await;
+            if generation.load(Ordering::Acquire) != revision {
+                return;
+            }
+            if let Err(error) = refresh_main_window_layout(&window) {
+                log::debug!("Unable to refresh main-window layout after display change: {error}");
+            }
+        });
+    });
+}
+
+fn emit_safe_deeplink_error(app: &tauri::AppHandle) {
+    // Do not expose the rejected URL or parser diagnostic. Deep links may
+    // legitimately carry credentials, and the renderer only needs a safe,
+    // localized failure category.
+    if let Err(error) = app.emit(
+        "deeplink-error",
+        serde_json::json!({ "code": "invalid_deeplink" }),
+    ) {
+        log::error!("Failed to emit safe deep-link error event: {error}");
+    }
+}
+
 /// 统一处理 fyagent:// 深链接 URL
 ///
 /// - 解析 URL
@@ -263,19 +418,11 @@ fn handle_deeplink_url(
         return false;
     }
 
-    log::info!(
-        "✓ Deep link URL detected from {source}: {}",
-        url_for_log(url_str)
-    );
+    log::info!("Deep link URL detected from {source}");
 
     match crate::deeplink::parse_deeplink_url(url_str) {
         Ok(request) => {
-            log::info!(
-                "✓ Successfully parsed deep link: resource={}, app={:?}, name={:?}",
-                request.resource,
-                request.app,
-                request.name
-            );
+            log::info!("Successfully parsed deep link request");
 
             if let Err(e) = app.emit("deeplink-import", &request) {
                 log::error!("✗ Failed to emit deeplink-import event: {e}");
@@ -296,22 +443,46 @@ fn handle_deeplink_url(
                 }
             }
         }
-        Err(e) => {
-            log::error!("✗ Failed to parse deep link URL: {e}");
-
-            if let Err(emit_err) = app.emit(
-                "deeplink-error",
-                serde_json::json!({
-                    "url": url_str,
-                    "error": e.to_string()
-                }),
-            ) {
-                log::error!("✗ Failed to emit deeplink-error event: {emit_err}");
-            }
+        Err(_) => {
+            log::warn!("Rejected invalid deep link from {source}");
+            emit_safe_deeplink_error(app);
         }
     }
 
     true
+}
+
+/// Handles a raw, bounded activation envelope received before/alongside Tauri.
+/// The pipe protocol authenticates the sender but never attests to the content:
+/// every candidate URL returns through the ordinary deep-link parser before the
+/// renderer sees it, and a non-link activation merely restores the main window.
+#[cfg(target_os = "windows")]
+fn handle_windows_activation(
+    app: tauri::AppHandle,
+    activation: crate::windows_runtime::ActivationEnvelope,
+) {
+    if crate::lightweight::is_lightweight_mode() {
+        if let Err(error) = crate::lightweight::exit_lightweight_mode(&app) {
+            log::error!("Windows activation could not restore the main window: {error}");
+            return;
+        }
+    }
+
+    let mut handled_deeplink = false;
+    for argument in activation.args() {
+        if handle_deeplink_url(&app, argument, true, "windows activation pipe") {
+            handled_deeplink = true;
+            break;
+        }
+    }
+
+    if !handled_deeplink {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }
 }
 
 /// 更新托盘菜单的Tauri命令
@@ -354,16 +525,28 @@ pub fn run() {
     // 设置 panic hook，在应用崩溃时记录日志到 <app_config_dir>/crash.log（默认 ~/.fyagent/crash.log）
     panic_hook::setup_panic_hook();
 
-    let mut builder = tauri::Builder::default();
+    // Windows 正式程序以管理员权限运行；在 Tauri、用户目录、数据库和托盘初始化前
+    // 清理 FyAgent 自身遗留的 Run 值。清理失败时不继续启动，避免把已禁用的自启
+    // 策略静默降级为“尽力而为”。
+    #[cfg(target_os = "windows")]
+    if let Err(error) = auto_launch::enforce_platform_auto_launch_policy() {
+        eprintln!("FyAgent cannot enforce the Windows auto-launch policy: {error}");
+        return;
+    }
 
-    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-    {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+    let builder = tauri::Builder::default();
+
+    // Windows owns single-business-instance detection before Tauri exists so a
+    // rejected second launch cannot initialize the runtime, logger, database,
+    // tray, or renderer. Keep the cross-platform plugin on its native
+    // macOS/Linux paths only.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             log::info!("=== Single Instance Callback Triggered ===");
             log::debug!("Args count: {}", args.len());
-            for (i, arg) in args.iter().enumerate() {
-                log::debug!("  arg[{i}]: {}", url_for_log(arg));
-            }
+            // Arguments can be arbitrary local paths or custom-protocol URLs
+            // carrying credentials. Retain only their count for diagnostics;
+            // parsing below is the sole consumer of their contents.
 
             if crate::lightweight::is_lightweight_mode() {
                 if let Err(e) = crate::lightweight::exit_lightweight_mode(app) {
@@ -395,7 +578,6 @@ pub fn run() {
                 }
             }
         }));
-    }
 
     let builder = builder
         // 注册 deep-link 插件（处理 macOS AppleEvent 和其他平台的深链接）
@@ -439,9 +621,26 @@ pub fn run() {
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(window_state_flags())
+                .skip_initial_state("main")
                 .build(),
         )
         .setup(|app| {
+            #[cfg(target_os = "windows")]
+            {
+                // The listener itself was bound before `Builder::default()`.
+                // Register the Tauri-side consumer at the first setup line so
+                // any envelope queued during construction is re-parsed and
+                // focused before user configuration or database work begins.
+                let activation_app = app.handle().clone();
+                crate::windows_runtime::install_activation_handler(move |activation| {
+                    let activation_app = activation_app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        handle_windows_activation(activation_app, activation);
+                    });
+                })
+                .map_err(|code| std::io::Error::other(code.as_str()))?;
+            }
+
             let _ = rustls::crypto::ring::default_provider().install_default();
 
             // 预先刷新 Store 覆盖配置，确保后续路径读取正确（日志/数据库等）
@@ -671,17 +870,20 @@ pub fn run() {
             app_state
                 .codex_desktop_service
                 .attach_log_directory_opener(Arc::new(move |directory: &std::path::Path| {
-                    log_opener_handle
-                        .opener()
-                        .open_path(directory.to_string_lossy().to_string(), None::<String>)
-                        .map_err(|_| {
+                    tauri::async_runtime::block_on(
+                        crate::platform::process_launch::open_directory_as_user(
+                            log_opener_handle.clone(),
+                            directory.to_path_buf(),
+                        ),
+                    )
+                    .map_err(|_| {
                             crate::codex_desktop::error::InstallerError::new(
                                 crate::codex_desktop::error::InstallerErrorCode::InternalError,
                             )
                             .with_diagnostic_message(
                                 "the application log directory could not be opened",
                             )
-                        })
+                    })
                 }));
 
             // ============================================================
@@ -1084,9 +1286,8 @@ pub fn run() {
                         }
                     }
 
-                    for (i, url) in urls.iter().enumerate() {
+                    for url in urls {
                         let url_str = url.as_str();
-                        log::debug!("  URL[{i}]: {}", url_for_log(url_str));
 
                         if handle_deeplink_url(&app_handle, url_str, true, "on_open_url") {
                             break; // Process only first fyagent:// URL
@@ -1250,6 +1451,17 @@ pub fn run() {
                     }
                 }
 
+                // 必须排在 auto-extract 之前：先把历史泄漏进 Gemini 共享片段的凭据
+                // 清干净，否则紧接着的提取会基于被污染的 live 再写一遍。
+                if let Err(e) =
+                    crate::services::provider::ProviderService::scrub_leaked_gemini_common_config(
+                        &state,
+                    )
+                    .await
+                {
+                    log::warn!("清理 Gemini 通用配置泄漏凭据失败: {e}");
+                }
+
                 initialize_common_config_snippets(&state);
 
                 // 检查 settings 表中的代理状态，自动恢复代理服务
@@ -1339,6 +1551,14 @@ pub fn run() {
             // 静默启动：根据设置决定是否显示主窗口
             let settings = crate::settings::get_settings();
             if let Some(window) = app.get_webview_window("main") {
+                // The configured window begins hidden. Restore, clamp and
+                // reapply maximization before either normal or silent startup
+                // decides its visibility, avoiding off-screen/legacy flashes.
+                if let Err(error) = restore_hidden_main_window_layout(&window) {
+                    log::warn!("Unable to apply main-window layout policy: {error}");
+                }
+                install_main_window_layout_listener(&window);
+
                 // 在窗口首次显示前同步装饰状态，避免前端加载后再切换导致标题栏闪烁
                 // 仅 Linux 生效：解决 Wayland 下系统窗口按钮不可用的问题
                 #[cfg(target_os = "linux")]
@@ -1373,11 +1593,18 @@ pub fn run() {
             commands::get_providers,
             commands::get_current_provider,
             commands::add_provider,
+            commands::add_provider_with_result,
             commands::update_provider,
+            commands::update_provider_with_result,
             commands::delete_provider,
+            commands::delete_provider_with_result,
             commands::remove_provider_from_live_config,
             commands::switch_provider,
+            commands::switch_provider_with_result,
             commands::import_default_config,
+            commands::import_default_config_with_result,
+            commands::analyze_codex_provider_features,
+            commands::patch_codex_provider_features,
             commands::get_claude_desktop_status,
             commands::get_claude_desktop_default_routes,
             commands::import_claude_desktop_providers_from_claude,
@@ -1392,6 +1619,7 @@ pub fn run() {
             commands::pick_directory,
             commands::open_external,
             commands::get_init_error,
+            commands::get_runtime_privilege_status,
             commands::get_migration_result,
             commands::get_skills_migration_result,
             commands::get_app_config_path,
@@ -1584,7 +1812,11 @@ pub fn run() {
             commands::get_request_detail,
             commands::get_model_pricing,
             commands::update_model_pricing,
+            commands::update_model_pricing_batch,
             commands::delete_model_pricing,
+            commands::get_models_dev_sync_config,
+            commands::save_models_dev_sync_config,
+            commands::record_models_dev_sync_result,
             commands::check_provider_limits,
             // Session usage sync
             commands::sync_session_usage,
@@ -1694,7 +1926,16 @@ pub fn run() {
             commands::enter_lightweight_mode,
             commands::exit_lightweight_mode,
             commands::is_lightweight_mode,
+            // WorkBuddy is an isolated top-level configuration domain.
+            commands::get_workbuddy_status,
+            commands::get_workbuddy_model_ids,
+            commands::fetch_workbuddy_models,
+            commands::save_workbuddy_models,
             commands::codex_desktop_get_local_status,
+            commands::get_codex_desktop_runtime_status,
+            commands::request_codex_desktop_restart,
+            commands::continue_codex_desktop_restart_with_force,
+            commands::cancel_codex_desktop_restart_with_force,
             commands::codex_desktop_check_latest,
             commands::codex_desktop_get_job,
             commands::codex_desktop_start_install,
@@ -1832,10 +2073,6 @@ pub fn run() {
                 RunEvent::Opened { urls } => {
                     if let Some(url) = urls.first() {
                         let url_str = url.to_string();
-                        log::info!(
-                            "RunEvent::Opened with URL: {}",
-                            url_for_log(&url_str)
-                        );
 
                         if url_str.starts_with("fyagent://") {
                             if crate::lightweight::is_lightweight_mode() {
@@ -1845,48 +2082,12 @@ pub fn run() {
                                 }
                             }
 
-                            // 解析并广播深链接事件，复用与 single_instance 相同的逻辑
-                            match crate::deeplink::parse_deeplink_url(&url_str) {
-                                Ok(request) => {
-                                    log::info!(
-                                        "Successfully parsed deep link from RunEvent::Opened: resource={}, app={:?}",
-                                        request.resource,
-                                        request.app
-                                    );
-
-                                    if let Err(e) =
-                                        app_handle.emit("deeplink-import", &request)
-                                    {
-                                        log::error!(
-                                            "Failed to emit deep link event from RunEvent::Opened: {e}"
-                                        );
-                                    }
-                                }
-                                Err(e) => {
-                                    log::error!(
-                                        "Failed to parse deep link URL from RunEvent::Opened: {e}"
-                                    );
-
-                                    if let Err(emit_err) = app_handle.emit(
-                                        "deeplink-error",
-                                        serde_json::json!({
-                                            "url": url_str,
-                                            "error": e.to_string()
-                                        }),
-                                    ) {
-                                        log::error!(
-                                            "Failed to emit deep link error event from RunEvent::Opened: {emit_err}"
-                                        );
-                                    }
-                                }
-                            }
-
-                            // 确保主窗口可见
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let _ = window.unminimize();
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
+                            let _ = handle_deeplink_url(
+                                app_handle,
+                                &url_str,
+                                true,
+                                "run_event_opened",
+                            );
                         }
                     }
                 }
@@ -2495,12 +2696,19 @@ pub fn save_window_state_before_exit(app_handle: &tauri::AppHandle) {
 
 /// 主动释放 single-instance 锁。
 ///
-/// macOS single-instance 使用 `/tmp/{identifier}.sock`。我们有若干路径会直接
-/// `std::process::exit(0)`，不会触发插件挂在 `RunEvent::Exit` 上的清理钩子。
-/// 重启前主动 destroy 可以避免新进程误连旧 listener 后自行退出。
+/// macOS/Linux 使用插件提供的 listener；Windows 在 Tauri 前绑定受认证的
+/// named-pipe guard。我们有若干路径会直接 `std::process::exit(0)`，不会触发
+/// 插件挂在 `RunEvent::Exit` 上的清理钩子。重启前主动释放可以避免新进程误连
+/// 旧 listener 后自行退出。
 pub fn destroy_single_instance_lock(app_handle: &tauri::AppHandle) {
-    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    crate::windows_runtime::release_instance_guard();
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     tauri_plugin_single_instance::destroy(app_handle);
+
+    #[cfg(target_os = "windows")]
+    let _ = app_handle;
 }
 
 /// 清理托盘图标、释放 single-instance 锁后重启当前应用。
@@ -2661,8 +2869,8 @@ mod tests {
     }
 
     #[test]
-    fn ordinary_codex_desktop_ipc_is_exactly_seven_unprivileged_commands() {
-        const EXPECTED_COMMANDS: [&str; 7] = [
+    fn codex_desktop_ipc_keeps_seven_ordinary_commands_and_four_trusted_restart_commands() {
+        const ORDINARY_COMMANDS: [&str; 7] = [
             "codex_desktop_get_local_status",
             "codex_desktop_check_latest",
             "codex_desktop_get_job",
@@ -2671,6 +2879,12 @@ mod tests {
             "codex_desktop_launch",
             "codex_desktop_open_log_directory",
         ];
+        const TRUSTED_RESTART_COMMANDS: [&str; 4] = [
+            "get_codex_desktop_runtime_status",
+            "request_codex_desktop_restart",
+            "continue_codex_desktop_restart_with_force",
+            "cancel_codex_desktop_restart_with_force",
+        ];
 
         let command_source = include_str!("commands/codex_desktop.rs").replace("\r\n", "\n");
         let library_source = include_str!("lib.rs").replace("\r\n", "\n");
@@ -2678,15 +2892,41 @@ mod tests {
 
         assert_eq!(
             command_source.matches("#[tauri::command]").count(),
-            EXPECTED_COMMANDS.len()
+            ORDINARY_COMMANDS.len() + TRUSTED_RESTART_COMMANDS.len()
         );
-        for command in EXPECTED_COMMANDS {
+        for command in ORDINARY_COMMANDS {
             assert_eq!(
                 command_source
                     .matches(&format!("pub async fn {command}("))
                     .count(),
                 1,
                 "ordinary command {command} must be declared exactly once"
+            );
+        }
+        for command in TRUSTED_RESTART_COMMANDS {
+            assert_eq!(
+                command_source
+                    .matches(&format!("pub async fn {command}("))
+                    .count(),
+                1,
+                "trusted restart command {command} must be declared exactly once"
+            );
+        }
+        let cancellation_signature_start = command_source
+            .find("pub async fn cancel_codex_desktop_restart_with_force(")
+            .expect("the force-confirmation cancellation command remains present");
+        let cancellation_signature_end = command_source[cancellation_signature_start..]
+            .find(") -> Result")
+            .map(|offset| cancellation_signature_start + offset)
+            .expect("the force-confirmation cancellation signature remains bounded");
+        let cancellation_signature =
+            &command_source[cancellation_signature_start..cancellation_signature_end];
+        assert!(cancellation_signature.contains("token: String"));
+        let cancellation_signature_lowercase = cancellation_signature.to_ascii_lowercase();
+        for prohibited in ["pid", "process", "path", "launch", "command", "name"] {
+            assert!(
+                !cancellation_signature_lowercase.contains(prohibited),
+                "force-confirmation cancellation must not accept {prohibited} input"
             );
         }
 
@@ -2701,12 +2941,18 @@ mod tests {
 
         assert_eq!(
             handler.matches("commands::codex_desktop_").count(),
-            EXPECTED_COMMANDS.len()
+            ORDINARY_COMMANDS.len()
         );
-        for command in EXPECTED_COMMANDS {
+        for command in ORDINARY_COMMANDS {
             assert!(
                 handler.contains(&format!("commands::{command}")),
                 "ordinary command {command} must remain registered"
+            );
+        }
+        for command in TRUSTED_RESTART_COMMANDS {
+            assert!(
+                handler.contains(&format!("commands::{command}")),
+                "trusted restart command {command} must remain registered"
             );
         }
         let handler_lowercase = handler.to_ascii_lowercase();

@@ -65,6 +65,9 @@ pub(crate) trait WindowsPackageManager: Send + Sync {
         progress: WindowsDeploymentProgressSink,
     ) -> Result<(), WindowsNativeError>;
 
+    /// Launches an already verified app identity. The system implementation
+    /// delegates this to the interactive user's Explorer shell rather than
+    /// activating the app from the elevated FyAgent process.
     fn launch_aumid(&self, aumid: &str) -> Result<(), WindowsNativeError>;
 }
 
@@ -152,11 +155,12 @@ fn all_users_stage_record_error() -> InstallerError {
     )
 }
 
-/// AUMID activation failures are not package deployment results. Preserve an
-/// HRESULT if present, but always expose the stable launch-specific code.
+/// Verified application launch failures are not package deployment results.
+/// Preserve an HRESULT if present, but always expose the stable launch-specific
+/// code.
 pub(crate) fn launch_error(error: WindowsNativeError) -> InstallerError {
     let mut installer_error = InstallerError::new(InstallerErrorCode::LaunchFailed)
-        .with_diagnostic_message("Windows could not activate the verified application identity");
+        .with_diagnostic_message("Windows could not launch the verified application identity");
     if let Some(hresult) = error.hresult() {
         installer_error = installer_error.with_platform_error_code(format_hresult(hresult));
     }
@@ -340,13 +344,7 @@ mod native {
         System::ProcessorArchitecture,
         Win32::{
             Storage::FileSystem::{GetDiskFreeSpaceExW, GetVolumePathNameW},
-            System::{
-                Com::{CoCreateInstance, CLSCTX_INPROC_SERVER},
-                WinRT::{RoInitialize, RoUninitialize, RO_INIT_MULTITHREADED},
-            },
-            UI::Shell::{
-                ApplicationActivationManager, IApplicationActivationManager, ACTIVATEOPTIONS,
-            },
+            System::WinRT::{RoInitialize, RoUninitialize, RO_INIT_MULTITHREADED},
         },
     };
     use windows_future::AsyncOperationProgressHandler;
@@ -633,15 +631,8 @@ mod native {
     }
 
     pub(super) fn launch_aumid(aumid: &str) -> Result<(), WindowsNativeError> {
-        let _apartment = WinRtApartment::initialize()?;
-        let activation_manager: IApplicationActivationManager =
-            unsafe { CoCreateInstance(&ApplicationActivationManager, None, CLSCTX_INPROC_SERVER) }
-                .map_err(WindowsNativeError::from_windows)?;
-        let aumid = HSTRING::from(aumid);
-        let arguments = HSTRING::new();
-        unsafe { activation_manager.ActivateApplication(&aumid, &arguments, ACTIVATEOPTIONS(0)) }
-            .map_err(WindowsNativeError::from_windows)?;
-        Ok(())
+        crate::platform::process_launch::launch_trusted_windows_app_aumid_as_user(aumid)
+            .map_err(|_| WindowsNativeError::unavailable())
     }
 
     pub(super) fn volume_root_for(path: &Path) -> Result<PathBuf, WindowsNativeError> {

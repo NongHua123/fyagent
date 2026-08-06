@@ -58,7 +58,7 @@ default_package: cli
 The AI can run:
 
 ```bash
-python ./.trellis/scripts/get_context.py --mode packages
+python3 ./.trellis/scripts/get_context.py --mode packages
 ```
 
 This command lists packages and spec layers for the current project. Use this output as the reference when configuring context JSONL.
