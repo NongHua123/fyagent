@@ -284,3 +284,38 @@ Fixed explicit release-manifest selection, test-only manifest linker scope, wind
 ### Status
 
 [OK] **Completed**
+
+
+## Session 10: FyAgent 0.2.1 secure installer and version contract
+
+**Date**: 2026-08-06
+**Task**: FyAgent 0.2.1 secure installer and version contract
+**Branch**: `feature/fyagent-v1`
+
+### Summary
+
+Implemented Cargo version SSOT, native MSI directory policy, dual-architecture helper wiring, release contract, and the raw reference package. Local static and cross-build checks passed; native Windows lifecycle and release signing gates remain pending.
+
+### Main Changes
+
+- Made src-tauri/Cargo.toml the single application version source and added guarded version commands.
+- Replaced script-based MSI directory validation with a native Rust custom-action helper and explicit maintenance gates.
+- Wired frozen release version metadata, unprefixed asset naming, and source SHA manifest provenance.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7049a834` | (see git log) |
+
+### Testing
+
+- [OK] Passed TypeScript, Node, Python, Cargo, shell, YAML formatting, manifest integrity, and x64 plus ARM64 MSI structural checks.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Run Windows x64 and ARM64 installer lifecycle HIL, signing, notarization, and real release-workflow verification before release.
