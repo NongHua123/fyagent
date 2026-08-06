@@ -1,0 +1,4 @@
+{"file":"docs/fyagent/dev/v1-0.2.1/10-TEST-AND-ACCEPTANCE-PLAN.md","reason":"Defines non-substitutable validation layers and release blockers."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Requires mise-backed local validation without toolchain drift."}
+{"file":".trellis/spec/backend/windows-release-boundary.md","reason":"Requires distinct native Windows release evidence; static/cross checks are insufficient."}
+{"file":".trellis/spec/backend/github-release-workflow.md","reason":"Ensures branch unsigned artifacts and signed tag release behavior are preserved."}
