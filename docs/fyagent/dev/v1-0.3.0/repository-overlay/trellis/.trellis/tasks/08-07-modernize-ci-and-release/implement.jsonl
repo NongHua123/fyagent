@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/github-release-workflow.md", "reason": "Long-term CI/Release contract."}
+{"file": ".trellis/spec/backend/windows-release-boundary.md", "reason": "Windows native release rules."}
+{"file": "06-CI-AND-RELEASE-DESIGN.md", "reason": "Detailed workflow design."}

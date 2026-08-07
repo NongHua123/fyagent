@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/08-07-fyagent-upstream-toolchain-release-modernization/research/execution-authority.md", "reason": "Approved documentation, release evidence, and archive semantics."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Current backend long-term contract inventory to reconcile."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Current frontend long-term contract inventory to preserve."}
+{"file": ".trellis/spec/guides/index.md", "reason": "Project-wide spec and documentation guidance."}

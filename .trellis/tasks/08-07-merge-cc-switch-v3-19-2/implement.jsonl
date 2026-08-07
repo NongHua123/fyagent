@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/08-07-fyagent-upstream-toolchain-release-modernization/research/execution-authority.md", "reason": "Verified Git/tag baseline and preserved FyAgent invariants."}
+{"file": ".trellis/spec/backend/application-identity.md", "reason": "FyAgent bundle, deep-link, repository, and data identity contract."}
+{"file": ".trellis/spec/backend/windows-release-boundary.md", "reason": "Windows packaging and installation security boundary to preserve through merge."}

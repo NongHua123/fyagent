@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/08-07-fyagent-upstream-toolchain-release-modernization/research/execution-authority.md", "reason": "Approved public-repository, unsigned-release, and workflow-only eligibility decisions."}
+{"file": ".trellis/spec/backend/github-release-workflow.md", "reason": "Existing CI/Release topology and security contract to modernize."}
+{"file": ".trellis/spec/backend/windows-release-boundary.md", "reason": "Native Windows x64/ARM64 installer and signing-layer boundary."}
+{"file": ".trellis/spec/backend/fyagent-version-contract.md", "reason": "Product/tag/asset version consistency contract."}

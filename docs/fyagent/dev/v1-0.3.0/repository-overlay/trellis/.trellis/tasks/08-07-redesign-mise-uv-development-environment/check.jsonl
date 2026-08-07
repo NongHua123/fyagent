@@ -1,0 +1,3 @@
+{"file": "env:check JSON evidence", "reason": "Strict version/source/lock verification."}
+{"file": "tasks:validate/tasks:docs:check", "reason": "Task DAG and documentation consistency."}
+{"file": "Windows ARM64 smoke evidence", "reason": "Formal local tooling support."}

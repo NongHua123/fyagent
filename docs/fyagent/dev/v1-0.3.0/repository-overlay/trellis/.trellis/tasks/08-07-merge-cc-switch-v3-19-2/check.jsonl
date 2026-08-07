@@ -1,0 +1,2 @@
+{"file": "origin/upstream Git graph", "reason": "Verify remotes, tag, merge base and two-parent ancestry."}
+{"file": "FyAgent identity/licensing tests", "reason": "Prevent upstream overwrite of fork identity and license boundary."}

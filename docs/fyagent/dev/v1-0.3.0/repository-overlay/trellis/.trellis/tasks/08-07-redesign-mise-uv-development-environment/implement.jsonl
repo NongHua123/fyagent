@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/development-environment.md", "reason": "Tool and Python ownership."}
+{"file": ".trellis/spec/backend/task-runner-contract.md", "reason": "Public task API and side effects."}
+{"file": ".trellis/spec/backend/development-hooks.md", "reason": "Trellis/Codex execution boundary."}
+{"file": "05-MISE-UV-DEVELOPMENT-ENVIRONMENT.md", "reason": "Detailed target architecture."}

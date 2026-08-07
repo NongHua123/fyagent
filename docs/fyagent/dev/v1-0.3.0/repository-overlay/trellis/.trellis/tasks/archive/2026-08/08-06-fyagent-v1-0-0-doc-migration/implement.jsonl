@@ -1,0 +1,4 @@
+{"file":"docs/fyagent/dev/v1-0.2/README.md","reason":"当前版本化输入的优先级与范围。"}
+{"file":".trellis/tasks/08-06-fyagent-v1-0-2-workbuddy/prd.md","reason":"用户已确认的目录迁移和基线决策。"}
+{"file":"docs/fyagent/dev/v1-0.0/","type":"directory","reason":"实施结果：以 Git 感知重命名迁移 v1.0.0 初始历史设计；14 份 Markdown 正文和相对链接未改，00、02、05、16、17 仅补充历史归档定位与当前 v1.0.2 契约优先级。"}
+{"file":".trellis/spec/backend/fyagent-v1-0-1-config-domains.md","reason":"实施结果：v1.0.1 仅保留未被当前 v1.0.2 范围覆盖的配置域契约。"}

@@ -1,0 +1,12 @@
+{"file":"docs/fyagent/dev/v1-0.2/04-系统架构与IPC设计.md","reason":"Codex 候选计划、令牌、状态机和版本 DTO 设计。"}
+{"file":"docs/fyagent/dev/v1-0.2/03-交互设计与状态矩阵.md","reason":"重启和版本用户可见状态、焦点与文案。"}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"可信安装/运行身份与平台边界。"}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Query 派生状态和 mutation 协调器约定。"}
+{"file":"src-tauri/src/services/codex_desktop/restart_plan.rs","reason":"新增确定性候选比较、运行实例去重和私有计划版本指纹；确认令牌只绑定可信候选。"}
+{"file":"src-tauri/src/services/codex_desktop/mod.rs","reason":"将重启演进为请求确认、重新枚举、精确强制关闭、单次启动和可信运行验证的 fail-closed 流程。"}
+{"file":"src-tauri/src/codex_desktop/platform/windows/runtime.rs","reason":"Windows 运行实例仅以 PackageManager PFN/AUMID/发布者和 PID 创建时间身份绑定，拒绝名称、标题或路径猜测。"}
+{"file":"src-tauri/src/codex_desktop/platform/macos/mod.rs","reason":"macOS 在没有经验证的 Bundle identity 时保持 untrusted/fail-closed，不执行泛进程操作。"}
+{"file":"src/types/codexDesktop.ts","reason":"对齐后端 restart outcome、确认原因、进度和版本状态 DTO。"}
+{"file":"src/hooks/useCodexRestartCoordinator.ts","reason":"实现一次确认、进度、重试/延后协调，前端不持久化或展示敏感运行时标识。"}
+{"file":"src/components/codex/CodexRestartDialog.tsx","reason":"实现确认和不可中断进度对话框，进度期隔离 Escape/背景交互。"}
+{"file":"src/components/codex/versionState.ts","reason":"集中版本状态矩阵，使 launch 与远端检查状态保持独立。"}

@@ -1,0 +1,3 @@
+{"file": "tasks:docs:check", "reason": "Generated task documentation equality."}
+{"file": "active documentation scanner", "reason": "No stale commands/tasks/spec references."}
+{"file": "archive metadata audit", "reason": "Old tasks remain preserved and marked superseded."}

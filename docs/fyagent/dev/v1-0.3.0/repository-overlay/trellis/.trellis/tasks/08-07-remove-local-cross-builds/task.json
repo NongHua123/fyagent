@@ -1,0 +1,30 @@
+{
+  "id": "remove-local-cross-builds",
+  "name": "remove-local-cross-builds",
+  "title": "Remove local cross-platform builds",
+  "description": "Retire every local Linux/WSL-to-Windows/macOS cross-build capability without reducing native development or GitHub Actions release targets.",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "fyagent-modernization",
+  "package": null,
+  "priority": "P1",
+  "creator": "project-owner",
+  "assignee": null,
+  "createdAt": "2026-08-07",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "feature/fyagent-v1",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-07-fyagent-upstream-toolchain-release-modernization",
+  "relatedFiles": [],
+  "notes": "Planning artifact only; implementation requires separate authorization.",
+  "meta": {
+    "evidenceState": "proposed",
+    "decisionRange": "1-104",
+    "sourceBaseline": "55173d2b (user-provided; unverified without .git)"
+  }
+}
