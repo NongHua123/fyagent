@@ -9,7 +9,6 @@ const RELEASE_WORKFLOW = path.resolve(
   "workflows",
   "release.yml",
 );
-const README = path.resolve(__dirname, "..", "README.md");
 const CARGO_TOML = path.resolve(__dirname, "..", "src-tauri", "Cargo.toml");
 const BUILD_RS = path.resolve(__dirname, "..", "src-tauri", "build.rs");
 const TEST_MANIFEST = path.resolve(
@@ -68,6 +67,27 @@ const WINDOWS_MSI_VERIFIER = path.resolve(
   "release",
   "verify-windows-msi.ps1",
 );
+const WINDOWS_MSI_STRUCTURE_VERIFIER = path.resolve(
+  __dirname,
+  "..",
+  "scripts",
+  "release",
+  "verify-windows-msi-structure.ps1",
+);
+const WINDOWS_MANIFEST_VERIFIER = path.resolve(
+  __dirname,
+  "..",
+  "scripts",
+  "release",
+  "verify-windows-release-manifest.ps1",
+);
+const WINDOWS_UNSIGNED_VERIFIER = path.resolve(
+  __dirname,
+  "..",
+  "scripts",
+  "release",
+  "verify-windows-unsigned.ps1",
+);
 const AUTO_LAUNCH = path.resolve(
   __dirname,
   "..",
@@ -86,255 +106,284 @@ const CI_WORKFLOW = path.resolve(
 
 describe("FyAgent release workflow", () => {
   const source = fs.readFileSync(RELEASE_WORKFLOW, "utf8");
+  const windowsMsiVerifier = fs.readFileSync(WINDOWS_MSI_VERIFIER, "utf8");
+  const windowsMsiStructureVerifier = fs.readFileSync(
+    WINDOWS_MSI_STRUCTURE_VERIFIER,
+    "utf8",
+  );
+  const windowsManifestVerifier = fs.readFileSync(
+    WINDOWS_MANIFEST_VERIFIER,
+    "utf8",
+  );
+  const windowsUnsignedVerifier = fs.readFileSync(
+    WINDOWS_UNSIGNED_VERIFIER,
+    "utf8",
+  );
 
-  it("builds the unsigned macOS branch DMG only by manual dispatch", () => {
-    const normalizedWorkflow = source.replace(/\r\n/g, "\n");
-    const triggerSection = normalizedWorkflow
-      .slice(0, normalizedWorkflow.indexOf("\npermissions:"))
-      .trimEnd();
-    const releaseJobStart = normalizedWorkflow.indexOf("\n  release:\n");
-    const publishJobStart = normalizedWorkflow.indexOf(
-      "\n  publish-release:\n",
-    );
-    expect(releaseJobStart).toBeGreaterThan(-1);
-    expect(publishJobStart).toBeGreaterThan(releaseJobStart);
-    const releaseJobSection = normalizedWorkflow.slice(
-      releaseJobStart,
-      publishJobStart,
-    );
-    const publishJobSection = normalizedWorkflow.slice(publishJobStart);
-    expect(triggerSection).toBe(
-      [
-        "name: Release",
-        "",
-        "on:",
-        "  push:",
-        "    tags:",
-        '      - "v*"',
-        "  workflow_dispatch:",
-      ].join("\n"),
-    );
-    expect(releaseJobSection).toContain("    needs: version-contract");
-    expect(releaseJobSection).toContain(
-      "      APP_VERSION: ${{ needs.version-contract.outputs.app_version }}",
-    );
-    expect(releaseJobSection).toContain(
-      "      RELEASE_TAG: ${{ needs.version-contract.outputs.release_tag }}",
-    );
-    expect(releaseJobSection).toContain(
-      "      SOURCE_SHA: ${{ needs.version-contract.outputs.source_sha }}",
-    );
-    expect(releaseJobSection).toContain(
-      'matrix: ${{ fromJSON(github.ref_type == \'tag\' && \'{"include":[{"os":"windows-2022"},{"os":"windows-11-arm","arch":"arm64"},{"os":"ubuntu-22.04"},{"os":"ubuntu-22.04-arm","arch":"arm64"},{"os":"macos-14"}]}\' || \'{"include":[{"os":"macos-14"}]}\') }}',
-    );
-    expect(releaseJobSection).toContain(
-      "Build unsigned Tauri App (macOS branch)",
-    );
-    expect(publishJobSection).toContain(
-      "  publish-release:\n    name: Publish GitHub Release\n    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')",
-    );
-  });
-
-  it("publishes only manual-install assets without an updater chain", () => {
-    const normalizedSource = source.toLowerCase();
-
-    expect(source).not.toContain("TAURI_SIGNING_PRIVATE_KEY");
-    expect(normalizedSource).not.toContain("updater");
-    expect(normalizedSource).not.toContain("latest.json");
-    expect(normalizedSource).not.toContain(".tar.gz");
-    expect(normalizedSource).not.toMatch(/\.sig["'\s]/);
-    expect(normalizedSource).not.toContain("portable");
-    expect(normalizedSource).not.toContain("compress-archive");
-    expect(source).toContain("FyAgent-${VERSION}-macOS.dmg");
-    expect(source).toContain("FyAgent-$VERSION-Windows$assetSuffix.msi");
+  it("supports only an immutable unsigned preflight and the exact v0.3.0 tag", () => {
+    const trigger = source.slice(0, source.indexOf("\npermissions:"));
+    expect(trigger).toContain('      - "v0.3.0"');
+    expect(trigger).not.toContain('"v*"');
+    expect(trigger).toContain("workflow_dispatch:");
+    expect(trigger).toContain("source_sha:");
+    expect(trigger).toContain("required: true");
+    expect(source).toContain("release_mode='preflight'");
+    expect(source).toContain("release_mode='formal'");
     expect(source).toContain(
-      'NEW_APPIMAGE="FyAgent-${VERSION}-Linux-${ARCH}.AppImage"',
+      "if: needs.eligibility.outputs.release_mode == 'formal'",
+    );
+    expect(source).not.toContain("gh release create");
+    expect(source).toContain("draft:true,prerelease:false");
+    expect(source).toContain("draft:false,prerelease:false");
+  });
+
+  it("pins every third-party Action and every runner without latest labels", () => {
+    const actionRefs = [...source.matchAll(/uses:\s+([^\s#]+)/g)].map(
+      ([, reference]) => reference,
+    );
+    expect(actionRefs.length).toBeGreaterThan(0);
+    for (const reference of actionRefs) {
+      expect(reference).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
+    }
+    for (const runner of [
+      "ubuntu-24.04",
+      "ubuntu-24.04-arm",
+      "windows-2022",
+      "windows-11-arm",
+      "macos-15",
+    ]) {
+      expect(source).toContain(runner);
+    }
+    expect(source).not.toMatch(/runs-on:\s*[^\n]*-latest/);
+    expect(source).not.toContain("cache:");
+    expect(source).not.toContain("actions/cache");
+    expect(source.match(/uses: actions\/checkout@/g)).toHaveLength(
+      source.match(/persist-credentials: false/g)?.length ?? 0,
+    );
+  });
+
+  it("uses read-only defaults and isolates attestation and publish writes", () => {
+    expect(source).toContain("permissions:\n  contents: read");
+    expect(source).not.toContain("environment:");
+    expect(source).toContain("artifact-metadata: write");
+    expect(source).toContain("attestations: write");
+    expect(source).toContain("id-token: write");
+    const publish = source.slice(source.indexOf("\n  publish:\n"));
+    expect(publish).toContain("contents: write");
+    expect(source.slice(0, source.indexOf("\n  publish:\n"))).not.toContain(
+      "contents: write",
+    );
+  });
+
+  it("binds repository, workflow, tag, main ancestry, and one successful Required CI attempt", () => {
+    const eligibility = source.slice(
+      source.indexOf("\n  eligibility:\n"),
+      source.indexOf("\n  build-windows:\n"),
+    );
+    expect(eligibility).toContain("expected_repository='NongHua123/fyagent'");
+    expect(eligibility).toContain("expected_repository_id='1313497021'");
+    expect(eligibility).toContain("GITHUB_WORKFLOW_REF");
+    expect(eligibility).toContain("GITHUB_WORKFLOW_SHA");
+    expect(eligibility).toContain(
+      "Preflight must run from trusted refs/heads/main",
+    );
+    expect(eligibility).toContain(
+      "v0.3.0 preflight must attest the exact trusted main workflow commit",
+    );
+    expect(eligibility).toContain("path: candidate-source");
+    expect(eligibility).toContain(
+      'cp scripts/version.mjs "$candidate_contract_root/scripts/version.mjs"',
+    );
+    expect(eligibility).not.toContain("pnpm install");
+    expect(eligibility).toContain(
+      "if: steps.contract.outputs.release_mode == 'formal'",
+    );
+    expect(eligibility).toContain("refs/tags/v0.3.0");
+    expect(eligibility).toContain("git merge-base --is-ancestor");
+    expect(eligibility).toContain("refs/remotes/origin/main");
+    expect(eligibility).toContain("actions/workflows/ci.yml");
+    expect(eligibility).toContain("branch=main");
+    expect(eligibility).toContain("event=push");
+    expect(eligibility).toContain("sort_by(.run_number, .run_attempt)");
+    expect(eligibility).toContain('select(.name == "CI / Required")');
+    expect(eligibility).toContain('.app.slug == "github-actions"');
+    expect(eligibility).toContain(".url == $job_url");
+    expect(eligibility).toContain(".head_sha == $sha");
+    expect(eligibility).toContain("check-suites/${check_suite_id}/check-runs");
+  });
+
+  it("uses native Linux hosts with reviewed per-architecture Ubuntu 22.04 child digests", () => {
+    expect(source).toContain("ubuntu:22.04@${{ matrix.container_digest }}");
+    expect(source).toContain(
+      "sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e",
     );
     expect(source).toContain(
-      '"release-assets/FyAgent-${VERSION}-Linux-${ARCH}.deb"',
+      "sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149",
     );
     expect(source).toContain(
-      '"release-assets/FyAgent-${VERSION}-Linux-${ARCH}.rpm"',
+      "[ \"$(uname -m)\" = '${{ matrix.uname_arch }}' ]",
     );
+    expect(source).toContain(
+      "[ \"$RUNNER_ARCH\" = '${{ matrix.expected_runner_arch }}' ]",
+    );
+    expect(source).toContain("expected_runner_arch: X64");
+    expect(source).toContain("expected_runner_arch: ARM64");
+    expect(source.toLowerCase()).not.toContain("qemu");
+    expect(source).toContain("Expected exactly one raw AppImage, DEB, and RPM");
+    expect(source).toContain("dpkg-deb -f");
+    expect(source).toContain("rpm -qp --qf");
   });
 
-  it("freezes Cargo-derived version, tag, and source SHA before platform builds", () => {
-    const versionContractStart = source.indexOf("  version-contract:\n");
-    const releaseStart = source.indexOf("\n  release:\n");
-    expect(versionContractStart).toBeGreaterThan(-1);
-    expect(releaseStart).toBeGreaterThan(versionContractStart);
-    const contract = source.slice(versionContractStart, releaseStart);
-
-    expect(contract).toContain("pnpm run version:check");
-    expect(contract).toContain(
-      'pnpm run version:check -- --tag "${GITHUB_REF_NAME}"',
-    );
-    expect(contract).toContain(
-      'app_version="$(pnpm --silent run version:get)"',
-    );
-    expect(contract).toContain('release_tag="v${app_version}"');
-    expect(contract).toContain("printf 'source_sha=%s\\n' \"$GITHUB_SHA\"");
-    expect(source).toContain('VERSION="$APP_VERSION"');
-    expect(source).toContain("$VERSION = $env:APP_VERSION");
-    expect(source).not.toContain('VERSION="${GITHUB_REF_NAME}"');
-    expect(source).not.toContain("$VERSION = $env:GITHUB_REF_NAME");
-    expect(source).toContain("Generate frozen download manifest");
-    expect(source).toContain("$SOURCE_SHA");
-  });
-
-  it("fails closed unless Windows EXE and MSI signing includes a timestamp", () => {
-    expect(source).toContain("FYAGENT_WINDOWS_MANIFEST: release");
-    expect(source).toContain("WINDOWS_AUTHENTICODE_PFX_BASE64:");
-    expect(source).toContain("secrets.WINDOWS_AUTHENTICODE_PFX_BASE64");
-    expect(source).toContain("WINDOWS_AUTHENTICODE_PUBLISHER_SUBJECT:");
-    expect(source).toContain("secrets.WINDOWS_AUTHENTICODE_PUBLISHER_SUBJECT");
-    expect(source).toContain("WINDOWS_AUTHENTICODE_TIMESTAMP_URL:");
-    expect(source).toContain("secrets.WINDOWS_AUTHENTICODE_TIMESTAMP_URL");
-    expect(source).toContain("pnpm tauri build --no-bundle");
-    expect(source).toContain("pnpm tauri bundle --bundles msi");
-    expect(source).toContain("signtool.exe sign");
-    expect(source).toContain("/tr $env:WINDOWS_AUTHENTICODE_TIMESTAMP_URL");
-    expect(source).toContain("Get-AuthenticodeSignature");
-    expect(source).toContain("FYAGENT_WINDOWS_CERT_PUBLISHER_SUBJECT");
-    expect(source).toContain("does not match the expected publisher subject");
-    expect(source).toContain("TimeStamperCertificate");
-    expect(source).toContain("No signed Windows MSI installer found");
-  });
-
-  it("builds a target-matched installer helper before bundling and verifies the MSI tables", () => {
-    const helperBuildIndex = source.indexOf(
-      "- name: Build and verify Windows installer-actions DLL",
-    );
-    const bundleIndex = source.indexOf("- name: Bundle signed Windows MSI");
-    const msiStructureIndex = source.indexOf(
-      "- name: Verify Windows MSI native directory validator structure",
-    );
-    const payloadVerificationIndex = source.indexOf(
-      "- name: Verify Windows MSI payload and installer-actions binding",
-    );
-    const msiSignIndex = source.indexOf("- name: Sign and verify Windows MSI");
-
-    expect(helperBuildIndex).toBeGreaterThan(-1);
-    expect(bundleIndex).toBeGreaterThan(helperBuildIndex);
-    expect(msiStructureIndex).toBeGreaterThan(bundleIndex);
-    expect(payloadVerificationIndex).toBeGreaterThan(msiStructureIndex);
-    expect(msiSignIndex).toBeGreaterThan(payloadVerificationIndex);
+  it("preserves Windows elevation, helper, MSI table, payload, and unsigned gates", () => {
+    expect(source.match(/FYAGENT_WINDOWS_MANIFEST: release/g)).toHaveLength(2);
     expect(source).toContain("--package fyagent-installer-actions");
-    expect(source).toContain("aarch64-pc-windows-msvc");
-    expect(source).toContain("FYAGENT_INSTALLER_ACTIONS_DLL");
-    expect(source).toContain("TAURI_FYAGENT_INSTALLER_ACTIONS_DLL");
     expect(source).toContain("0xAA64");
     expect(source).toContain("0x8664");
-    expect(source).toContain("FyAgentInstallerActions");
-    expect(source).toContain("WindowsInstaller.Installer");
-    expect(source).toContain("ValidateFyAgentInstallDirUi");
-    expect(source).toContain("ValidateFyAgentInstallDirExecute");
-    expect(source).toContain("AbortUnsafeFyAgentInstallDir");
-    expect(source).toContain("ClearFyAgentPreviousInstallDir");
-    expect(source).toContain("ClearMaintenanceInstallDir");
-    expect(source).toContain("RestoreInstallDirFromPrevious");
-    expect(source).toContain("AbortUntrustedFyAgentMaintenance");
-    expect(source).toContain("MSI INSTALLDIR protected DACL contract drifted");
-    expect(source).toContain("MSI INSTALLDIR component guard drifted");
-    expect(source).toContain("Get-MsiRecords");
-    expect(source).toContain("MSI sequence order failed");
-  });
+    expect(source).toContain("verify-windows-release-manifest.ps1");
+    expect(source).toContain("-Architecture '${{ matrix.architecture }}'");
+    expect(source).toContain("verify-windows-msi-structure.ps1");
+    expect(source).toContain("verify-windows-msi.ps1");
+    expect(source).toContain("verify-windows-unsigned.ps1");
+    expect(source).not.toContain("${{ secrets.");
+    expect(source).not.toContain("signtool.exe sign");
 
-  it("extracts the MSI Binary stream and binds it to the architecture-matched helper", () => {
-    const verifier = fs.readFileSync(WINDOWS_MSI_VERIFIER, "utf8");
-
-    expect(source).toContain("./scripts/release/verify-windows-msi.ps1");
-    expect(source).toContain(
-      "-InstallerActionsDll $env:FYAGENT_INSTALLER_ACTIONS_DLL",
+    expect(windowsManifestVerifier).toContain("mt.exe");
+    expect(windowsManifestVerifier).toContain("RT_MANIFEST");
+    expect(windowsManifestVerifier).toContain("requireAdministrator");
+    expect(windowsManifestVerifier).toContain("0xAA64");
+    expect(windowsManifestVerifier).toContain("0x8664");
+    expect(windowsMsiStructureVerifier).toContain("WindowsInstaller.Installer");
+    expect(windowsMsiStructureVerifier).toContain(
+      "ValidateFyAgentInstallDirUi",
     );
-    expect(source).toContain("-Architecture $(if ($isArm64)");
-    expect(source).toContain("-AppVersion $env:APP_VERSION");
-    expect(verifier).toContain("OpenDatabase($resolvedMsi, 0)");
-    expect(verifier).toContain("Binary.FyAgentInstallerActions");
-    expect(verifier).toContain("$binaryRecord.DataSize(1)");
-    expect(verifier).toContain("$binaryRecord.ReadStream(1, $requested, 1)");
-    expect(verifier).toContain("[Text.Encoding]::GetEncoding(28591)");
-    expect(verifier).toContain("0x8664");
-    expect(verifier).toContain("0xAA64");
-    expect(verifier).toContain("Get-FileHash");
-    expect(verifier).toContain("ProductName must be FyAgent");
-    expect(verifier).toContain("ARPNOREPAIR must be 1 or yes");
-    expect(verifier).toContain(
+    expect(windowsMsiStructureVerifier).toContain(
+      "ValidateFyAgentInstallDirExecute",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "AbortUnsafeFyAgentInstallDir",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "AbortUntrustedFyAgentMaintenance",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "MSI INSTALLDIR component guard drifted",
+    );
+    expect(windowsMsiStructureVerifier).toContain("MSI sequence order failed");
+    expect(windowsMsiStructureVerifier).toContain(
+      "SELECT ``Data`` FROM ``_Streams``",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "& expand.exe $cabinetPath '-F:Path'",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "Extracted MSI fyagent.exe SHA-256 differs",
+    );
+    expect(windowsMsiVerifier).toContain("Binary.FyAgentInstallerActions");
+    expect(windowsMsiVerifier).toContain(
       "complete fyagent URL protocol registry contract",
     );
-    expect(verifier).toContain("Path payload ending in fyagent.exe");
-    expect(verifier).toContain("URL:FyAgent protocol");
-    expect(verifier).toContain("$database.SummaryInformation(0)");
-    expect(verifier).toContain("0x2000");
-    expect(verifier).toContain(
+    expect(windowsMsiVerifier).toContain(
       "Linux or retired cross-build host-path residue",
     );
-    expect(verifier).toContain("FinalReleaseComObject");
+    expect(windowsUnsignedVerifier).toContain("SignatureStatus]::NotSigned");
+    expect(windowsUnsignedVerifier).toContain("TimeStamperCertificate");
   });
 
-  it("extracts and checks the embedded elevated manifest before signing and after MSI bundling", () => {
-    const buildIndex = source.indexOf("- name: Build Tauri App (Windows)");
-    const beforeExeSignIndex = source.indexOf(
-      "- name: Verify embedded Windows release manifest before EXE signing",
-    );
-    const exeSignIndex = source.indexOf(
-      "- name: Sign and verify Windows application executable",
-    );
-    const bundleIndex = source.indexOf("- name: Bundle signed Windows MSI");
-    const afterBundleIndex = source.indexOf(
-      "- name: Re-verify embedded Windows release manifest after MSI bundle",
-    );
-    const msiSignIndex = source.indexOf("- name: Sign and verify Windows MSI");
-
-    expect(buildIndex).toBeGreaterThan(-1);
-    expect(beforeExeSignIndex).toBeGreaterThan(buildIndex);
-    expect(exeSignIndex).toBeGreaterThan(beforeExeSignIndex);
-    expect(bundleIndex).toBeGreaterThan(exeSignIndex);
-    expect(afterBundleIndex).toBeGreaterThan(bundleIndex);
-    expect(msiSignIndex).toBeGreaterThan(afterBundleIndex);
-
-    const manifestCheckSections = [
-      source.slice(beforeExeSignIndex, exeSignIndex),
-      source.slice(afterBundleIndex, msiSignIndex),
-    ];
-    for (const section of manifestCheckSections) {
-      expect(section).toContain("mt.exe");
-      expect(section).toContain("RT_MANIFEST");
-      expect(section).toContain("-inputresource:$exePath;#1");
-      expect(section).toContain("requestedExecutionLevel");
-      expect(section).toContain("Count -ne 1");
-      expect(section).toContain(
-        "$requestedExecutionLevel.GetAttribute('level') -cne 'requireAdministrator'",
-      );
-      expect(section).toContain(
-        "$requestedExecutionLevel.GetAttribute('uiAccess') -cne 'false'",
-      );
-      expect(section).toContain("Attributes.Count -ne 2");
-    }
+  it("builds one unsigned universal macOS app and rejects distribution trust", () => {
+    expect(source).toContain("--target universal-apple-darwin --bundles app");
+    expect(source).toContain("lipo -archs");
+    expect(source).toContain("CFBundleShortVersionString");
+    expect(source).toContain("CFBundleIdentifier");
+    expect(source).toContain("com.fyagent.desktop");
+    expect(source).toContain("TeamIdentifier");
+    expect(source).toContain("Developer ID");
+    expect(source).toContain("xcrun stapler validate");
+    expect(source).not.toContain("stapler staple");
+    expect(source).not.toContain("notarytool");
+    expect(source).toContain("hdiutil attach");
+    expect(source).toContain("-readonly");
+    expect(source).toContain("shasum -a 256");
   });
 
-  it("does not reintroduce old public branding or website links", () => {
-    expect(source).not.toContain("CC Switch");
-    expect(source).not.toContain("CC-Switch");
-    expect(source).not.toContain("ccswitch.io");
-    expect(source).not.toContain("cc-switch.exe");
-    expect(source).toContain("fyagent.exe");
+  it("attests exactly ten installers plus manifest and metadata, then adds one bundle", () => {
     expect(source).toContain(
-      "name: FyAgent ${{ needs.version-contract.outputs.release_tag }}",
+      "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6",
     );
-    expect(source).toContain('--volname "FyAgent"');
+    expect(source).toContain("subject-path: verified-subjects/*");
+    expect(source).toContain("verify-release-files.mjs installers installers");
+    expect(source).toContain("collect-workflow-artifacts.mjs");
+    expect(source).toContain("installers downloaded-installers installers");
+    expect(source).toContain("metadata downloaded-metadata platform-metadata");
+    expect(source).not.toContain("merge-multiple: true");
+    expect(source).toContain(
+      "verify-release-files.mjs subjects verified-subjects",
+    );
+    expect(source).toContain(
+      "verify-release-files.mjs attachments release-attachments",
+    );
+    expect(source).toContain("download-manifest.json");
+    expect(source).toContain("build-metadata.json");
+    expect(source).toContain("artifact-attestation.sigstore.json");
+    const verifyJob = source.slice(
+      source.indexOf("\n  verify-assets:\n"),
+      source.indexOf("\n  attest:\n"),
+    );
+    const attestJob = source.slice(
+      source.indexOf("\n  attest:\n"),
+      source.indexOf("\n  publish:\n"),
+    );
+    expect(verifyJob).toContain(
+      "ref: ${{ needs.eligibility.outputs.workflow_sha }}",
+    );
+    expect(attestJob).toContain(
+      "ref: ${{ needs.eligibility.outputs.workflow_sha }}",
+    );
+    expect(attestJob).toContain('[ -s "$BUNDLE_PATH" ]');
   });
 
-  it("documents manual release delivery rather than an application updater", () => {
-    const readmeSource = fs.readFileSync(README, "utf8");
-    const readme = readmeSource.toLowerCase();
+  it("publishes once through a verified private draft and never auto-deletes failure residue", () => {
+    const publish = source.slice(source.indexOf("\n  publish:\n"));
+    expect(publish).toContain("releases?per_page=100");
+    expect(publish).toContain("draft:true,prerelease:false");
+    expect(publish).toContain('all(.state == "uploaded" and .size > 0)');
+    expect(publish).toContain("Re-downloaded bytes differ");
+    expect(publish).toContain("draft:false,prerelease:false");
+    expect(publish).toContain('make_latest:"true"');
+    expect(publish).toContain("releases/latest");
+    expect(publish).toContain("publish_attempted=false");
+    expect(publish).toContain("publish_attempted=true");
+    expect(publish).toContain("failure-release-state.json");
+    expect(publish).toContain('if .draft then "draft" else "published" end');
+    expect(publish).toMatch(/case "\$observed_state" in\s+draft\)/);
+    expect(publish).toMatch(/draft\)[\s\S]+published\)[\s\S]+\*\)/);
+    expect(publish).toContain("The publish outcome is unknown");
+    expect(publish).toContain("published-confirmed.json");
+    expect(publish.indexOf("publish_attempted=true")).toBeLessThan(
+      publish.indexOf("--request PATCH"),
+    );
+    expect(publish.lastIndexOf("draft_created=false")).toBeGreaterThan(
+      publish.indexOf("releases/latest"),
+    );
+    expect(publish).not.toContain("failed after creating private draft");
+    expect(publish).toContain("docs/release-notes/v0.3.0-en.md");
+    expect(publish).not.toContain("gh release create");
+    expect(publish).not.toContain("--request DELETE");
+    expect(publish).not.toContain("gh release delete");
+    expect(publish).not.toMatch(/git (?:push --delete|tag -d)/);
+  });
 
-    expect(readme).toContain("manual release downloads");
-    expect(readme).not.toContain("auto-updater");
-    expect(readme).not.toContain("tauri-plugin-updater");
-    expect(readmeSource).toContain("FyAgent-{version}-Linux-{arch}.AppImage");
-    expect(readmeSource).toContain("FyAgent-{version}-Linux-{arch}.deb");
-    expect(readmeSource).toContain("FyAgent-{version}-Linux-{arch}.rpm");
+  it("keeps manual installation assets free of an updater chain", () => {
+    const normalizedSource = source.toLowerCase();
+    expect(source).not.toMatch(
+      /(?:verified-subjects|release-attachments)\/latest\.json/i,
+    );
+    expect(normalizedSource).not.toContain("tauri_signing_private_key");
+    expect(normalizedSource).not.toContain("portable");
+    expect(source).toContain("FyAgent-${APP_VERSION}-macOS.dmg");
+    expect(source).toContain("FyAgent-$env:APP_VERSION-Windows");
+    expect(source).toContain(
+      "FyAgent-${APP_VERSION}-Linux-${{ matrix.asset_arch }}.AppImage",
+    );
   });
 });
 
@@ -355,6 +404,10 @@ describe("FyAgent Windows elevation and installer boundary", () => {
   const libRs = fs.readFileSync(LIB_RS, "utf8");
   const ciWorkflow = fs.readFileSync(CI_WORKFLOW, "utf8");
   const windowsMsiVerifier = fs.readFileSync(WINDOWS_MSI_VERIFIER, "utf8");
+  const windowsMsiStructureVerifier = fs.readFileSync(
+    WINDOWS_MSI_STRUCTURE_VERIFIER,
+    "utf8",
+  );
 
   it("selects normal-privilege test and elevated release manifests", () => {
     expect(testManifest).toContain(
@@ -430,7 +483,7 @@ describe("FyAgent Windows elevation and installer boundary", () => {
       JSON.parse(fs.readFileSync(TAURI_CONFIG, "utf8")).bundle.windows.wix
         .fragmentPaths,
     ).toEqual(["wix/fyagent-install-dir-ui.wxs"]);
-    expect(releaseSource).toContain("WindowsInstaller.Installer");
+    expect(windowsMsiStructureVerifier).toContain("WindowsInstaller.Installer");
   });
 
   it("uses an architecture-matched native Type 1 validator in UI and execute paths", () => {
@@ -546,10 +599,12 @@ describe("FyAgent Windows elevation and installer boundary", () => {
     expect(releaseSource).toContain("FYAGENT_INSTALLER_ACTIONS_DLL");
     expect(releaseSource).toContain("TAURI_FYAGENT_INSTALLER_ACTIONS_DLL");
     expect(releaseSource).toContain("fyagent_installer_actions.dll");
-    expect(releaseSource).toContain("MsiLockPermissionsEx");
-    expect(releaseSource).toContain("Test-InstallDirDescendant");
-    expect(releaseSource).toContain("Assert-MsiCustomAction");
-    expect(releaseSource).toContain("ValidateFyAgentInstallDirExecute");
+    expect(windowsMsiStructureVerifier).toContain("MsiLockPermissionsEx");
+    expect(windowsMsiStructureVerifier).toContain("Test-InstallDirDescendant");
+    expect(windowsMsiStructureVerifier).toContain("Assert-MsiCustomAction");
+    expect(windowsMsiStructureVerifier).toContain(
+      "ValidateFyAgentInstallDirExecute",
+    );
     expect(windowsMsiVerifier).toContain(
       "must not install the custom-action DLL as application payload",
     );

@@ -1,238 +1,289 @@
-# GitHub Release Workflow and Frozen Version Contract
+# GitHub Release Workflow Contract
 
 ## 1. Scope / Trigger
 
-This contract applies to .github/workflows/release.yml and its user-facing
-assets. It separates an explicitly manual, branch-only unsigned macOS developer
-artifact from the signed GitHub prerelease tag path while requiring all platform
-jobs to share one frozen application-version identity.
+This contract applies to `.github/workflows/release.yml`, its native platform
+jobs, release evidence generators, artifact attestations, and the one-time
+GitHub Release publication step for FyAgent 0.3.0.
 
-Read [FyAgent 0.2.1 Version and Installer Contract](./fyagent-version-contract.md)
-before changing a version command, tag rule, release asset name, manifest
-generator, Windows MSI, or platform bundle metadata. This document owns the
-workflow scheduling and release-provenance behavior; it does not authorize
-remote execution, signing, notarization, tagging, or publication from a local
-documentation update.
-
-## 2. Signatures
+The workflow supports exactly two entry modes:
 
 ```yaml
 on:
   push:
     tags:
-      - "v*"
+      - "v0.3.0"
   workflow_dispatch:
-
-jobs:
-  version-contract:
-    outputs:
-      app_version:
-      release_tag:
+    inputs:
       source_sha:
-  release:
-    needs: version-contract
-  publish-release:
-    needs: [version-contract, release]
+        required: true
 ```
+
+- `workflow_dispatch` is an unsigned, full five-target-group preflight for the
+  exact trusted `main` workflow commit. Its lowercase 40-character
+  `source_sha`, `GITHUB_SHA`, and `GITHUB_WORKFLOW_SHA` must be identical so
+  the standard GitHub attestation provenance describes the bytes actually
+  built. It produces workflow artifacts and attestations but never creates or
+  updates a GitHub Release.
+- a push of the exact `v0.3.0` tag is the only formal path. The tag, product
+  version, workflow ref, event SHA, checked-out commit, `origin/main` ancestry,
+  and successful same-SHA Required CI must all agree.
+- no branch push, broad `v*` tag, manual signed mode, manual tag dispatch,
+  partial platform mode, or local publish path exists.
+
+Local implementation and static tests do not authorize dispatch, tag creation,
+or publication. Remote preflight, formal Release, and post-publication evidence
+remain required before the owning Trellis task can close.
+
+## 2. Frozen Values and Job Topology
 
 ```text
-app_version = pnpm run version:get
-release_tag = "v" + app_version
-source_sha  = full GITHUB_SHA
+eligibility
+  app_version = 0.3.0
+  release_tag = v0.3.0
+  source_sha = immutable main commit
+  release_mode = preflight | formal
+  ci_run_id / ci_run_attempt = exact successful main push CI (formal only)
 
-tag push (only after exact validation):
-  Windows x64, Windows ARM64, Linux x64, Linux ARM64, macOS
+eligibility ─┬─> build-windows (windows-x64, windows-arm64) ─┐
+             ├─> build-linux   (linux-x64, linux-arm64) ─────┼─> verify-assets
+             └─> build-macos   (macos-universal) ────────────┘
 
-workflow_dispatch on a branch:
-  macOS only, unsigned workflow artifact
-
-workflow_dispatch on a tag:
-  version-contract may validate the ref; release and publish-release skip
+verify-assets -> attest -> publish (formal only)
 ```
 
-All platform jobs receive:
+Every platform job receives the same values only from `eligibility`. It checks
+out `source_sha` directly, validates the product tag through `version:check`,
+and records the trusted workflow SHA; formal metadata also records the selected
+Required CI run, while preflight records `requiredCi: null`. Platform jobs must
+not derive a version from a ref, package.json,
+Tauri configuration, a bundle filename, or a second version source.
+
+## 3. Eligibility Contract
+
+Eligibility fails closed unless all of the following are true:
+
+1. `GITHUB_REPOSITORY` is `NongHua123/fyagent` and
+   `GITHUB_REPOSITORY_ID` is `1313497021`.
+2. before checkout, the request envelope proves the executing workflow is
+   `Release` at `.github/workflows/release.yml` and accepts only trusted
+   `refs/heads/main` dispatch or exact `refs/tags/v0.3.0` push.
+3. dispatch requires `source_sha == GITHUB_SHA == GITHUB_WORKFLOW_SHA`; formal
+   requires workflow/event/tag/candidate commits to peel to the same source.
+4. the trusted `scripts/version.mjs` is copied into an isolated temporary tree
+   and reads candidate files as data; eligibility never installs dependencies
+   or executes a candidate version script.
+5. a fresh fetch proves the trusted workflow SHA is on `origin/main`; formal
+   additionally proves `source_sha` is an `origin/main` ancestor.
+6. formal mode alone requires the active CI workflow identity to be exactly
+   `.github/workflows/ci.yml`.
+7. in formal mode, among main push CI runs for the exact source, the latest run/attempt is
+   completed successfully. An older success cannot mask a newer failure,
+   cancellation, or in-progress attempt.
+8. the formal selected attempt contains exactly one completed/successful
+   `CI / Required` job.
+9. its check suite contains exactly one matching `CI / Required` check-run from
+   the `github-actions` app whose head SHA, API job/check URL, and details URL
+   are bound to that selected run and job.
+
+The approved pre-merge preflight order cannot be represented truthfully by
+standard `actions/attest` in this one-workflow design: dispatch provenance is
+bound to the workflow `GITHUB_SHA`, not to a different unmerged candidate.
+v0.3.0 therefore runs its first preflight after merge on the exact `main` SHA.
+A future unmerged-candidate design requires a separate trusted reusable
+workflow or custom predicate and is outside this release.
+
+This workflow-only admission is intentionally weaker than administrator-backed
+branch/tag rulesets or a protected environment. FyAgent 0.3.0 accepts that
+residual supply-chain risk; the repository must not claim that main or the tag
+is administrator-protected.
+
+## 4. Runner, Toolchain, and Build Contract
+
+Direct third-party Actions use reviewed full 40-character commit SHAs. Required
+Release jobs do not use `*-latest` runners. Actions do not install or execute
+mise. Release jobs do not restore or save dependency caches; candidate build
+code cannot populate a trusted-main cache later consumed by formal release.
+
+| Target group      | Runner             | Build user space                       | Required output                    |
+| ----------------- | ------------------ | -------------------------------------- | ---------------------------------- |
+| `windows-x64`     | `windows-2022`     | native x64                             | one x64 MSI                        |
+| `windows-arm64`   | `windows-11-arm`   | native ARM64                           | one ARM64 MSI                      |
+| `linux-x64`       | `ubuntu-24.04`     | native Ubuntu 22.04 amd64 child digest | AppImage, DEB, RPM                 |
+| `linux-arm64`     | `ubuntu-24.04-arm` | native Ubuntu 22.04 arm64 child digest | AppImage, DEB, RPM                 |
+| `macos-universal` | `macos-15`         | macOS with both Apple targets          | DMG and ZIP from one universal app |
+
+Linux uses the reviewed Ubuntu 22.04 image children directly:
 
 ```text
-APP_VERSION = needs.version-contract.outputs.app_version
-RELEASE_TAG = needs.version-contract.outputs.release_tag
-SOURCE_SHA  = needs.version-contract.outputs.source_sha
+amd64 sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e
+arm64 sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149
 ```
 
-Asset names use APP_VERSION without a v prefix:
+The workflow verifies `RUNNER_ARCH`, `/etc/os-release`, and `uname -m` before
+building, so a wrong host plus binfmt cannot impersonate a native target. There
+is no QEMU or opposite-architecture fallback. ARM runner unavailability is a
+retryable infrastructure failure, not authorization to cross-build or publish
+a reduced asset set.
+
+Each target proves Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1 at runtime. Its
+metadata records the actual runner image variables and tool versions; an absent
+image/tool value fails metadata generation.
+
+## 5. Platform Security Gates
+
+### Windows
+
+- both native jobs set `FYAGENT_WINDOWS_MANIFEST=release` on the application
+  build and MSI bundle commands.
+- the application executable is inspected before and after bundling for exact
+  x64/ARM64 PE Machine, `requireAdministrator`, `uiAccess=false`, bundle
+  version, and exactly one `requestedExecutionLevel`.
+- the architecture-matched installer-actions DLL is built separately, checked
+  for PE Machine, and supplied through both helper environment variables.
+- `verify-windows-msi-structure.ps1` preserves the Type 1/Type 19, HKLM anchor,
+  protected DACL, complete `INSTALLDIR` component closure, UI/Execute sequence,
+  unsafe-directory dialog, and MSI summary architecture gates formerly inlined
+  in the workflow. It also reads the embedded cabinet stream through the
+  read-only MSI database, extracts only fixed File key `Path` with system
+  `expand.exe` into a fresh root, and binds the final MSI executable to the
+  already verified built executable by size, SHA-256, PE Machine, and
+  Authenticode `NotSigned` without executing the installer.
+- `verify-windows-msi.ps1` independently verifies the embedded Binary stream,
+  helper SHA/PE identity, product/version/repair properties, protocol registry,
+  single `fyagent.exe` payload, architecture, and absence of retired host-path
+  residue.
+- both the executable and MSI must report Authenticode `NotSigned` with no
+  signer or timestamp certificate. No Windows certificate secret or signing
+  command belongs in v0.3.0.
+
+### macOS
+
+- one `universal-apple-darwin` app must contain both `arm64` and `x86_64`
+  slices, version 0.3.0, and bundle identifier `com.fyagent.desktop`.
+- a truly unsigned app or ad-hoc signature is acceptable. A Developer ID
+  Authority or real TeamIdentifier is forbidden.
+- the app and DMG must not validate as stapled/notarized. The workflow may run
+  negative `stapler validate` checks; it must never run `stapler staple`,
+  `notarytool`, or a signing secret path.
+- ZIP and DMG are created from the same app. The ZIP is expanded, the DMG is
+  verified and mounted read-only, and both copies must retain the app version
+  and executable SHA-256.
+
+### Linux
+
+- each native container must produce exactly one raw AppImage, DEB, and RPM.
+- AppImage ELF architecture, DEB version/architecture, and RPM
+  version/architecture must match the frozen target before normalization.
+- missing formats are failures; no format is optional in the formal or
+  preflight matrix.
+
+## 6. Asset, Manifest, Metadata, and Attestation Contract
+
+The installer allowlist contains exactly ten files:
 
 ```text
-FyAgent-X.Y.Z-macOS.dmg
-FyAgent-X.Y.Z-macOS.zip
-FyAgent-X.Y.Z-Windows.msi
-FyAgent-X.Y.Z-Windows-arm64.msi
-FyAgent-X.Y.Z-Linux-x86_64.AppImage
-FyAgent-X.Y.Z-Linux-arm64.AppImage
-FyAgent-X.Y.Z-Linux-x86_64.deb
-FyAgent-X.Y.Z-Linux-arm64.deb
-FyAgent-X.Y.Z-Linux-x86_64.rpm
-FyAgent-X.Y.Z-Linux-arm64.rpm
+FyAgent-0.3.0-macOS.dmg
+FyAgent-0.3.0-macOS.zip
+FyAgent-0.3.0-Windows.msi
+FyAgent-0.3.0-Windows-arm64.msi
+FyAgent-0.3.0-Linux-x86_64.AppImage
+FyAgent-0.3.0-Linux-x86_64.deb
+FyAgent-0.3.0-Linux-x86_64.rpm
+FyAgent-0.3.0-Linux-arm64.AppImage
+FyAgent-0.3.0-Linux-arm64.deb
+FyAgent-0.3.0-Linux-arm64.rpm
 ```
 
-The branch-only macOS developer artifact uses the frozen application version:
+Every platform artifact remains in its named directory until
+`collect-workflow-artifacts.mjs` validates the expected artifact tree. The
+collector refuses missing, extra, misplaced, nested, symlinked, or duplicate
+files and copies with no-overwrite semantics. Flattening in the download Action
+must not mask a duplicate.
 
-```text
-FyAgent-X.Y.Z-macOS-unsigned.zip
-FyAgent-X.Y.Z-macOS-unsigned.dmg
+`generate-download-manifest.mjs` then requires the exact ten non-empty
+installers and emits `download-manifest.json` schema
+`fyagent-download-manifest/v2`. It records product, version, tag, source SHA,
+publication instant, and each installer's name, platform, architecture, format,
+size, SHA-256, and final URL.
+
+`generate-build-metadata.mjs` requires exactly five platform metadata records.
+It validates target/runner/container identity, repository ID, trusted workflow
+ref/SHA/run, release mode, source, and exact toolchain/image evidence before
+emitting `build-metadata.json`. `requiredCi` is `null` for preflight and the
+unique bound path/run/attempt object for formal mode.
+
+The attestation subjects are exactly the ten installers plus those two JSON
+files (12 subjects). `actions/attest` v4.2.2 is mandatory and receives only
+those files. Its Sigstore bundle is copied to the fixed independent name
+`artifact-attestation.sigstore.json`, producing exactly 13 allowed Release
+attachments. The bundle is evidence and does not count as an installer.
+
+## 7. Permission and Publication Transaction
+
+```yaml
+permissions:
+  contents: read
 ```
 
-## 3. Contracts
+- eligibility alone adds `actions: read` and `checks: read`.
+- attestation alone adds `id-token: write`, `attestations: write`, and
+  `artifact-metadata: write`.
+- publish alone adds `contents: write` after eligibility, all native builds,
+  exact-asset verification, evidence generation, and attestation succeed.
+- v0.3.0 uses no Release environment, signing credential, environment approval,
+  or signed mode.
 
-### Freeze before every platform build
+Publish rechecks the exact formal event/tag/source and the 13-file allowlist,
+requires the English v0.3.0 Release Notes, and uses the authenticated Release
+list (including drafts) to fail if any `v0.3.0` Release already exists. It then
+creates one private draft carrying a run/source ownership marker, uploads the
+13 files, lists and re-downloads them, proves exact names/non-empty states and
+SHA-256 equality, then re-reads the draft ID/tag/marker/state and exact asset
+IDs immediately before one final PATCH to stable/non-prerelease/latest. A
+successful PATCH response is not sufficient: publish re-reads the Release by
+ID, verifies the published identity and exact asset IDs, and confirms the
+latest Release before declaring the transaction complete.
+No failure path automatically deletes the draft: Release DELETE has no atomic
+conditional guard, so deletion could race a concurrent publication. A failed
+transaction reports its Release ID/URL for a separate manual decision. Once a
+PATCH has been attempted, its exit handler performs one read-only API lookup
+and reports the observed state as draft, published, or unknown; it never
+retries PATCH and never claims the Release remains private when the outcome is
+ambiguous. Any retry fails closed while that draft or published Release exists.
+The workflow never updates an existing Release or moves/deletes the tag.
+Because GitHub does not offer a general conditional guard for this unsafe
+PATCH, an administrator could still race the final read/PATCH; that narrow
+workflow-only residual risk is accepted alongside the absence of repository
+rulesets and is not described as atomic administrator protection.
 
-- version-contract runs first and invokes version:check before version:get.
-  On a tag ref it invokes version:check with the actual tag and compares it
-  exactly with the v-prefixed canonical app version.
-- The v\* workflow filter is only routing. A tag that matches it but contains a
-  prerelease, suffix, wrong number, or other mismatch must fail in
-  version-contract before release matrix work begins.
-- release and publish-release consume the three outputs unchanged. A platform
-  step must not use GITHUB_REF_NAME, trim a tag, read a second application
-  version field, or construct a substitute source SHA.
-- Version commands in CI must stay compatible with Node 20. Do not infer a
-  toolchain upgrade from the local mise Node declaration.
+## 8. Failure Matrix
 
-### Platform outputs and provenance
+| Condition                                                                                                     | Required result                                                              |
+| ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Dispatch SHA is not full/lowercase or differs from trusted main workflow/event provenance                     | Fail eligibility before any platform build.                                  |
+| Formal ref, workflow ref, tag commit, event commit, product version, or source differ                         | Fail eligibility; do not build or publish.                                   |
+| Latest same-SHA main CI attempt is absent, running, failed, cancelled, or lacks the unique Required job/check | Fail eligibility; an older success is not accepted.                          |
+| A native runner/architecture, Ubuntu child digest, or tool version drifts                                     | Fail that platform job; no fallback target is allowed.                       |
+| Windows manifest/helper/MSI structure/payload/unsigned assertion fails                                        | Fail Windows output before artifact upload.                                  |
+| macOS app is not universal, identity differs, distribution identity/ticket exists, or ZIP/DMG copies differ   | Fail macOS output before artifact upload.                                    |
+| Linux package count/version/architecture differs                                                              | Fail Linux output before artifact upload.                                    |
+| Artifact tree or exact ten/twelve/thirteen allowlist differs                                                  | Fail verification/attestation/publish.                                       |
+| Mandatory attestation or bundle is absent                                                                     | Fail; do not characterize hashes alone as v0.3.0 provenance success.         |
+| Dispatch reaches publish                                                                                      | Static workflow test fails; remote preflight must create no Release.         |
+| A draft or published Release already exists                                                                   | Refuse to update, replace, or delete it.                                     |
+| Upload/re-download fails before final PATCH                                                                   | Leave the draft untouched, report ID/URL, and require manual decision.       |
+| Final PATCH has a failed or ambiguous outcome                                                                 | Read state by ID, report draft/published/unknown, and never retry or delete. |
 
-- Tauri, macOS bundle metadata, Windows executable/MSI metadata, Linux package
-  metadata, and every formal asset filename must equal APP_VERSION where their
-  platform representation permits it.
-- The release download manifest is generated only after platform assets pass
-  their platform gates. The generator receives the frozen app version, tag, and
-  source SHA as explicit arguments; it never derives version by stripping a
-  tag.
-- The manifest schema includes version, tag, sourceSha, pubDate, and asset
-  records containing platform, kind, architecture, filename, size, SHA-256,
-  and URL. It rejects an invalid/full-length-missing source SHA, a non-exact
-  tag, a release with no recognized assets, or a recognized asset whose name lacks the
-  frozen FyAgent-version prefix.
-- The tag's visible GitHub Release name uses RELEASE_TAG, while downloaded file
-  names use APP_VERSION. Do not add legacy v-prefixed aliases in this workflow
-  unless a separately approved compatibility change requires them.
+## 9. Validation and Evidence Boundary
 
-### Branch developer artifact and formal release boundary
+Local checks include Prettier, actionlint, version contract tests, the release
+workflow/static Windows boundary suite, download-manifest behavior tests, and
+asset/metadata collector tests. PowerShell parser/runtime checks and native
+bundle behavior require their matching runners.
 
-- Ordinary branch pushes must not trigger this workflow. A branch artifact is
-  produced only when a maintainer starts workflow_dispatch on that branch.
-- The branch job is macos-14 only, creates an unsigned universal app with
-  bundles app, then makes both an unsigned ZIP from that same `.app` and a UDZO
-  DMG. Both filenames use APP_VERSION and contain `unsigned`; neither is a
-  signing, notarization, or Gatekeeper-trust claim.
-- Before branch artifact upload, the DMG must pass hdiutil verify, read-only
-  attachment, a top-level FyAgent.app check, deterministic detach, and cleanup.
-  Upload includes the ZIP and DMG with `if-no-files-found: error`. The branch
-  path never creates or updates a GitHub Release.
-- A manual tag dispatch skips both release and publish-release; it is not a
-  substitute for the signed tag-push release path.
-- A tag push requires the existing Apple signing/notarization inputs and fails
-  closed when code signing, notarization, stapling, codesign, spctl, or
-  Gatekeeper validation fails. Windows executable and MSI signing/timestamp
-  checks remain mandatory on the Windows release path.
-- publish-release may run only for the qualified tag-push condition after both
-  version-contract and the complete platform matrix have succeeded. Its current
-  GitHub Release is a prerelease; promotion to a non-prerelease is a separate
-  workflow/product decision that must update this contract.
-- The branch path must not execute a signing or notarization step that
-  references Apple secret inputs. The shared release environment alone is not
-  evidence of stronger secret isolation, so do not make an unverified
-  environment-access claim in this contract.
-
-## 4. Validation & Error Matrix
-
-| Condition                                                                                       | Required result                                                                        |
-| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Tag matches v\* but is not the exact v-plus-canonical-version form                              | version-contract fails before a platform build.                                        |
-| Version command check fails or version:get is not stable SemVer                                 | Stop before freezing outputs.                                                          |
-| A downstream job uses GITHUB_REF_NAME as a version or does not receive all three frozen outputs | Static workflow test fails; reject the workflow change.                                |
-| Platform metadata or formal asset name differs from APP_VERSION                                 | The relevant platform verification fails before artifact upload/publish.               |
-| Asset has a v-prefixed app version or fails the recognized filename rules                       | Download-manifest generation fails; do not publish it.                                 |
-| Manifest tag/source SHA does not match the frozen inputs                                        | Manifest generation fails before GitHub Release upload.                                |
-| Branch ZIP is not created from the unsigned FyAgent.app                                         | Fail the workflow step; do not upload a partial branch artifact.                       |
-| Branch DMG cannot verify, mount read-only, contain FyAgent.app, detach, or clean up             | Fail the workflow step; do not upload.                                                 |
-| Apple inputs are absent on a branch dispatch                                                    | Continue only because no branch step executes a signing/notarization secret reference. |
-| Apple secrets/signature/notarization are absent or invalid on a qualifying tag push             | Fail the signed release path.                                                          |
-| workflow_dispatch targets any tag                                                               | Skip release and publish-release; no formal release is created.                        |
-| Windows signing, timestamp, native MSI structure, or final manifest validation fails            | Stop before formal publication.                                                        |
-
-## 5. Good / Base / Bad Cases
-
-- Good: A push of v0.2.1 reaches version-contract, freezes app_version=0.2.1,
-  release_tag=v0.2.1, and one source SHA, then all five platforms build and
-  publish the GitHub prerelease assets named with 0.2.1 after their own gates
-  succeed.
-- Good: A maintainer manually dispatches feature/fyagent-v1 and receives only
-  FyAgent-0.2.1-macOS-unsigned.zip and
-  FyAgent-0.2.1-macOS-unsigned.dmg as unsigned workflow artifacts; the DMG
-  additionally completes its hdiutil lifecycle checks.
-- Base: A maintainer manually dispatches an exact tag. version-contract validates
-  the tag, while release and publish-release remain skipped; no signing or
-  GitHub Release side effect occurs.
-- Bad: A v0.2.1-rc tag enters a platform build because the v\* filter matched,
-  a platform uses a tag-derived version, or a manifest calls an asset
-  FyAgent-v0.2.1-Windows.msi.
-- Bad: A branch artifact executes a signing/notarization step that references
-  Apple secrets, is presented as a signed formal release, skips read-only DMG
-  validation, reaches softprops/action-gh-release, or a manual tag dispatch
-  enters the signed matrix.
-
-## 6. Tests Required
-
-- Run Prettier for the workflow and related JavaScript/TypeScript. Run
-  actionlint for release.yml when it is available; if it is not installed, report
-  that gap rather than characterizing the workflow as actionlint-validated.
-- tests/releaseWorkflow.test.ts currently covers workflow triggers/matrices,
-  frozen version outputs, helper/MSI structure gates, and the ordering of
-  target-executable manifest checks. Before this workflow contract is called
-  fully test-enforced, extend it to assert the APP_VERSION unsigned branch-ZIP
-  and branch-DMG names, the DMG hdiutil lifecycle, GitHub prerelease=true, and
-  the explicit
-  distinction between the post-bundle target EXE check and final MSI-payload
-  verification.
-- tests/downloadManifest.test.ts must prove the explicit version/tag/source-SHA
-  contract, recognized asset metadata, unprefixed filename rule, and rejection
-  cases.
-- Run the version command tests and check the current canonical tag:
-
-  ```bash
-  mise exec -- node --test tests/version.test.mjs
-  app_version="$(mise exec -- pnpm --silent run version:get)"
-  mise exec -- pnpm run version:check -- --tag "v$app_version"
-  mise exec -- pnpm exec vitest run tests/releaseWorkflow.test.ts tests/downloadManifest.test.ts
-  ```
-
-- A successful local static test is not release evidence. Formal acceptance
-  requires the authorized GitHub workflow on the exact candidate SHA and
-  inspection of signed/notarized assets, asset metadata, generated manifest,
-  tag, and source SHA. Native Windows MSI lifecycle testing remains a separate
-  gate.
-
-## 7. Wrong vs Correct
-
-### Wrong
-
-```bash
-VERSION="$GITHUB_REF_NAME"
-asset="FyAgent-$VERSION-Windows.msi"
-```
-
-This lets a broad trigger string become an asset version and produces a
-v-prefixed filename that disagrees with the application metadata.
-
-### Correct
-
-```text
-version-contract:
-  app_version = canonical Cargo version
-  release_tag = v + app_version
-  source_sha = GITHUB_SHA
-
-every platform:
-  APP_VERSION, RELEASE_TAG, SOURCE_SHA = version-contract outputs
-```
-
-Validate the tag exactly before building, use APP_VERSION for asset and platform
-metadata, and reserve RELEASE_TAG for the Git tag and release identity.
+A green local suite proves the implementation contract, not publication.
+Closure requires the exact source's main `CI / Required`, one successful
+post-merge same-SHA full-matrix unsigned preflight, the tag-triggered formal run, the public stable
+Release, independent re-download/digest/signature checks, attestation evidence,
+and audited Trellis closeout records.

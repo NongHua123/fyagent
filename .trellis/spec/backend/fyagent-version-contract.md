@@ -18,8 +18,9 @@ This is a cross-layer contract:
 - Cargo metadata supplies the app version to Tauri and every local build.
 - Node version commands validate or change only that canonical version and its
   local lockfile package blocks.
-- The release workflow freezes version, tag, and source SHA before any platform
-  build starts.
+- The release workflow freezes version, tag, source SHA, and trusted workflow
+  SHA before any platform build starts; v0.3.0 requires both SHAs to agree so
+  standard attestation provenance describes the actual source.
 - The Windows MSI embeds an architecture-matched native validation DLL and
   applies the same directory policy to UI and silent installation.
 
@@ -99,18 +100,20 @@ pnpm run version:bump patch|minor|major [-- --apply | --dry-run]
 ### Frozen release values
 
 ```text
-version-contract outputs:
+eligibility outputs:
   app_version = version:get
   release_tag = "v" + app_version
   source_sha  = full GitHub commit SHA
+  release_mode = preflight | formal
+  ci_run_id / ci_run_attempt = exact successful main push CI
 
 release job environment:
-  APP_VERSION = needs.version-contract.outputs.app_version
-  RELEASE_TAG = needs.version-contract.outputs.release_tag
-  SOURCE_SHA  = needs.version-contract.outputs.source_sha
+  APP_VERSION = needs.eligibility.outputs.app_version
+  RELEASE_TAG = needs.eligibility.outputs.release_tag
+  SOURCE_SHA  = needs.eligibility.outputs.source_sha
 ```
 
-The version-contract job is the only release-workflow producer of these values.
+The eligibility job is the only release-workflow producer of these values.
 Every platform build and publication step consumes its outputs; no downstream
 job may trim GITHUB_REF_NAME, reread an alternative version field, or substitute
 its own source SHA.
@@ -164,13 +167,17 @@ FYAGENT_INSTALLDIR_CHECK_ID
 
 ### Release and download-manifest contract
 
-- The GitHub tag trigger may match v\*, but a tag build enters the platform
-  matrix only after version:check proves GITHUB_REF_NAME equals the release tag
-  formed by a v prefix plus app_version. A prerelease or suffixed tag must fail
-  before a platform build.
-- A workflow_dispatch run on a branch may produce only the unsigned macOS
-  developer artifact. A manual tag dispatch runs the frozen contract check but
-  skips the release and publish jobs. Only a qualifying tag push can publish.
+- The GitHub tag trigger is exactly `v0.3.0`; no broad `v*`, prerelease,
+  suffixed tag, or later product version enters this version-specific workflow.
+  Eligibility still runs `version:check --tag v0.3.0` and resolves the tag,
+  event, workflow ref, checkout, and canonical Cargo version to one commit and
+  version before any platform build.
+- `workflow_dispatch` must run from the trusted `refs/heads/main` workflow and
+  requires one immutable lowercase full SHA equal to both `GITHUB_SHA` and
+  `GITHUB_WORKFLOW_SHA`. It runs the full unsigned five-target-group preflight
+  and attestations with `requiredCi: null`, but never publishes. The same-SHA
+  Required CI gate is formal-tag-only; only the exact qualifying tag push can
+  enter publish.
 - Release assets use the unprefixed application version, for example:
 
   ```text
@@ -182,15 +189,21 @@ FYAGENT_INSTALLDIR_CHECK_ID
 
   Do not derive asset names from RELEASE_TAG and do not add a v before X.Y.Z.
 
-- scripts/generate-download-manifest.mjs accepts assets directory,
-  app version, release tag, source SHA, base URL, and optional output path. It
-  rejects a non-exact tag, an invalid/full-length-missing SHA, an asset that
-  does not begin with the frozen FyAgent-version prefix, and a release with no
-  recognized assets. The generated manifest has schema, version, tag, sourceSha,
-  pubDate, and per-asset platform/kind/arch/name/size/sha256/url fields.
-- Signing, timestamping, notarization, and publication remain release gates.
-  A local native build or a passing static workflow test does not establish any
-  of them.
+- `scripts/generate-download-manifest.mjs` accepts assets directory,
+  app version, release tag, source SHA, base URL, publication instant, and
+  optional output path. It requires exactly the ten non-empty v0.3.0 installer
+  names and rejects missing, extra, nested, symlinked, wrong-version, or
+  malformed identity input. Schema `fyagent-download-manifest/v2` records
+  product, version, tag, sourceSha, publishedAt, and per-asset
+  platform/architecture/format/name/sizeBytes/sha256/url.
+- `build-metadata.json` independently binds the five target groups, actual
+  runner images/toolchains, reviewed Linux child digests, repository ID,
+  Release workflow ref/run, and selected Required CI path/run/attempt.
+- FyAgent v0.3.0 has no signing, timestamping, notarization, signing secrets, or
+  Release environment. Windows EXE/MSI `NotSigned` and absence of macOS
+  Developer ID/Team/notarization tickets are mandatory negative gates. A local
+  native build or passing static workflow test does not establish the native or
+  public Release evidence.
 
 ### Native MSI install-directory contract
 
@@ -241,10 +254,10 @@ FYAGENT_INSTALLDIR_CHECK_ID
 | Workspace member, resolver, inherited package version, package private flag, or duplicate metadata field drifts | version:check fails before a release or version write.                                                                        |
 | Version is not stable X.Y.Z or exceeds the MSI ProductVersion bounds                                            | get, set, bump, or check fails; no release tag is accepted.                                                                   |
 | Local Cargo.lock package block is missing, duplicated, sourced, or mismatched                                   | version:check fails; set may repair only the local version value after all other preflight checks pass.                       |
-| A tag matches v\* but is not exactly the version-contract release tag                                           | version-contract fails before the platform matrix.                                                                            |
+| A ref is not the exact v0.3.0 tag push or immutable dispatch SHA                                                | eligibility fails before the platform matrix.                                                                                 |
 | A platform asset has a v-prefixed version or differs from APP_VERSION                                           | platform/release manifest validation fails; it is not published.                                                              |
-| Manifest tag, source SHA, or recognized asset set is invalid                                                    | generate-download-manifest.mjs fails and publication stops.                                                                   |
-| Helper DLL PE machine, MSI summary architecture, or embedded Binary bytes differ                                | Native release structure verification fails before candidate publication or signing.                                          |
+| Manifest tag, source SHA, exact ten installers, or five metadata records are invalid                            | evidence generation fails and publication stops.                                                                              |
+| Helper DLL PE machine, MSI summary architecture, or embedded Binary bytes differ                                | Native release structure verification fails before candidate artifact upload.                                                 |
 | UI policy denial                                                                                                | Set valid=0 and stable error properties, show the policy dialog, and leave the user at the directory step without Error 1720. |
 | Silent install or Execute policy denial                                                                         | The Execute action records the same rejection and Type 19 aborts before file installation.                                    |
 | Repair/upgrade has no trusted HKLM InstallDir anchor                                                            | Type 19 stops maintenance before validation/file writes.                                                                      |
@@ -261,9 +274,10 @@ FYAGENT_INSTALLDIR_CHECK_ID
   helper. Both tables run the native policy in UI and Execute, and both fail
   maintenance safely when the HKLM anchor is absent.
 - Base: pnpm run version:set X.Y.Z and the equivalent explicit --dry-run report
-  only Cargo.toml and local Cargo.lock changes without writing. A branch
-  workflow_dispatch produces the explicitly
-  unsigned macOS artifact but never creates or updates a GitHub Release.
+  only Cargo.toml and local Cargo.lock changes without writing. An authorized
+  workflow_dispatch for the exact trusted main/workflow SHA produces all ten unsigned
+  installers, two evidence JSON files, and attestation evidence as workflow
+  artifacts with `requiredCi: null`, but never creates or updates a GitHub Release.
 - Bad: Add a version property back to package.json, use GITHUB_REF_NAME as the
   platform version, trim v from a tag in a platform job, or hand-edit a
   historical document as part of a bump.
@@ -282,10 +296,11 @@ FYAGENT_INSTALLDIR_CHECK_ID
 - tests/versionConsistency.test.ts must delegate to the canonical script.
   tests/downloadManifest.test.ts must assert frozen version/tag/source SHA,
   unprefixed asset names, URL shape, and invalid-input rejection.
-- tests/releaseWorkflow.test.ts must assert the version-contract job,
-  downstream output consumption, exact tag validation, helper build ordering,
-  Type 1/Type 19 actions, MSI component closure protection, and absence of the
-  retired directory script.
+- tests/releaseWorkflow.test.ts must assert the eligibility job, downstream
+  frozen output consumption, exact tag/dispatch modes, repository/workflow/CI
+  identity checks, five native groups, helper build ordering, Type 1/Type 19
+  actions, MSI component closure protection, unsigned gates, exact evidence
+  stages, and the formal-only one-time publish.
 - The helper unit tests must cover portable policy cases. Windows-only policy
   and ACL integration tests run on Windows and must not be represented as
   passing on another host.
@@ -301,7 +316,7 @@ FYAGENT_INSTALLDIR_CHECK_ID
   mise exec -- cargo test --workspace --manifest-path src-tauri/Cargo.toml
   app_version="$(mise exec -- pnpm --silent run version:get)"
   mise exec -- pnpm run version:check -- --tag "v$app_version"
-  mise exec -- pnpm vitest run tests/localBuildBoundary.test.ts tests/releaseWorkflow.test.ts
+  mise exec -- pnpm vitest run tests/localBuildBoundary.test.ts tests/releaseWorkflow.test.ts tests/downloadManifest.test.ts tests/releaseAssets.test.ts
   # Child 6 closeout, after the final audited MANIFEST.sha256 regeneration:
   (cd docs/fyagent/dev/v1-0.3.0 && sha256sum -c MANIFEST.sha256)
   ```
@@ -309,16 +324,18 @@ FYAGENT_INSTALLDIR_CHECK_ID
 - Native release evidence remains separate: Windows x64 and ARM64 must cover
   default, safe custom, unsafe custom, /qn INSTALLDIR, upgrade, repair,
   uninstall, verbose MSI log, and ICE behavior. Signing/timestamping, macOS
-  notarization, final multi-platform metadata, published manifest, exact tag,
-  and source SHA require an explicitly authorized release run.
+  notarization, and staple are deliberately absent; native `NotSigned`/absence
+  checks, final multi-platform metadata, mandatory attestation, published
+  manifest, exact tag, and source SHA require an explicitly authorized release
+  run.
 
 ## 7. Wrong vs Correct
 
 ### Wrong
 
 ```text
-package.json.version = "0.2.2"
-tauri.conf.json.version = "0.2.2"
+package.json.version = "0.3.0"
+tauri.conf.json.version = "0.3.0"
 GITHUB_REF_NAME is stripped and used as every platform's asset version
 one x64 helper DLL is reused for every MSI
 ```
@@ -333,7 +350,7 @@ pnpm run version:set 0.3.0 -- --apply
 pnpm run version:check -- --tag v0.3.0
 ```
 
-Then let version-contract freeze its three outputs, pass APP_VERSION,
-RELEASE_TAG, and SOURCE_SHA unchanged to every platform, build a matching
-installer-actions DLL per target, and retain the UI-plus-Execute native
-directory-policy sequence.
+Then let eligibility freeze the version/source plus successful Required CI
+identity, pass APP_VERSION, RELEASE_TAG, and SOURCE_SHA unchanged to every
+platform, build a matching installer-actions DLL per target, and retain the
+UI-plus-Execute native directory-policy sequence.

@@ -86,7 +86,7 @@ or an unbounded argv payload.
   runners; no local cross-OS candidate publication directory exists.
 - Application version resolution and the MSI helper's workspace/package
   relationship are defined by
-  [FyAgent 0.2.1 Version and Installer Contract](./fyagent-version-contract.md).
+  [FyAgent 0.3.0 Version and Installer Contract](./fyagent-version-contract.md).
   The Release version-contract job supplies the candidate version; platform
   jobs must not recover it from package.json or tauri.conf.json.
 - installer-actions is an independent Windows cdylib using the locked
@@ -122,11 +122,20 @@ or an unbounded argv payload.
   into the formal binary and can disable or conflict with the resource emitted
   by `tauri-build`.
 - The release manifest is `requireAdministrator`; the test manifest is
-  `asInvoker`. The signed release workflow explicitly selects `release` and
+  `asInvoker`. The unsigned v0.3.0 workflow explicitly selects `release` and
   verifies the embedded application manifest in the target release executable
-  before signing and again after MSI bundling. The post-bundle check deliberately
-  rereads that executable rather than extracting or installing the MSI payload;
-  it is not proof that the final signed MSI contains the expected manifest.
+  before and after MSI bundling, including exact x64/ARM64 PE Machine.
+- Final MSI payload admission is read-only: the verifier resolves the unique
+  File key `Path`, reads its embedded cabinet through `_Streams`, asks system
+  `expand.exe` to extract only that fixed key into a fresh temporary root, and
+  rejects extra/reparse/escaped output. The extracted executable must equal the
+  verified built executable in File-table size, SHA-256 and PE Machine and must
+  remain Authenticode `NotSigned`. It never invokes `msiexec` or an MSI action.
+- FyAgent v0.3.0 deliberately ships without Authenticode. The native workflow
+  requires both `fyagent.exe` and the final MSI to report `NotSigned` with no
+  signer or timestamp certificate. Signing commands, certificate secrets, and
+  a Release environment are forbidden in this version; future signing requires
+  a separate task and decision.
 - `main` calls `early_windows_startup_gate` before creating the Tauri runtime.
   A formal release continues only when privilege status is available, elevated,
   locally administrative, and proven to match the interactive user. Any
@@ -170,9 +179,9 @@ or an unbounded argv payload.
 | Descriptor references a running owner but pipe open/handshake/proof fails                                                           | Do not send argv; return the activation-forward failure outcome.                                                                |
 | Authentication HMAC, frame shape, client identity, or bounds check fails                                                            | Reject the connection without invoking the activation handler.                                                                  |
 | Formal release reaches a user CLI command                                                                                           | Return the elevated-boundary message before probing or running the CLI.                                                         |
-| Target executable manifest inspection or signing validation fails in release workflow                                               | Fail the workflow before publishing the artifact.                                                                               |
-| Final signed MSI payload has not been extracted and inspected                                                                       | Keep final MSI-payload manifest acceptance pending; do not claim it was verified by the target-executable check.                |
-| Helper architecture, MSI Binary bytes, custom-action table, or INSTALLDIR component closure drifts                                  | Fail native release structure verification before candidate publication or signing.                                             |
+| Target executable manifest inspection or EXE/MSI `NotSigned` validation fails in release workflow                                   | Fail the workflow before publishing the artifact.                                                                               |
+| Fixed-key cabinet extraction, output containment, built-EXE SHA/size/Machine binding, or extracted unsigned check fails             | Fail the workflow; do not upload the MSI artifact.                                                                              |
+| Helper architecture, MSI Binary bytes, custom-action table, or INSTALLDIR component closure drifts                                  | Fail native release structure verification before candidate artifact upload.                                                    |
 | UI validator rejects a path                                                                                                         | Show the recoverable policy dialog; do not raise Error 1720.                                                                    |
 | Execute validator rejects a path or repair/upgrade lacks its HKLM anchor                                                            | Type 19 aborts before InstallValidate/InstallFiles.                                                                             |
 
@@ -205,10 +214,9 @@ or an unbounded argv payload.
   capability/CSP boundary, absence of portable Windows distribution claims,
   visual-baseline LFS policy, and pre-probe formal-release CLI guard.
 - `tests/releaseWorkflow.test.ts` asserts explicit release
-  manifest selection and target-executable manifest/signing verification steps
-  in the release workflow. Before treating this boundary as fully
-  test-enforced, extend it to distinguish the post-bundle target-executable
-  inspection from verification of the final MSI payload.
+  manifest selection, target-executable manifest checks, MSI structure/payload
+  verifiers, fixed-key cabinet extraction/built-EXE binding, and EXE/MSI
+  `NotSigned` verification in the release workflow.
   It must also bind the native Release manifest selection to the actual build
   and bundle environments, require `cargo:rustc-link-arg-tests` for the test
   manifest, and reject all-target manifest arguments and `/MANIFEST:NO`
@@ -227,16 +235,18 @@ or an unbounded argv payload.
   execution.
 - Run the declared safe checks through mise, including Rust format/clippy and
   the targeted/unit frontend suite. Native UAC, registry, MSI, PackageManager,
-  signing, and live named-pipe validation are separate Windows release
-  validation and require explicit authorization; do not fabricate them from a
-  non-Windows host.
+  unsigned Authenticode status, and live named-pipe validation are separate
+  Windows release validation and require explicit authorization; do not
+  fabricate them from a non-Windows host.
 - Native Windows acceptance additionally covers the default directory, a safe
   custom directory, an unsafe directory, /qn INSTALLDIR, repair, upgrade,
   uninstall, verbose MSI logging, and ICE validation for x64 and ARM64. The
   native table and Binary-stream checks are necessary structure evidence, not
-  an equivalent lifecycle result. Acceptance must also extract and inspect the
-  embedded executable manifest from the final signed MSI before treating that
-  payload as release-validated.
+  an equivalent lifecycle result. The read-only cabinet payload binding is
+  mandatory package evidence but still does not replace lifecycle install
+  acceptance. It must bind final MSI executable bytes to the already
+  manifest-verified built executable before treating that payload as
+  release-validated.
 
 ## 7. Wrong vs Correct
 

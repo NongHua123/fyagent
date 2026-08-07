@@ -145,18 +145,31 @@ describe("local build boundary", () => {
 
   it("retains native release targets for all five platform groups", () => {
     const release = read(".github/workflows/release.yml");
-    for (const runner of [
-      '"os":"windows-2022"',
-      '"os":"windows-11-arm","arch":"arm64"',
-      '"os":"ubuntu-22.04"',
-      '"os":"ubuntu-22.04-arm","arch":"arm64"',
-      '"os":"macos-14"',
+    for (const contract of [
+      "runner: windows-2022",
+      "target_group: windows-x64",
+      "runner: windows-11-arm",
+      "target_group: windows-arm64",
+      "runner: ubuntu-24.04",
+      "target_group: linux-x64",
+      "runner: ubuntu-24.04-arm",
+      "target_group: linux-arm64",
+      "runs-on: macos-15",
+      "TARGET_GROUP: macos-universal",
     ]) {
-      expect(release).toContain(runner);
+      expect(release).toContain(contract);
     }
+
     expect(release).toContain(
-      "pnpm tauri build --target aarch64-pc-windows-msvc --no-bundle",
+      "image: ubuntu:22.04@${{ matrix.container_digest }}",
     );
+    expect(release).toContain(
+      "sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e",
+    );
+    expect(release).toContain(
+      "sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149",
+    );
+    expect(release).toContain("aarch64-pc-windows-msvc");
     expect(release).toContain("pnpm tauri build --no-bundle");
     expect(release).toContain("pnpm tauri build --bundles appimage,deb,rpm");
     expect(release).toContain(
