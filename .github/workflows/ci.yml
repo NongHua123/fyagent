@@ -1,47 +1,112 @@
 name: CI
 
 on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  frontend:
-    name: Frontend Checks
-    runs-on: ubuntu-latest
+  contracts:
+    name: Repository Contracts
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: "20"
+          persist-credentials: false
 
       - name: Setup pnpm
-        env:
-          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
-        run: |
-          corepack enable
-          corepack install
-          pnpm --version
-
-      - name: Get pnpm store directory
-        id: pnpm-store
-        shell: bash
-        run: echo "path=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
-
-      - name: Cache pnpm store
-        uses: actions/cache@v5
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
-          path: ${{ steps.pnpm-store.outputs.path }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-pnpm-store-
+          run_install: false
 
-      - name: Install dependencies
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Resolve locked toolchain facts
+        id: toolchain-facts
+        run: node scripts/ci/verify-toolchain.mjs --emit-github-output
+
+      - name: Setup uv and managed Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ steps.toolchain-facts.outputs.uv-version }}
+          python-version: ${{ steps.toolchain-facts.outputs.python-version }}
+          enable-cache: false
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          cache: false
+          rustflags: ""
+
+      - name: Synchronize locked Python environment
+        run: uv sync --locked
+
+      - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Verify active toolchains
+        run: node scripts/ci/verify-toolchain.mjs --tools node,pnpm,rust,uv,python
+
+      - name: Run repository and release contracts
+        run: node scripts/tasks/release-check.mjs --ci
+
+  frontend:
+    name: Frontend Checks
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Resolve locked toolchain facts
+        id: toolchain-facts
+        run: node scripts/ci/verify-toolchain.mjs --emit-github-output
+
+      - name: Setup uv and managed Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ steps.toolchain-facts.outputs.uv-version }}
+          python-version: ${{ steps.toolchain-facts.outputs.python-version }}
+          enable-cache: false
+
+      - name: Synchronize locked Python environment
+        run: uv sync --locked
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify active toolchains
+        run: node scripts/ci/verify-toolchain.mjs --tools node,pnpm,uv,python
 
       - name: Verify application version contract
         run: pnpm run version:check
@@ -53,28 +118,58 @@ jobs:
         run: pnpm format:check
 
       - name: Unit tests
-        run: pnpm test:unit
+        env:
+          NODE_OPTIONS: --throw-deprecation
+        # These five host-integration suites exercise the real local mise API.
+        # Their pure Node contracts still run above; the real mise boundary is
+        # owned by the canonical local check rather than GitHub Actions.
+        run: |
+          pnpm exec vitest run \
+            --exclude tests/developmentEnvironment.test.ts \
+            --exclude tests/developmentHooks.test.ts \
+            --exclude tests/miseTaskContract.test.ts \
+            --exclude tests/systemCheck.test.ts \
+            --exclude tests/taskDocs.test.ts
+
+      - name: Development hook behavior tests
+        env:
+          NODE_OPTIONS: --throw-deprecation
+        # Preserve the real Python harness coverage while omitting only the two
+        # wiring cases that intentionally execute the local task runtime.
+        run: >-
+          pnpm exec vitest run tests/developmentHooks.test.ts
+          --testNamePattern '^(?!.*(?:declares all hook tasks as raw, read-only task
+          metadata|preserves one raw JSON stdin/stdout protocol through mise)).*$'
+
+      - name: Locale key parity
+        run: pnpm test:i18n
 
   desktop-acceptance-contract:
     name: Desktop Acceptance Contract
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: "20"
+          persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
-          version: 10.12.3
           run_install: false
 
-      - name: Install dependencies
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Verify active toolchains
+        run: node scripts/ci/verify-toolchain.mjs --tools node,pnpm
 
       - name: Verify mock-only desktop acceptance contract
         run: pnpm test:desktop:mock
@@ -82,59 +177,158 @@ jobs:
       - name: Verify visual baseline capture policy
         run: pnpm test:desktop:visual:preflight
 
-  backend:
-    name: Backend Checks
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-22.04, windows-latest, macos-latest]
+  backend-linux:
+    name: Backend Checks (Linux)
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
-          components: rustfmt, clippy
+          cache: false
+          rustflags: ""
 
-      - name: Install Linux system deps
-        if: runner.os == 'Linux'
+      - name: Verify active toolchains
+        run: node scripts/ci/verify-toolchain.mjs --tools node,pnpm,rust
+
+      - name: Install Linux system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential pkg-config libssl-dev \
-            libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev
-          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev \
-            || sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.0-dev
-          sudo apt-get install -y --no-install-recommends libsoup-3.0-dev \
-            || sudo apt-get install -y --no-install-recommends libsoup2.4-dev
-
-      - name: Cache Cargo registry and build
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+            libgtk-3-dev libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev librsvg2-dev
 
       - name: Create frontend dist placeholder
-        shell: bash
         run: mkdir -p dist
 
       - name: Check Rust formatting
         run: cargo fmt --all --check --manifest-path src-tauri/Cargo.toml
 
-      - name: Clippy
-        env:
-          # Keep all Windows CI artifacts in the ordinary-user test mode. A
-          # distributable administrator binary is built only by release.yml.
-          FYAGENT_WINDOWS_MANIFEST: test
-        run: cargo clippy --workspace --all-targets --manifest-path src-tauri/Cargo.toml -- -D warnings
+      - name: Check Rust workspace
+        run: cargo check --workspace --all-targets --locked --manifest-path src-tauri/Cargo.toml
 
-      - name: Run tests
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --locked --manifest-path src-tauri/Cargo.toml -- -D warnings
+
+      - name: Run Rust tests
+        run: cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml
+
+  backend-windows:
+    name: Backend Checks (Windows)
+    runs-on: windows-2022
+    env:
+      FYAGENT_WINDOWS_MANIFEST: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          cache: false
+          rustflags: ""
+
+      - name: Verify active toolchains
+        run: node scripts/ci/verify-toolchain.mjs --tools node,pnpm,rust
+
+      - name: Create frontend dist placeholder
+        shell: bash
+        run: mkdir -p dist
+
+      - name: Check Rust workspace
+        run: cargo check --workspace --all-targets --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --locked --manifest-path src-tauri/Cargo.toml -- -D warnings
+
+      - name: Run Rust tests
+        run: cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml
+
+  backend-macos:
+    name: Backend Checks (macOS)
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          cache: false
+          rustflags: ""
+
+      - name: Verify active toolchains
+        run: node scripts/ci/verify-toolchain.mjs --tools node,pnpm,rust
+
+      - name: Create frontend dist placeholder
+        run: mkdir -p dist
+
+      - name: Check Rust workspace
+        run: cargo check --workspace --all-targets --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --locked --manifest-path src-tauri/Cargo.toml -- -D warnings
+
+      - name: Run Rust tests
+        run: cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml
+
+  required:
+    name: CI / Required
+    if: always()
+    needs:
+      - contracts
+      - frontend
+      - desktop-acceptance-contract
+      - backend-linux
+      - backend-windows
+      - backend-macos
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Evaluate required dependency results
         env:
-          FYAGENT_WINDOWS_MANIFEST: test
-        run: cargo test --workspace --manifest-path src-tauri/Cargo.toml
+          REQUIRED_RESULTS: ${{ toJSON(needs) }}
+        run: node scripts/ci/required-gate.mjs

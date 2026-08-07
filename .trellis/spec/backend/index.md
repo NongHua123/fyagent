@@ -37,6 +37,7 @@ Before changing Rust/Tauri host code:
 | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
 | [Codex Desktop Installer](./codex-desktop-installer.md)                        | The fixed-source installer service, IPC DTOs, job events, and platform boundaries.                                             |
 | [FyAgent 0.3.0 Version and Installer](./fyagent-version-contract.md)           | Cargo version single source, version commands, frozen release values, native MSI directory policy, and release gates.          |
+| [GitHub CI Workflow](./github-ci-workflow.md)                                  | Automatic PR/main/merge-group CI, stable Required aggregation, pinned toolchains/Actions, and trusted-base Labeler.            |
 | [GitHub Release Workflow](./github-release-workflow.md)                        | Manually dispatched unsigned macOS artifacts and signed tag release boundaries.                                                |
 | [Development Environment](./development-environment.md)                        | mise-first local tool versions, compatibility declarations, platform boundaries, and WSL PATH isolation.                       |
 | [Repository Task Runner](./task-runner-contract.md)                            | Canonical mise task metadata, parameter transport, DAG side effects, maintenance safety, and generated documentation.          |
