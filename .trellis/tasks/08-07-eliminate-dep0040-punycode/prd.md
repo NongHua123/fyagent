@@ -22,13 +22,13 @@ Remove the obsolete test dependency chain that triggers Node DEP0040 and prove n
 
 ## Acceptance Criteria
 
-- [ ] package/source/lock no longer contain the obsolete path
-- [ ] native Fetch globals and real MSW request pass
-- [ ] ordinary `--throw-deprecation` tests pass
-- [ ] pending+throw focused probe passes
-- [ ] repository suppression scan is clean
-- [ ] successful, non-2xx text-error, empty-response, and cross-realm Native Fetch → MSW → Tauri mock behavior all pass
+- [x] package/source/lock no longer contain the obsolete path
+- [x] native Fetch globals and real MSW request pass
+- [x] ordinary `--throw-deprecation` tests pass
+- [x] pending+throw focused probe passes
+- [x] repository suppression scan is clean
+- [x] successful, non-2xx text-error, empty-response, and cross-realm Native Fetch → MSW → Tauri mock behavior all pass
 
 ## Evidence Boundary
 
-Implementation was authorized on 2026-08-08. Authorization is not completion evidence: dependency-graph, Native Fetch/MSW/Tauri behavior, deprecation, and suppression results remain pending until attached.
+Implementation was authorized on 2026-08-08. The completed local evidence is recorded in `research/dep0040-remediation-evidence.md`; parent-level remote CI and Release gates remain independent.
