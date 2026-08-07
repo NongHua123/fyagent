@@ -32,7 +32,7 @@ function test(watch) {
       );
     }
   }
-  run("pnpm", ["exec", "vitest", watch ? "watch" : "run", ...filters]);
+  run("pnpm", [watch ? "test:unit:watch" : "test:unit", ...filters]);
 }
 
 function visualUpdate() {

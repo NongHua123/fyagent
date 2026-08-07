@@ -98,6 +98,30 @@ state; it must not resolve conflicts, create a commit, tag, or push.
   A later documentation commit removes their product-facing bodies and records
   concise provenance; never rebrand them as FyAgent release notes.
 
+### Maintained Native Fetch delta
+
+FyAgent removes upstream's test-only `cross-fetch` dependency and
+`cross-fetch/polyfill` import after the reviewed v3.19.2 merge. This is an
+intentional, independently revertible downstream delta, not a conflict
+resolution inside the two-parent merge. It relies on the exact Node version in
+`.node-version`, which must provide unmarked native `fetch`, `Headers`,
+`Request`, and `Response` globals.
+
+The delta remains valid only while the Native Fetch → MSW → Tauri mock
+behavior suite covers JSON success, non-2xx text errors, empty responses, and
+cross-realm jsdom Headers, and while the dependency report proves that
+`cross-fetch → node-fetch@2 → whatwg-url@5 → tr46@0.0.3 → built-in punycode`
+is absent. Modern jsdom dependencies on `whatwg-url@14`, `tr46@5`, and the
+userland `punycode@2` package are not the DEP0040 root cause and remain allowed
+when both the pnpm lock and `pnpm why --json` explain their reverse paths.
+
+Node 24.19.0's pending-deprecation probe does not reliably surface every warning
+originating under dependencies, so it supplements rather than replaces the
+lock and reverse-graph checks. Re-evaluate and preferably remove this delta
+when a future reviewed upstream release removes the compatibility dependency;
+if upstream adopts another Fetch layer, retain FyAgent's native-only boundary
+unless its real behavior and deprecation evidence justify a new decision.
+
 ## 4. Validation & Error Matrix
 
 | Condition                                                                            | Required result                                                                       |
@@ -135,6 +159,9 @@ state; it must not resolve conflicts, create a commit, tag, or push.
 - Run version consistency, JSON/TOML parsing, renderer format/type/unit tests,
   Rust fmt/check/clippy/tests, and the security tests affected by conflict
   resolution.
+- Run the DEP0040 JSON report and focused pending-deprecation Native
+  Fetch/MSW/Tauri behavior probe while the maintained downstream Fetch delta
+  exists.
 - Assert schema `16`, FyAgent test-home isolation, database/export-header
   behavior, proxy error mapping, package identity, and Tauri identity.
 - Record native/platform/Release evidence separately; a successful Linux host

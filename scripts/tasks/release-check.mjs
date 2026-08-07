@@ -10,6 +10,7 @@ const CI_SAFE_TESTS = Object.freeze([
   "tests/ciWorkflow.test.ts",
   "tests/requiredCiGate.test.ts",
   "tests/ciToolchainContract.test.ts",
+  "tests/dep0040Contract.test.ts",
   "tests/localBuildBoundary.test.ts",
 ]);
 
@@ -30,17 +31,20 @@ try {
 
   run("pnpm", ["run", "version:check"]);
   run("node", ["scripts/tasks/lockfile-check.mjs"]);
+  run("node", ["scripts/tasks/dep0040-check.mjs"]);
   if (!ciMode) {
     run("node", ["scripts/tasks/task-contract-check.mjs"]);
   }
   run("node", ["scripts/tasks/task-docs.mjs", "check"]);
   run("pnpm", [
-    "exec",
-    "vitest",
     "run",
+    "test:unit",
     ...CI_SAFE_TESTS,
     ...(ciMode ? [] : LOCAL_MISE_TESTS),
   ]);
+  if (!ciMode) {
+    run("pnpm", ["run", "test:native-fetch"]);
+  }
 } catch (error) {
   fail(error);
 }

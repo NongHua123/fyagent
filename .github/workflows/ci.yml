@@ -118,13 +118,11 @@ jobs:
         run: pnpm format:check
 
       - name: Unit tests
-        env:
-          NODE_OPTIONS: --throw-deprecation
         # These five host-integration suites exercise the real local mise API.
         # Their pure Node contracts still run above; the real mise boundary is
         # owned by the canonical local check rather than GitHub Actions.
         run: |
-          pnpm exec vitest run \
+          pnpm test:unit \
             --exclude tests/developmentEnvironment.test.ts \
             --exclude tests/developmentHooks.test.ts \
             --exclude tests/miseTaskContract.test.ts \
@@ -132,12 +130,10 @@ jobs:
             --exclude tests/taskDocs.test.ts
 
       - name: Development hook behavior tests
-        env:
-          NODE_OPTIONS: --throw-deprecation
         # Preserve the real Python harness coverage while omitting only the two
         # wiring cases that intentionally execute the local task runtime.
         run: >-
-          pnpm exec vitest run tests/developmentHooks.test.ts
+          pnpm test:unit tests/developmentHooks.test.ts
           --testNamePattern '^(?!.*(?:declares all hook tasks as raw, read-only task
           metadata|preserves one raw JSON stdin/stdout protocol through mise)).*$'
 
@@ -173,6 +169,9 @@ jobs:
 
       - name: Verify mock-only desktop acceptance contract
         run: pnpm test:desktop:mock
+
+      - name: Verify native Fetch through MSW and Tauri mock
+        run: pnpm test:native-fetch
 
       - name: Verify visual baseline capture policy
         run: pnpm test:desktop:visual:preflight

@@ -186,10 +186,11 @@ describe("automatic CI workflow", () => {
       expect(block.indexOf("run: uv sync --locked")).toBeLessThan(
         block.indexOf("node scripts/tasks/release-check.mjs --ci") >= 0
           ? block.indexOf("node scripts/tasks/release-check.mjs --ci")
-          : block.indexOf("pnpm exec vitest run"),
+          : block.indexOf("pnpm test:unit"),
       );
     }
-    expect(frontend).toContain("NODE_OPTIONS: --throw-deprecation");
+    expect(frontend).toContain("pnpm test:unit");
+    expect(frontend).not.toContain("NODE_OPTIONS:");
   });
 
   it("keeps GitHub Actions independent from the local mise runtime", () => {
@@ -203,15 +204,13 @@ describe("automatic CI workflow", () => {
     expect(contracts).toContain(
       "run: node scripts/tasks/release-check.mjs --ci",
     );
-    expect(frontend).toContain("pnpm exec vitest run");
+    expect(frontend).toContain("pnpm test:unit");
     expect(frontend).not.toContain("run: pnpm test:unit");
     for (const test of LOCAL_MISE_TESTS) {
       expect(frontend, test).toContain(`--exclude ${test}`);
       expect(releaseCheck, test).toContain(`\"${test}\"`);
     }
-    expect(frontend).toContain(
-      "pnpm exec vitest run tests/developmentHooks.test.ts",
-    );
+    expect(frontend).toContain("pnpm test:unit tests/developmentHooks.test.ts");
     expect(frontend).toMatch(
       /declares all hook tasks as raw, read-only task\s+metadata/,
     );
@@ -246,5 +245,14 @@ describe("automatic CI workflow", () => {
     expect(jobBlock("backend-linux")).toContain(
       "cargo fmt --all --check --manifest-path src-tauri/Cargo.toml",
     );
+  });
+
+  it("runs the focused pending-deprecation native Fetch probe", () => {
+    const desktop = jobBlock("desktop-acceptance-contract");
+    expect(desktop).toContain("run: pnpm test:native-fetch");
+    expect(source).not.toContain("NODE_NO_WARNINGS");
+    expect(source).not.toContain("--no-warnings");
+    expect(source).not.toContain("--no-deprecation");
+    expect(source).not.toContain("--disable-warning=DEP0040");
   });
 });

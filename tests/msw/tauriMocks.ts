@@ -1,24 +1,27 @@
-import "cross-fetch/polyfill";
 import { vi } from "vitest";
 import { server } from "./server";
 
 const TAURI_ENDPOINT = "http://tauri.local";
 const invokedCommands: string[] = [];
+let tauriRequestHeaders: HeadersInit | undefined;
 
 export const clearTauriInvocations = () => {
   invokedCommands.length = 0;
+  tauriRequestHeaders = undefined;
 };
 
 export const getTauriInvocations = (): readonly string[] => invokedCommands;
+
+export const setTauriRequestHeaders = (headers: HeadersInit | undefined) => {
+  tauriRequestHeaders = headers;
+};
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: async (command: string, payload: Record<string, unknown> = {}) => {
     invokedCommands.push(command);
     const response = await fetch(`${TAURI_ENDPOINT}/${command}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: tauriRequestHeaders ?? { "Content-Type": "application/json" },
       body: JSON.stringify(payload ?? {}),
     });
 
