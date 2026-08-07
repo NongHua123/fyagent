@@ -23,12 +23,15 @@ Retire every local Linux/WSL-to-Windows/macOS cross-build capability without red
 
 ## Acceptance Criteria
 
-- [ ] no live cross scripts/tasks/targets/docs
-- [ ] no automatic `mise trust --yes`
-- [ ] native Windows/macOS/Linux builds and Actions design remain
-- [ ] contract scan prevents reintroduction
-- [ ] native Release contracts retain all Windows installer security assertions previously coupled to the deleted script
+- [x] no live cross scripts/tasks/targets/docs
+- [x] no automatic `mise trust --yes`
+- [x] native Windows/macOS/Linux builds and Actions design remain
+- [x] contract scan prevents reintroduction
+- [x] native Release contracts retain all Windows installer security assertions previously coupled to the deleted script
 
 ## Evidence Boundary
 
-Implementation was authorized on 2026-08-08. Authorization is not completion evidence: the checklist stays pending until migrated Windows assertions, deletion/negative scans, and native-host validation are attached.
+Implementation was authorized on 2026-08-08. The implementation and local/static
+evidence are recorded in `research/removal-evidence.md`. Native Windows Installer
+COM execution remains a formal Release-workflow gate and is not represented as a
+Linux-host result.

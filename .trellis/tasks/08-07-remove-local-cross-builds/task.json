@@ -15,7 +15,7 @@
   "branch": "codex/fyagent-v0.3.0",
   "base_branch": "main",
   "worktree_path": null,
-  "commit": null,
+  "commit": "e8954d97faed1b833a6bce6fb9477b4fc4e2fd83",
   "pr_url": null,
   "subtasks": [],
   "children": [],
@@ -23,7 +23,7 @@
   "relatedFiles": [],
   "notes": "Implementation is authorized; migrate Windows installer security assertions before deleting the cross-build scripts.",
   "meta": {
-    "evidenceState": "baseline-verified-and-authorized",
+    "evidenceState": "implemented-and-locally-verified",
     "decisionRange": "D-001..D-104 plus 2026-08-08 approved overrides",
     "sourceBaseline": "55173d2b32c4acf182b6ec504d7ad326ade2bb9b",
     "productVersion": "0.3.0",
@@ -37,6 +37,9 @@
     "integrationStrategy": "pull-request-merge-commit",
     "releaseEvidenceState": "pending",
     "role": "child",
-    "sequence": "2"
+    "sequence": "2",
+    "implementationCommit": "e8954d97faed1b833a6bce6fb9477b4fc4e2fd83",
+    "independentCheck": "completed-with-two-contract-hardening-fixes",
+    "nativeWindowsEvidence": "pending-formal-release-workflow"
   }
 }
