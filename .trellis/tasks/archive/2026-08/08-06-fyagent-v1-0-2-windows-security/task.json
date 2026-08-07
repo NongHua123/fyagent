@@ -3,7 +3,7 @@
   "name": "fyagent-v1-0-2-windows-security",
   "title": "Harden FyAgent v1.0.2 Windows release boundary",
   "description": "Deliver the formal Windows privilege, installer, process-launch, single-instance, IPC, and release constraints.",
-  "status": "planning",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "pythonrust",
   "assignee": "pythonrust",
   "createdAt": "2026-08-06",
-  "completedAt": null,
+  "completedAt": "2026-08-08",
   "branch": null,
   "base_branch": "main",
   "worktree_path": null,
@@ -22,5 +22,10 @@
   "parent": "08-06-fyagent-v1-0-2-workbuddy",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "archiveDisposition": "superseded",
+    "supersededBy": "08-07-fyagent-upstream-toolchain-release-modernization",
+    "archiveReason": "Replaced by the approved FyAgent v0.3.0 upstream, toolchain, CI, release, dependency, and documentation modernization task tree.",
+    "historicalStatusBeforeArchive": "planning"
+  }
 }
