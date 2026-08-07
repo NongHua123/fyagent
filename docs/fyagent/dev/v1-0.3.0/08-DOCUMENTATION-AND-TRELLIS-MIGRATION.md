@@ -65,17 +65,23 @@ mise run trellis:session:add -- --title <title> --commit <hashes> --summary <sum
 
 ## 6. 旧任务归档
 
-当前五个旧任务仍在活动目录，后续由主执行流先写入以下元数据，再按四个 child、旧 parent 的顺序归档：
+五个旧任务已由 `1d3849e6` 按四个 child、旧 parent 的顺序归档到
+`.trellis/tasks/archive/2026-08/`。每项均保留原始状态并写入以下元数据：
 
 ```json
 {
   "archiveDisposition": "superseded",
   "supersededBy": "08-07-fyagent-upstream-toolchain-release-modernization",
-  "archiveReason": "Replaced by the consolidated modernization plan"
+  "archiveReason": "Replaced by the approved FyAgent v0.3.0 upstream, toolchain, CI, release, dependency, and documentation modernization task tree.",
+  "historicalStatusBeforeArchive": "<in_progress|planning>"
 }
 ```
 
-使用 canonical `mise run trellis:task -- archive <task> --no-commit` 技术关闭行为；文档统一称 superseded，不称“已实施完成”。冻结 overlay 中的 archive 只保留原始建议，不可复制到真实 archive。
+归档使用 canonical `mise run trellis:task -- archive <task> --no-commit`；
+`status=completed` 只是工具移动目录时写入的技术生命周期标记，
+`ARCHIVE-NOTE.md` 与 `historicalStatusBeforeArchive` 明确旧需求未被冒充完成。
+已经归档的 shell-window 与 desktop-acceptance 未被重建或重复归档。冻结
+overlay 中的 archive 只保留原始建议，不可复制到真实 archive。
 
 ## 7. 文档漂移门禁
 

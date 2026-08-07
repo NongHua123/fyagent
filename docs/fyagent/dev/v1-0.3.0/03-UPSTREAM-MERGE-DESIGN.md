@@ -66,7 +66,7 @@ upstream push     = DISABLED
 
 ## 6. Release notes 处理
 
-[Decision / 已决策] merge commit 已正常接收上游 release-note 文件；Child 6 后续删除 `docs/release-notes/v3.19.2-*.md`。在删除提交真实发生前，该项保持进行中。保留：
+[Observed / 已核实] merge commit 正常接收了上游 release-note 文件；Child 6 已在 `58101230` 中删除 `docs/release-notes/v3.19.2-*.md`，并将上游来源收口到 provenance 与 FyAgent CHANGELOG。保留：
 
 - merge ancestry；
 - `docs/upstream/cc-switch-v3.19.2.md`；

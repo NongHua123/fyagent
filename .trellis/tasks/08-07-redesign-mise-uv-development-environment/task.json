@@ -21,10 +21,10 @@
   "children": [],
   "parent": "08-07-fyagent-upstream-toolchain-release-modernization",
   "relatedFiles": [],
-  "notes": "Implementation and Linux x64/local-static verification are complete; keep this child open for native platform, active-document migration, and formal v0.3.0 tag evidence.",
+  "notes": "Implementation, Linux x64/local-static verification, and active-document migration are complete; keep this child open for native platform and formal v0.3.0 tag evidence.",
   "meta": {
     "evidenceState": "implemented-and-locally-verified",
-    "decisionRange": "D-001..D-104 plus 2026-08-08 approved overrides",
+    "decisionRange": "D-001..D-115",
     "sourceBaseline": "55173d2b32c4acf182b6ec504d7ad326ade2bb9b",
     "productVersion": "0.3.0",
     "releasePolicy": "stable unsigned v0.3.0; exact ten installers plus manifest, metadata, attestations",
@@ -42,7 +42,7 @@
     "independentCheck": "completed-with-five-failure-boundary-fixes",
     "localPlatformEvidence": "linux-x64-complete",
     "nativePlatformEvidence": "pending-github-actions",
-    "docsMigrationEvidence": "pending-child-6",
+    "docsMigrationEvidence": "58101230e634e2280ef24937fad1942ed3d3d75f",
     "formalTagEvidence": "pending-v0.3.0-release"
   }
 }

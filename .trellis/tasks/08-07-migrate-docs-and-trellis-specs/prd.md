@@ -26,14 +26,17 @@ Make current human/agent documentation, Trellis specs/tasks, and generated task 
 
 ## Acceptance Criteria
 
-- [ ] active docs use canonical `mise run` tasks and contain no retired or noncanonical direct project commands
-- [ ] spec indexes and generated task docs are consistent
-- [ ] old task archives preserve content and say superseded
-- [ ] source/provenance and FyAgent CHANGELOG records remain
-- [ ] documentation contract checks pass
-- [ ] Release Notes and download guidance explain unsigned macOS Privacy & Security → Open Anyway and Windows SmartScreen behavior safely
+- [x] active docs use canonical `mise run` tasks and contain no retired or noncanonical direct project commands
+- [x] spec indexes and generated task docs are consistent
+- [x] old task archives preserve content and say superseded
+- [x] source/provenance and FyAgent CHANGELOG records remain
+- [x] documentation contract checks pass
+- [x] Release Notes and download guidance explain unsigned macOS Privacy & Security → Open Anyway and Windows SmartScreen behavior safely
 - [ ] real CI/preflight/Release/asset/digest/attestation evidence is recorded before final new-task archival
 
 ## Evidence Boundary
 
-Implementation was authorized on 2026-08-08. Authorization is not completion evidence: current-contract migration, old-task archive, formal Release closeout, new-task archive, and journal evidence remain pending until each stage is real.
+Implementation was authorized on 2026-08-08. Current-contract migration and the
+five old superseded archives are locally complete; formal Release closeout,
+new-task archive, final manifest, and journal evidence remain pending until each
+stage is real.

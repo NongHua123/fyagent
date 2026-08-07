@@ -31,7 +31,7 @@ Provide a stable `mise run` repository API with standard version sources, uv-own
 - [ ] supported platforms resolve exact toolchain
 - [ ] uv-managed Python and Trellis work on Windows ARM64
 - [x] task DAG/metadata/docs checks pass
-- [ ] all current local docs use canonical tasks
+- [x] all current local docs use canonical tasks
 - [x] Codex hooks are offline/no-sync and degrade visibly
 - [ ] Cargo workspace, both local lock packages, package metadata, version checks, and eventual tag agree on `0.3.0`
 
@@ -39,6 +39,7 @@ Provide a stable `mise run` repository API with standard version sources, uv-own
 
 Implementation commit `3d534710307d538e570c137231b1d80a64ac8ab7`
 and the Linux x64/local-static evidence are recorded in
-`research/development-environment-evidence.md`. Native Windows, macOS, and
-Linux ARM64 evidence, the Child 6 active-document migration, and the eventual
-formal `v0.3.0` tag remain pending; this child therefore remains in progress.
+`research/development-environment-evidence.md`. The Child 6 active-document
+migration is complete in `58101230e634e2280ef24937fad1942ed3d3d75f`. Native
+Windows, macOS, and Linux ARM64 evidence and the eventual formal `v0.3.0` tag
+remain pending; this child therefore remains in progress.

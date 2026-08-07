@@ -6,15 +6,15 @@
 
 ## 1. 当前结论
 
-| 范围                                | 状态                                                       | 证据                                                            |
-| ----------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------- |
-| Child 1 上游 v3.19.2 merge          | Implemented + locally verified + archived                  | `f4462765`、`487995e0`、`20a4bc65`                              |
-| Child 2 本地 cross-build 退役       | Implemented + locally verified + archived                  | `e8954d97`、`b8e50c4a`、`5e0dc678`                              |
-| Child 3 mise/uv/task/version        | Implemented + Linux x64 verified; remote platforms pending | `3d534710`、`8bd54f6b`；task 保持 `in_progress`                 |
-| Child 4 CI/Labeler/unsigned Release | Implemented + locally verified; remote evidence pending    | `038675b3`、`94ff9ee9`、`2526588a`；task 保持 `in_progress`     |
-| Child 5 DEP0040                     | Implemented + locally verified + archived                  | `4e407df4`、`e5c543f7`、`6be28965`                              |
-| Child 6 docs/Trellis                | Internal migration locally verified; closeout pending      | 本报告第 3 节；公开文档、旧任务 archive、remote closeout 待收口 |
-| Parent                              | Pending / NO-GO                                            | remote gates、两个决策门禁和最终归档未完成                      |
+| 范围                                | 状态                                                       | 证据                                                                    |
+| ----------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Child 1 上游 v3.19.2 merge          | Implemented + locally verified + archived                  | `f4462765`、`487995e0`、`20a4bc65`                                      |
+| Child 2 本地 cross-build 退役       | Implemented + locally verified + archived                  | `e8954d97`、`b8e50c4a`、`5e0dc678`                                      |
+| Child 3 mise/uv/task/version        | Implemented + Linux x64 verified; remote platforms pending | `3d534710`、`8bd54f6b`；task 保持 `in_progress`                         |
+| Child 4 CI/Labeler/unsigned Release | Implemented + locally verified; remote evidence pending    | `038675b3`、`94ff9ee9`、`2526588a`；task 保持 `in_progress`             |
+| Child 5 DEP0040                     | Implemented + locally verified + archived                  | `4e407df4`、`e5c543f7`、`6be28965`                                      |
+| Child 6 docs/Trellis                | Local migration verified; remote closeout pending          | `eb748f9c`、`58101230`、`1d3849e6`、`580c5efa`；task 保持 `in_progress` |
+| Parent                              | Pending / NO-GO                                            | remote gates、两个决策门禁和最终归档未完成                              |
 
 ## 2. 已核实的实施事实
 
@@ -28,9 +28,10 @@
 
 详细命令、测试数量和修复记录分别位于各 child 的 `research/*evidence.md`，避免在本报告复制会漂移的日志。
 
-## 3. Child 6 内部迁移验证
+## 3. Child 6 本地迁移验证
 
-以下证据只覆盖长期 specs、项目 Trellis workflow/skills 和本设计包的内部状态迁移；不替代公开文档 worker、旧任务归档或远程 closeout：
+以下证据覆盖活动公开文档、长期 specs、项目 Trellis workflow/skills、本设计包
+状态迁移和五个旧任务的 superseded archive；不替代远程 closeout：
 
 - **PASS**：对本批次 39 个 Markdown 文件执行 Prettier check；
 - **PASS**：`mise run tasks:docs:check`，生成的 task 参考与事实源逐字节一致；
@@ -41,6 +42,10 @@
 - **PASS**：`repository-overlay/` 为 111 个文件；diff 只包含 3 个中央冻结声明，108 个冻结 payload 未修改；
 - **PASS**：工作树 diff whitespace check；
 - **PASS**：共享 index 精确为 Child 6 的内部 39 项与公开文档 20 项两个批准白名单；不含 `task.json` 或 `tests/localBuildBoundary.test.ts`，cached diff whitespace check 通过。
+- **PASS**：公开/内部两轮独立文档审查的全部 finding 已修复，最终无剩余 finding；
+- **PASS**：五个旧任务按四 child 后 parent 归档，原状态与 superseded 语义保留；
+- **PASS**：归档后无参 `trellis:validate` 覆盖四个活动任务，
+  `miseTaskContract` 12/12、`release:check` 14 files/108 tests、Native Fetch 4/4。
 
 ## 4. 远程待验证
 

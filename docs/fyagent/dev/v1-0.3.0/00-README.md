@@ -63,7 +63,7 @@
 - CI/Labeler 已使用明确 runner、固定 Action SHA、最小权限和稳定 Required gate；
 - Linux Release 在新宿主的同架构 Ubuntu 22.04 容器中构建；
 - 已删除 `cross-fetch` polyfill，使用 Node 原生 Fetch，并用行为、依赖图和弃用探针防止 `DEP0040` 回流；
-- 活动 README、CONTRIBUTING、Trellis specs/workflow/skills 正在迁移；旧任务 superseded 归档与最终新任务归档仍按真实证据分阶段完成。
+- 活动 README、CONTRIBUTING、Trellis specs/workflow/skills 已完成本地迁移；五个旧任务已以 `superseded` 语义归档，剩余新任务只在真实远程 closeout 证据完整后归档。
 
 ## 8. 完整性
 

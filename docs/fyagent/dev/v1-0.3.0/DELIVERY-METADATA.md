@@ -32,16 +32,16 @@
 
 ## 修订审计
 
-| 边界                      | 实现提交     | 证据/归档提交                 | 当前状态                          |
-| ------------------------- | ------------ | ----------------------------- | --------------------------------- |
-| 任务树与执行授权          | `194edb22`   | —                             | active parent + six-child history |
-| CC Switch v3.19.2 merge   | `f4462765`   | `487995e0`, `20a4bc65`        | locally verified, archived        |
-| 本地 cross-build 退役     | `e8954d97`   | `b8e50c4a`, `5e0dc678`        | locally verified, archived        |
-| mise/uv/task/version      | `3d534710`   | `8bd54f6b`                    | local verified, remote pending    |
-| CI/Labeler                | `038675b3`   | `2526588a`（与 Release 共用） | local verified, remote pending    |
-| unsigned Release workflow | `94ff9ee9`   | `2526588a`                    | local verified, remote pending    |
-| DEP0040                   | `4e407df4`   | `e5c543f7`, `6be28965`        | locally verified, archived        |
-| docs/Trellis/设计包       | 当前 Child 6 | closeout 后补                 | in progress                       |
+| 边界                      | 实现提交               | 证据/归档提交                         | 当前状态                                |
+| ------------------------- | ---------------------- | ------------------------------------- | --------------------------------------- |
+| 任务树与执行授权          | `194edb22`             | —                                     | active parent + six-child history       |
+| CC Switch v3.19.2 merge   | `f4462765`             | `487995e0`, `20a4bc65`                | locally verified, archived              |
+| 本地 cross-build 退役     | `e8954d97`             | `b8e50c4a`, `5e0dc678`                | locally verified, archived              |
+| mise/uv/task/version      | `3d534710`             | `8bd54f6b`                            | local verified, remote pending          |
+| CI/Labeler                | `038675b3`             | `2526588a`（与 Release 共用）         | local verified, remote pending          |
+| unsigned Release workflow | `94ff9ee9`             | `2526588a`                            | local verified, remote pending          |
+| DEP0040                   | `4e407df4`             | `e5c543f7`, `6be28965`                | locally verified, archived              |
+| docs/Trellis/设计包       | `eb748f9c`, `58101230` | `1d3849e6`, `580c5efa`; closeout 后补 | local verified, remote closeout pending |
 
 ## 完整性模型
 

@@ -39,12 +39,13 @@ Phase 7  最终 CI、预演和 Release 验收
 4. `038675b3` — `ci: restore automatic required checks and labeling`；
 5. `94ff9ee9` — `ci: build unsigned release transaction`；
 6. `4e407df4` — `test(node): remove cross-fetch and enforce native fetch`；
-7. 当前 Child 6 — 活动文档、长期 specs、决策追踪；
-8. 后续独立 commit — 五个旧任务的 superseded archive；
-9. 实现 PR 采用 GitHub merge commit 合入 `main`；
-10. 正式 Release 后 closeout PR — 远程证据、剩余新任务归档、journal。
+7. `eb748f9c` / `58101230` — Trellis 合同修复以及活动文档、长期 specs、决策追踪；
+8. `1d3849e6` — 五个旧任务的 superseded archive；
+9. `580c5efa` — 归档后活动任务统一验证回归；
+10. 实现 PR 采用 GitHub merge commit 合入 `main`；
+11. 正式 Release 后 closeout PR — 远程证据、剩余新任务归档、journal。
 
-实际可按审查大小拆分，但 merge commit 不得混入 2–8。
+实际可按审查大小拆分，但 merge commit 不得混入 2–9。
 
 ## 4. Phase 0 检查
 

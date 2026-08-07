@@ -90,28 +90,28 @@
 
 ## F. 活动文档与 Trellis
 
-| 路径                                                        | Action                          | 所有者         | 关键合同                                                           |
-| ----------------------------------------------------------- | ------------------------------- | -------------- | ------------------------------------------------------------------ |
-| `README.md`, `README_ZH.md`, `README_JA.md`, `README_DE.md` | 更新开发章节                    | Child 6        | canonical bootstrap/check/native build；不重复完整 task 表         |
-| `CONTRIBUTING.md`                                           | 更新                            | Child 6        | 双语贡献流程、spec/PR/上游/Release 边界                            |
-| `.github/pull_request_template.md`                          | 更新                            | Child 6        | 自适应双语证据清单                                                 |
-| `flatpak/README.md`                                         | 更新                            | Child 6        | 非正式资产边界与 canonical tasks                                   |
-| `tests/e2e/visual-baselines/README.md`                      | 更新                            | Child 6        | preflight/update/evidence 明确分离                                 |
-| `.trellis/workflow.md`                                      | 更新                            | Child 6        | 项目操作使用 `mise run trellis:*`                                  |
-| 项目操作型 `.agents/skills/trellis-*`                       | 更新                            | Child 6        | 不直接调用系统 Python；通用 trellis-meta 不批量改写                |
-| `.agents/skills/fyagent-trellis/SKILL.md`                   | 新增薄入口                      | Child 6        | 只选择 canonical mise/Trellis 路径，不复制通用技能                 |
-| `.trellis/spec/backend/development-environment.md`          | 已由前序 child 重写             | Child 3        | 标准版本文件、mise/uv/Python/locks/strict checks；Child 6 不覆盖   |
-| `.trellis/spec/backend/task-runner-contract.md`             | 已由前序 child 新增             | Child 3        | task API、参数、副作用、弃用、文档生成；Child 6 不覆盖             |
-| `.trellis/spec/backend/upstream-sync.md`                    | 已由前序 child 新增             | Child 1        | fork/upstream、merge、许可和可选 runtime mise；Child 6 不覆盖      |
-| `.trellis/spec/backend/development-hooks.md`                | 已由前序 child 新增             | Child 3        | Trellis/Codex wrapper 与可见降级；Child 6 不覆盖                   |
-| `.trellis/spec/backend/github-release-workflow.md`          | 已由前序 child 重写             | Child 4        | Required/Release 长期合同；Child 6 不覆盖                          |
-| `.trellis/spec/backend/windows-release-boundary.md`         | 已由前序 child 重写             | Child 4        | native MSI、manifest 分层、无签名/安装安全；Child 6 不覆盖         |
-| backend 品牌/版本/config/deeplink specs                     | 状态与 canonical 命令收口       | Child 6        | 保留身份/schema 16/数据路径/深链安全，只迁移 0.3.0 与任务入口      |
-| `.trellis/spec/frontend/quality-guidelines.md`              | Child 5 行为合同 + Child 6 收口 | Child 5/6      | Native Fetch、DEP0040、测试证据边界；Child 6 不重写已实施行为      |
-| backend/frontend `index.md`                                 | 更新                            | Child 6        | 保留所有仍有效规范并加入新规范；移除退役项                         |
-| 新 parent + 6 child tasks                                   | 已物化并按序执行                | Parent/Child 6 | Child1/2/5 已归档；Child3/4/6 与 parent 按真实 evidence 保持活动   |
-| 当前 5 个旧 task 目录                                       | 待独立 commit 归档为 superseded | Child 6        | 原文/原始状态保留、四 child 后旧 parent、`--no-commit`、不称已完成 |
-| `docs/fyagent/dev/v1-0.*` 入口                              | 仅加归档声明                    | Child 6        | 历史正文不改写                                                     |
+| 路径                                                        | Action                          | 所有者         | 关键合同                                                         |
+| ----------------------------------------------------------- | ------------------------------- | -------------- | ---------------------------------------------------------------- |
+| `README.md`, `README_ZH.md`, `README_JA.md`, `README_DE.md` | 更新开发章节                    | Child 6        | canonical bootstrap/check/native build；不重复完整 task 表       |
+| `CONTRIBUTING.md`                                           | 更新                            | Child 6        | 双语贡献流程、spec/PR/上游/Release 边界                          |
+| `.github/pull_request_template.md`                          | 更新                            | Child 6        | 自适应双语证据清单                                               |
+| `flatpak/README.md`                                         | 更新                            | Child 6        | 非正式资产边界与 canonical tasks                                 |
+| `tests/e2e/visual-baselines/README.md`                      | 更新                            | Child 6        | preflight/update/evidence 明确分离                               |
+| `.trellis/workflow.md`                                      | 更新                            | Child 6        | 项目操作使用 `mise run trellis:*`                                |
+| 项目操作型 `.agents/skills/trellis-*`                       | 更新                            | Child 6        | 不直接调用系统 Python；通用 trellis-meta 不批量改写              |
+| `.agents/skills/fyagent-trellis/SKILL.md`                   | 新增薄入口                      | Child 6        | 只选择 canonical mise/Trellis 路径，不复制通用技能               |
+| `.trellis/spec/backend/development-environment.md`          | 已由前序 child 重写             | Child 3        | 标准版本文件、mise/uv/Python/locks/strict checks；Child 6 不覆盖 |
+| `.trellis/spec/backend/task-runner-contract.md`             | 已由前序 child 新增             | Child 3        | task API、参数、副作用、弃用、文档生成；Child 6 不覆盖           |
+| `.trellis/spec/backend/upstream-sync.md`                    | 已由前序 child 新增             | Child 1        | fork/upstream、merge、许可和可选 runtime mise；Child 6 不覆盖    |
+| `.trellis/spec/backend/development-hooks.md`                | 已由前序 child 新增             | Child 3        | Trellis/Codex wrapper 与可见降级；Child 6 不覆盖                 |
+| `.trellis/spec/backend/github-release-workflow.md`          | 已由前序 child 重写             | Child 4        | Required/Release 长期合同；Child 6 不覆盖                        |
+| `.trellis/spec/backend/windows-release-boundary.md`         | 已由前序 child 重写             | Child 4        | native MSI、manifest 分层、无签名/安装安全；Child 6 不覆盖       |
+| backend 品牌/版本/config/deeplink specs                     | 状态与 canonical 命令收口       | Child 6        | 保留身份/schema 16/数据路径/深链安全，只迁移 0.3.0 与任务入口    |
+| `.trellis/spec/frontend/quality-guidelines.md`              | Child 5 行为合同 + Child 6 收口 | Child 5/6      | Native Fetch、DEP0040、测试证据边界；Child 6 不重写已实施行为    |
+| backend/frontend `index.md`                                 | 更新                            | Child 6        | 保留所有仍有效规范并加入新规范；移除退役项                       |
+| 新 parent + 6 child tasks                                   | 已物化并按序执行                | Parent/Child 6 | Child1/2/5 已归档；Child3/4/6 与 parent 按真实 evidence 保持活动 |
+| 5 个旧 task 目录                                            | `1d3849e6` 已归档为 superseded  | Child 6        | 原文/原始状态保留、四 child 后旧 parent、不称旧需求已完成        |
+| `docs/fyagent/dev/v1-0.*` 入口                              | 仅加归档声明                    | Child 6        | 历史正文不改写                                                   |
 
 ## G. 明确保留、不应误删
 
