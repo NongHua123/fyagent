@@ -13,8 +13,9 @@ Execute these steps:
    - `implement.md` if present for execution order and validation plan
 
 2. **Discover packages and their spec layers**:
+
    ```bash
-   python3 ./.trellis/scripts/get_context.py --mode packages
+   mise run trellis:context -- --mode packages
    ```
 
 3. **Identify which specs apply** to your task based on:
@@ -23,14 +24,17 @@ Execute these steps:
    - Any spec/research paths referenced by the task artifacts
 
 4. **Read the spec index** for each relevant module:
+
    ```bash
    cat .trellis/spec/<package>/<layer>/index.md
    ```
+
    Follow the **"Pre-Development Checklist"** section in the index.
 
 5. **Read the specific guideline files** listed in the Pre-Development Checklist that are relevant to your task. The index is NOT the goal — it points you to the actual guideline files (e.g., `error-handling.md`, `conventions.md`, `mock-strategies.md`). Read those files to understand the coding standards and patterns.
 
 6. **Always read shared guides**:
+
    ```bash
    cat .trellis/spec/guides/index.md
    ```

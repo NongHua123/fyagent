@@ -1,7 +1,7 @@
 # 分阶段实施计划
 
-> **交付状态**：Proposed / 拟实施  
-> **关联决策**：1–104  
+> **交付状态**：Phases 0–5 implemented; Phase 6 in progress; Phase 7 pending/blocked / 阶段 0–5 已实施，阶段 6 进行中，阶段 7 待远程验收并含阻塞项
+> **关联决策**：1–115
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
 ## 1. 总体顺序
@@ -21,26 +21,28 @@ Phase 7  最终 CI、预演和 Release 验收
 
 ## 2. Trellis 任务树
 
-| 任务 | 输入 | 主要输出 | 依赖 |
-|---|---|---|---|
-| Parent modernization | 决策 1–104 | 跨子任务契约、最终追踪 | 全部 child |
-| merge-cc-switch-v3-19-2 | 55173d2b、上游 tag | 显式 merge commit、许可来源 | Phase 0 |
-| remove-local-cross-builds | merge 结果 | 删除脚本/task/spec/test | Child 1 |
-| redesign-mise-uv-development-environment | 标准版本选择 | mise/uv/task/lock 合同 | Child 2 |
-| modernize-ci-and-release | 新事实源与脚本 | CI/Release/ruleset 设计实施 | Child 3 |
-| eliminate-dep0040-punycode | Node 24 + merge 结果 | 原生 Fetch、锁文件、探针 | Child 3，可与 Child 4 部分并行 |
-| migrate-docs-and-trellis-specs | 前述最终命令/文件 | 活动 docs/spec/tasks/skills | 1–5 全部稳定后 |
+| 任务                                     | 输入                 | 主要输出                                               | 依赖                           |
+| ---------------------------------------- | -------------------- | ------------------------------------------------------ | ------------------------------ |
+| Parent modernization                     | 决策 1–115           | 跨子任务契约、最终追踪                                 | 全部 child                     |
+| merge-cc-switch-v3-19-2                  | 55173d2b、上游 tag   | 显式 merge commit、许可来源                            | Phase 0                        |
+| remove-local-cross-builds                | merge 结果           | 删除脚本/task/spec/test                                | Child 1                        |
+| redesign-mise-uv-development-environment | 标准版本选择         | mise/uv/task/lock 合同                                 | Child 2                        |
+| modernize-ci-and-release                 | 新事实源与脚本       | workflow-only CI/Labeler/无签名 Release 实施与远程证据 | Child 3                        |
+| eliminate-dep0040-punycode               | Node 24 + merge 结果 | 原生 Fetch、锁文件、探针                               | Child 3，可与 Child 4 部分并行 |
+| migrate-docs-and-trellis-specs           | 前述最终命令/文件    | 活动 docs/spec/tasks/skills                            | 1–5 全部稳定后                 |
 
-## 3. 建议提交序列
+## 3. 实际提交序列与剩余边界
 
-1. `merge(upstream): merge cc-switch v3.19.2`（两父 merge commit）；
-2. `chore(build): remove local cross-platform build toolchains`；
-3. `build(dev): establish mise task and uv python environment`；
-4. `ci: enforce pinned multi-platform required checks`；
-5. `ci(release): make actions the sole release artifact source`；
-6. `test(node): remove cross-fetch and enforce native fetch deprecations`；
-7. `docs(trellis): migrate task API and long-lived specifications`；
-8. `chore(trellis): archive superseded tasks`（使用 no-commit 后单独明确提交）。
+1. `f4462765` — `merge(upstream): merge CC Switch v3.19.2`（两父 merge）；
+2. `e8954d97` — `build: remove local cross-platform builds`；
+3. `3d534710` — `build: modernize mise and uv development environment`；
+4. `038675b3` — `ci: restore automatic required checks and labeling`；
+5. `94ff9ee9` — `ci: build unsigned release transaction`；
+6. `4e407df4` — `test(node): remove cross-fetch and enforce native fetch`；
+7. 当前 Child 6 — 活动文档、长期 specs、决策追踪；
+8. 后续独立 commit — 五个旧任务的 superseded archive；
+9. 实现 PR 采用 GitHub merge commit 合入 `main`；
+10. 正式 Release 后 closeout PR — 远程证据、剩余新任务归档、journal。
 
 实际可按审查大小拆分，但 merge commit 不得混入 2–8。
 
@@ -48,7 +50,7 @@ Phase 7  最终 CI、预演和 Release 验收
 
 - 工作树干净、基线 SHA/branch 与项目方信息一致；
 - origin/upstream URL 与 push 边界正确；
-- tag 完整 SHA、签名/来源（若可用）记录；
+- 上游 tag object、peeled commit、来源和可用的上游 tag 签名记录；该来源证据不构成 FyAgent v0.3.0 产物签名；
 - 创建备份分支或可恢复引用；
 - 评估 v3.19.1 ancestry 与真实 merge base；
 - 将实际 commit set/diff stat 写入上游台账。
@@ -69,7 +71,7 @@ Phase 7  最终 CI、预演和 Release 验收
 
 ### CI/Release
 
-PR、main、merge queue 事件；聚合 gate 失败/取消/跳过模拟；unsigned 全矩阵预演；signed 受保护环境预演；10 资产验证。
+PR、main、manual 事件；聚合 gate 失败/取消/跳过模拟；post-merge exact-main-SHA unsigned 全矩阵预演；10 安装器/13 附件和 attestation 验证。`merge_group` 静态合同已实现，但真实事件因个人账户且禁止 ruleset/branch protection 而 **Blocked**。
 
 ### DEP0040
 
@@ -95,6 +97,10 @@ PR、main、merge queue 事件；聚合 gate 失败/取消/跳过模拟；unsign
 - 活动仓库无本地 cross-build 入口；
 - 无 `cross-fetch` 旧链路或告警抑制；
 - unsigned 全矩阵预演成功；
-- 正式/签名流程在受控环境成功产生精确资产与 provenance/manifest；
+- 正式无签名流程成功产生精确 10 安装器/13 附件、provenance 与 manifest；
 - 活动文档与 task 元数据一致；
-- 风险登记达到 GO 或明确的 GO WITH CONDITIONS。
+- 风险登记达到 GO；任何 NO-GO（含尚未解决的 `merge_group` 验收矛盾）都会阻止发布与 parent 归档。
+
+### Preflight 顺序覆盖
+
+原计划中的“待合入 main 的同一 SHA preflight”与 GitHub merge commit 及标准 artifact attestation 的 `GITHUB_SHA` provenance 不兼容。已实施的安全顺序为：实现 PR merge → main 的 `CI / Required` 成功 → `source_sha == GITHUB_SHA == GITHUB_WORKFLOW_SHA` 的 manual preflight → tag → formal Release。该偏差必须在远程执行前由项目方接受；不得把 pre-merge candidate 标记为 trusted-main attestation provenance。

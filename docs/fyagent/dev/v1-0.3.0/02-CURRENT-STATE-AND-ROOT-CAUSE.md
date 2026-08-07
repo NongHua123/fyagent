@@ -1,12 +1,12 @@
 # 当前状态与根因分析
 
-> **交付状态**：Observed / 已核实 + Decision / 已决策  
-> **关联决策**：1–34、39–42、81–96  
+> **交付状态**：Observed historical baseline + implemented current state / 历史基线与当前实施状态均已核实
+> **关联决策**：1–34、39–42、81–96、105–115
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
-## 1. 仓库快照
+## 1. 2026-08-07 输入快照（历史）
 
-[Observed / 已核实]
+[Observed / 已核实的原始输入]
 
 - 上传包根目录含约 1,509 个文件，不含 `.git`；
 - `.node-version` 为 `22.12.0`；
@@ -20,23 +20,27 @@
 
 ## 2. 本地交叉构建传播面
 
-| 传播面 | 当前证据 | 根因 |
-|---|---|---|
-| 脚本 | `scripts/macos-cross/**`、`scripts/windows-cross/**` | Linux/WSL 跨 OS 构建承担 SDK、Wine、WiX、osxcross、签名边界。 |
-| mise | 5 个 task；Rust 带 `llvm-tools` 与 4 个非宿主 target | 发布专用工具被混入所有开发者的基础环境。 |
-| 安全 | 两个 macOS 脚本调用 `mise trust --yes` | 脚本替用户作出仓库信任决定。 |
-| 测试 | `tests/macosCrossWorkflow.test.ts` | 主要检查文本包含，难以证明真实工具归属或 lock 结构。 |
-| 文档/spec | 四份 README、development-environment、wsl-macos-cross-build 等 | 旧实现已成为活动规范，删除脚本不足以完成退役。 |
+本节记录退役前的根因。commit `e8954d97faed1b833a6bce6fb9477b4fc4e2fd83` 已删除这些活动入口；原生 Windows Release 验证器接管 MSI 安全断言。
+
+| 传播面    | 退役前证据                                                     | 根因                                                          |
+| --------- | -------------------------------------------------------------- | ------------------------------------------------------------- |
+| 脚本      | `scripts/macos-cross/**`、`scripts/windows-cross/**`           | Linux/WSL 跨 OS 构建承担 SDK、Wine、WiX、osxcross、签名边界。 |
+| mise      | 5 个 task；Rust 带 `llvm-tools` 与 4 个非宿主 target           | 发布专用工具被混入所有开发者的基础环境。                      |
+| 安全      | 两个 macOS 脚本调用 `mise trust --yes`                         | 脚本替用户作出仓库信任决定。                                  |
+| 测试      | `tests/macosCrossWorkflow.test.ts`                             | 主要检查文本包含，难以证明真实工具归属或 lock 结构。          |
+| 文档/spec | 四份 README、development-environment、wsl-macos-cross-build 等 | 旧实现已成为活动规范，删除脚本不足以完成退役。                |
 
 ## 3. 工具链漂移
 
-| 层 | Node | Rust | pnpm |
-|---|---:|---:|---:|
-| 本地 | 22.12.0 | 1.95.0 | 10.12.3 |
-| CI/Release | 20 | stable | 10.12.3（重复声明/部分 Corepack） |
-| 目标 | 24.19.0 | 1.97.1 | 10.12.3 |
+| 层         |    Node |   Rust |                              pnpm |
+| ---------- | ------: | -----: | --------------------------------: |
+| 本地       | 22.12.0 | 1.95.0 |                           10.12.3 |
+| CI/Release |      20 | stable | 10.12.3（重复声明/部分 Corepack） |
+| 目标       | 24.19.0 | 1.97.1 |                           10.12.3 |
 
 根因不是“mise 与 Actions 安装方式不同”，而是**版本事实源重复且滚动值进入发布路径**。相同提交在不同时点可能解析到不同 Rust stable 或不同 runner OS。
+
+[Observed / 已核实] commit `3d534710307d538e570c137231b1d80a64ac8ab7` 已将事实源收敛为 Node `24.19.0`、pnpm `10.12.3`、Rust `1.97.1`、Python `3.14.7` 和 lock 解析的 uv `0.12.2`；Linux x64 本地验证完成，其余原生平台证据仍待 Actions。
 
 ## 4. mise.lock 结构问题
 
@@ -49,9 +53,11 @@
 
 根因是 lockfile 被当作文本清单，而不是按工具、版本、options、平台、URL、checksum 解析的结构化派生文件。
 
+[Observed / 已核实] 当前 `mise.lock` 已从空文件状态生成并对六个平台二次生成字节稳定，SHA-256 为 `5f0d9df527ec1fdaf5532726ba30d330c74872786ad0380783064a36ceeefd9d`。Windows ARM64 pnpm/uv 使用原生 ARM64 资产；Rust backend 不提供平台资产记录，因此仍由各原生 runner 证明 rustup toolchain。
+
 ## 5. CI 与 Release 缺口
 
-[Observed / 已核实]
+[Observed / 已核实的原始输入]
 
 - `ci.yml` 不随 PR/main 自动执行；
 - 使用 `ubuntu-latest`、`windows-latest`、`macos-latest`；
@@ -62,9 +68,11 @@
 
 根因是发布矩阵已形成，但治理仍是“各 job 构建成功即发布”的流水线，而不是明确的来源资格、资产集合和最小权限事务。
 
+[Observed / 已核实] commits `038675b3` 与 `94ff9ee9` 已实现自动 CI、安全 Labeler、稳定 `CI / Required`、五个原生目标、无签名 10 安装器/13 附件、强制 attestation 和私有 draft 到 stable 的失败关闭发布事务；本地合同已通过。真实 PR/main/原生 runner/preflight/tag/Release 证据仍待远程执行。`merge_group` 配置存在，但个人账户仓库且禁止规则保护使 Merge Queue 无法启用，真实事件证据为 **Blocked**。
+
 ## 6. DEP0040 根因
 
-当前依赖链：
+2026-08-07 输入依赖链：
 
 ```text
 cross-fetch@4.1.0
@@ -76,9 +84,11 @@ cross-fetch@4.1.0
 
 `cross-fetch/polyfill` 即使发现 `global.fetch` 已存在，也会在模块加载阶段引入 Node ponyfill 依赖图。Node 24 将部分弃用降为 application deprecation，默认可能不再打印 `node_modules` 中的警告，因此“输出干净”不能证明根因消失。
 
+[Observed / 已核实] commit `4e407df4` 已删除直接依赖/import并重生成 lock；Node 24 原生 Fetch→MSW→Tauri mock 的成功、非 2xx 文本错误、204 空响应和跨 realm 行为均通过，依赖图与 suppression 扫描证明旧链路退出。Child 5 已完成并归档。
+
 ## 7. 文档与 Trellis 漂移
 
-[Observed / 已核实]
+[Observed / 已核实的原始输入]
 
 - 仓库总计存在大量 `mise exec --` 文本；活动 README、CONTRIBUTING、PR 模板、visual-baseline、specs 明确使用旧入口；
 - `.trellis/workflow.md` 和项目操作型 skills 直接使用 `python3`；
@@ -87,6 +97,8 @@ cross-fetch@4.1.0
 - 当前五个未归档任务状态为 planning/in_progress，但新的现代化计划将取代它们。
 
 根因是命令入口、环境管理、长期规范和任务过程材料没有统一的生命周期边界。
+
+[Observed / 已核实] hooks 与 80 个 canonical tasks 已实施；活动文档、长期 spec、workflow/skills 和设计包状态迁移属于当前 Child 6，仍为 **In progress**。
 
 ## 8. 上游关系
 
@@ -103,8 +115,4 @@ upstream farion1231/cc-switch        fetch only; push DISABLED
 
 四个问题相互依赖：
 
-1. 必须先合并上游，避免在即将冲突的旧基线上重构；
-2. 再删除交叉构建和重构开发环境；
-3. CI/Release 必须消费新的事实源和 task/contract；
-4. `DEP0040` 修复必须基于 Node 24 且作为明确的上游差异；
-5. 最后统一文档/Trellis，才能防止旧架构回流。
+依赖顺序已按设计执行：上游 merge → 交叉构建删除 → 开发环境 → CI/Release → DEP0040。当前位于文档/Trellis 迁移阶段；之后仍需实现 PR/main 远程证据、post-merge exact-main-SHA preflight、正式 tag/Release、closeout PR 和最终归档。任何 pending/blocked 项都不能被描述为 Released。

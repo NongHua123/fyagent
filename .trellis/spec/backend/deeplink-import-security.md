@@ -124,9 +124,9 @@ resource, and is meaningful only together with `enabled == Some(true)`.
 - `tests/components/DeepLinkImportDialog.test.tsx` must cover: full writable
   prompt review, unchecked and checked provider submissions, ignored error
   payloads, stale merge completion, and stale import completion.
-- Run the declared fake/static checks through mise: `pnpm test:unit`,
-  `pnpm typecheck`, and `pnpm format:check`. No real custom-protocol launch or
-  desktop application operation is a substitute for these assertions.
+- Run the declared fake/static checks through mise: `mise run test:unit`,
+  `mise run typecheck`, and `mise run format:check`. No real custom-protocol
+  launch or desktop application operation is a substitute for these assertions.
 
 ## 7. Wrong vs Correct
 

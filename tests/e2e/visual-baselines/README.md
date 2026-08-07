@@ -1,11 +1,29 @@
-# Desktop visual-baseline policy
+# Desktop Visual-Baseline Policy
 
-This directory intentionally contains no accepted PNG baseline while local execution is
-restricted to mock-only checks. A candidate runner must capture each region twice with
-the fixed fixture, use fake IPC with external network blocked, and compare only against
-the same platform, scale, and locale directory.
+This directory intentionally has no accepted PNG baseline while local execution
+is mock-only. A candidate runner captures each region twice with the fixed
+fixture, uses fake IPC with external network blocked, and compares only within
+the same platform, architecture, scale, theme, and locale identity.
 
-PNG files below this directory are tracked with Git LFS. Ordinary test commands may
-compare an existing baseline but must never create, overwrite, or accept one. A reviewer
-must run `mise exec -- pnpm test:desktop:visual:update` with explicit candidate evidence
-before adding or replacing a baseline in a separate reviewed change.
+Read-only checks:
+
+```bash
+mise run test:desktop:visual:preflight
+mise run test:desktop:mock
+```
+
+They do not create, overwrite, or accept images and do not prove a native
+installer or runtime result. Preflight validates policy and metadata only.
+
+A baseline change is an explicit source-modifying operation:
+
+```bash
+mise run test:desktop:visual:update <reviewed-evidence>
+```
+
+The task validates candidate evidence but does not accept PNGs automatically.
+A human-reviewed change must separately add or replace the image, and its
+evidence must identify platform, architecture, scale, theme, locale, fixture,
+and repeated-capture result. PNG assets remain tracked with Git LFS where
+configured. Bootstrap, ordinary checks, and CI must never auto-accept a
+baseline.

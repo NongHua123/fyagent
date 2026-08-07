@@ -1,13 +1,11 @@
 # Backend Development Guidelines
 
-This layer records executable backend contracts for the Rust/Tauri host. It
-supplements the versioned FyAgent product documents. For application-version,
-release-metadata, and MSI-directory-policy work, `docs/fyagent/dev/v1-0.2.1/`
-is the raw reference package; preserve it byte-for-byte and record checkout
-adaptations in the code-specs below. For the active v1.0.2 product scope,
-`docs/fyagent/dev/v1-0.2/` remains authoritative where it changes a
-non-superseded contract; `docs/fyagent/dev/v1-0.0/` is the historical
-initial-design record. When a code contract changes, update its relevant
+This layer records executable backend contracts for the Rust/Tauri host. The
+current modernization authority is `docs/fyagent/dev/v1-0.3.0/`, interpreted
+with its 2026-08-08 execution overrides and real implementation evidence. Older
+`docs/fyagent/dev/v1-0.*` packages are historical inputs: preserve their bodies
+and do not let an older version, release, signing, or tooling statement override
+the current contracts below. When a code contract changes, update its owning
 code-spec and enforcing test; update a product document only when that document
 is owned by the change.
 
@@ -33,20 +31,20 @@ Before changing Rust/Tauri host code:
 
 ## Guidelines
 
-| Guide                                                                          | Use it for                                                                                                                          |
-| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| [Codex Desktop Installer](./codex-desktop-installer.md)                        | The fixed-source installer service, IPC DTOs, job events, and platform boundaries.                                                  |
-| [FyAgent 0.3.0 Version and Installer](./fyagent-version-contract.md)           | Cargo version single source, version commands, frozen release values, native MSI directory policy, and release gates.               |
-| [GitHub CI Workflow](./github-ci-workflow.md)                                  | Automatic PR/main/merge-group CI, stable Required aggregation, pinned toolchains/Actions, and trusted-base Labeler.                 |
-| [GitHub Release Workflow](./github-release-workflow.md)                        | Trusted-main same-SHA unsigned preflight, formal CI eligibility, exact evidence/attestations, and verified draft-to-stable publish. |
-| [Development Environment](./development-environment.md)                        | mise-first local tool versions, compatibility declarations, platform boundaries, and WSL PATH isolation.                            |
-| [Repository Task Runner](./task-runner-contract.md)                            | Canonical mise task metadata, parameter transport, DAG side effects, maintenance safety, and generated documentation.               |
-| [Application Brand Assets](./application-brand-assets.md)                      | Cross-platform app icons, About reuse, macOS tray templates, and validation.                                                        |
-| [Application Identity](./application-identity.md)                              | Cross-layer FyAgent identity, clean-break behavior, and provenance exceptions.                                                      |
-| [CC Switch Upstream Synchronization](./upstream-sync.md)                       | Immutable upstream tag verification, two-parent merge ancestry, conflict precedence, and provenance boundaries.                     |
-| [Deep-Link Import Security](./deeplink-import-security.md)                     | Untrusted `fyagent://` request validation, explicit provider activation approval, and credential-safe confirmation behavior.        |
-| [FyAgent v1-0.1 Configuration Domains](./fyagent-v1-0-1-config-domains.md)     | Codex capability/restart contracts and WorkBuddy's isolated secure configuration domain; versioning lives in its own contract.      |
-| [Windows Formal Release and Runtime Activation](./windows-release-boundary.md) | Explicit elevated-release manifest selection, protected activation forwarding, and pre-CLI privilege gates.                         |
+| Guide                                                                          | Use it for                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Codex Desktop Installer](./codex-desktop-installer.md)                        | The fixed-source installer service, IPC DTOs, job events, and platform boundaries.                                                                                                             |
+| [FyAgent 0.3.0 Version and Installer](./fyagent-version-contract.md)           | Cargo version single source, version commands, frozen release values, native MSI directory policy, and release gates.                                                                          |
+| [GitHub CI Workflow](./github-ci-workflow.md)                                  | Automatic PR/main/merge-group CI, stable Required aggregation, pinned toolchains/Actions, and trusted-base Labeler.                                                                            |
+| [GitHub Release Workflow](./github-release-workflow.md)                        | Implemented trusted-main same-SHA preflight and formal publish contract; [D113](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md) remains Pending acceptance / Release NO-GO. |
+| [Development Environment](./development-environment.md)                        | mise-first local tool versions, compatibility declarations, platform boundaries, and WSL PATH isolation.                                                                                       |
+| [Repository Task Runner](./task-runner-contract.md)                            | Canonical mise task metadata, parameter transport, DAG side effects, maintenance safety, and generated documentation.                                                                          |
+| [Application Brand Assets](./application-brand-assets.md)                      | Cross-platform app icons, About reuse, macOS tray templates, and validation.                                                                                                                   |
+| [Application Identity](./application-identity.md)                              | Cross-layer FyAgent identity, clean-break behavior, and provenance exceptions.                                                                                                                 |
+| [CC Switch Upstream Synchronization](./upstream-sync.md)                       | Immutable upstream tag verification, two-parent merge ancestry, conflict precedence, and provenance boundaries.                                                                                |
+| [Deep-Link Import Security](./deeplink-import-security.md)                     | Untrusted `fyagent://` request validation, explicit provider activation approval, and credential-safe confirmation behavior.                                                                   |
+| [FyAgent v1-0.1 Configuration Domains](./fyagent-v1-0-1-config-domains.md)     | Codex capability/restart contracts and WorkBuddy's isolated secure configuration domain; versioning lives in its own contract.                                                                 |
+| [Windows Formal Release and Runtime Activation](./windows-release-boundary.md) | Explicit elevated-release manifest selection, protected activation forwarding, and pre-CLI privilege gates.                                                                                    |
 
 ## Quality Check
 
@@ -62,5 +60,5 @@ mise run rust:test
 Add the applicable renderer, version, Windows, macOS, or release
 contract checks rather than reporting an unrelated local command as platform or
 release evidence. A code-spec update that changes a contract must name its
-enforcing test; successful local static checks never prove a signed, notarized,
-or remotely published artifact.
+enforcing test; successful local static checks never prove a native package,
+artifact attestation, or remotely published Release.

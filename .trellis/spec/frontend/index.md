@@ -44,9 +44,9 @@ Before changing renderer code:
 For frontend code changes, run the checks applicable to the affected behavior:
 
 ```bash
-mise exec -- pnpm typecheck
-mise exec -- pnpm format:check
-mise exec -- pnpm test:unit
+mise run typecheck
+mise run format:check
+mise run test:unit
 ```
 
 For desktop-shell, responsive-header, window-layout, or acceptance changes,
@@ -54,8 +54,10 @@ also run the mock and visual-preflight checks in
 [Quality Guidelines](./quality-guidelines.md); they do not replace real native
 desktop or installer evidence.
 
-`package.json` remains the source of runnable frontend scripts; `mise.toml`
-owns the Node.js and pnpm versions used to execute them.
+`package.json` remains the source of package-level frontend scripts. The
+repository-level entrypoint is the generated `mise run` task API; Node.js and
+pnpm versions come from `.node-version` and `package.json#packageManager`, not
+from duplicate declarations in `mise.toml`.
 
 ## Evidence
 

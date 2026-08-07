@@ -8,16 +8,16 @@ Rust/Tauri commands, renderer state, user-owned configuration files, and
 Windows process identity boundaries.
 
 Application-version, release-metadata, and MSI directory-policy changes belong
-to [FyAgent 0.2.1 Version and Installer Contract](./fyagent-version-contract.md).
+to [FyAgent 0.3.0 Version and Installer Contract](./fyagent-version-contract.md).
 
-The v1.0.1 configuration-domain input is `docs/fyagent/dev/v1-0.1/`. For the
-active v1.0.2 scope, `docs/fyagent/dev/v1-0.2/` is authoritative where it
-supersedes a contract; retain this v1.0.1 contract only for configuration-domain
-rules not superseded by v1.0.2. The v1.0.1 documents contain a historical
-`3.18.0` source snapshot and must not be mechanically rewritten as part of an
-application-version update. WorkBuddy is a top-level configuration domain, not
-an `AppType`, Provider, MCP, Skill, Prompt, Profile, Session, usage, or
-local-proxy domain.
+The v1.0.1 and v1.0.2 labels in `docs/fyagent/dev/v1-0.1/` and
+`docs/fyagent/dev/v1-0.2/` name historical feature-design inputs, not the
+current application version. This long-term spec and its enforcing tests own
+the still-active configuration-domain rules; the FyAgent v0.3.0 execution
+authority owns current product/version/release decisions. Do not mechanically
+rewrite the historical design bodies. WorkBuddy is a top-level configuration
+domain, not an `AppType`, Provider, MCP, Skill, Prompt, Profile, Session, usage,
+or local-proxy domain.
 
 ## 2. Signatures
 
@@ -317,13 +317,13 @@ queries. Its API key clears on unmount and is never refilled from disk.
   backup/primary failure paths, and test-home isolation. Tests must not access
   the real profile.
 - Local gates when dependencies permit:
-  - `mise exec -- pnpm typecheck`
-  - `mise exec -- pnpm format:check`
-  - `mise exec -- pnpm test:unit`
-  - `mise exec -- pnpm run build:renderer`
-  - `mise exec -- cargo fmt --check --manifest-path src-tauri/Cargo.toml`
-  - `mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml --offline --locked -- -D warnings`
-  - `mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --offline --locked`
+  - `mise run typecheck`
+  - `mise run format:check`
+  - `mise run test:unit`
+  - `mise run build:renderer`
+  - `mise run rust:fmt:check`
+  - `mise run rust:clippy`
+  - `mise run rust:test`
   - `git diff --check`
 
   Do not characterize these as native E2E, platform, CI, or release evidence.

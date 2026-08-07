@@ -1,12 +1,12 @@
 # DEP0040 / punycode 根因修复设计
 
-> **交付状态**：Proposed / 拟实施  
+> **交付状态**：Implemented, locally verified, archived / 已实施、本地验证并归档
 > **关联决策**：81–87  
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
-## 1. 当前证据
+## 1. 原始根因证据
 
-[Observed / 已核实]
+[Observed / 已核实的 2026-08-07 输入]
 
 ```text
 package.json devDependencies: cross-fetch ^4.1.0
@@ -16,14 +16,14 @@ pnpm-lock.yaml: cross-fetch 4.1.0 → node-fetch 2.7.0 → whatwg-url 5.0.0 → 
 
 Node 24 中 `DEP0040` 属于 application deprecation 时，默认可能不报告 `node_modules` 的调用；`--pending-deprecation` 会扩大报告范围。因此仅以 stderr 默认是否出现为验收会产生假阴性。
 
-## 2. 目标变更
+## 2. 已实施变更
 
 ```diff
 - import "cross-fetch/polyfill";
   import { vi } from "vitest";
 ```
 
-从 `package.json` 删除 `cross-fetch`，正常运行 pnpm 更新锁文件。不得增加 `node-fetch`、`undici`、`isomorphic-fetch` 或其它全局 polyfill；Node 24 原生 Fetch API 是项目基线。
+commit `4e407df4` 已从 `package.json` 删除 `cross-fetch`、删除 polyfill import，并以 pnpm `10.12.3` 正常重生成锁文件。没有增加 `node-fetch`、`undici`、`isomorphic-fetch` 或其它全局 polyfill；Node 24 原生 Fetch API 是项目基线。
 
 ## 3. 环境合同
 
@@ -43,7 +43,7 @@ for (const name of ["fetch", "Headers", "Request", "Response"] as const) {
 
 ## 4. 行为测试
 
-新增聚焦测试证明：
+聚焦测试已经证明：
 
 ```text
 Tauri invoke mock
@@ -53,20 +53,17 @@ Tauri invoke mock
 → JSON/text parse
 ```
 
-测试同时覆盖成功、非 2xx 错误文本和空响应，避免只验证 `typeof fetch`。
+测试同时覆盖 JSON 成功与 invoke 证据、非 2xx 错误文本、204 空响应映射为 `undefined` 和跨 jsdom realm 的 `Headers`，避免只验证 `typeof fetch` 或 `instanceof`。
 
 ## 5. 依赖图验收
 
-锁文件重生成后运行并保存证据：
+依赖合同由 canonical Release 合同入口运行并保存结构化证据：
 
 ```bash
-pnpm why cross-fetch
-pnpm why node-fetch
-pnpm why whatwg-url
-pnpm why tr46
+mise run release:check
 ```
 
-合同不是禁止所有 `whatwg-url`/`tr46` 名称，而是确认旧链路和版本退出；jsdom 等可合法使用不同版本。
+其内部使用 argv 形式的 `pnpm why --json`，并与 manifest、活动 module specifier、pnpm package/snapshot graph 交叉验证。合同不是禁止所有 `whatwg-url`/`tr46` 名称，而是确认旧链路和版本退出；当前允许的路径为 `jsdom@25.0.1 → whatwg-url@14.2.0 → tr46@5.1.1 → punycode@2.3.1`，且必须同时由 lock 与 why graph 解释。
 
 ## 6. 告警门禁
 
@@ -79,13 +76,12 @@ pnpm why tr46
 
 完整 merge `v3.19.2` 后再单独删除 `cross-fetch`。在 upstream-sync spec 记录文件、原因、Node 24 前提、行为测试和重新评估条件。若未来上游也删除该依赖，则收敛差异；若上游采用新方案，以实际测试评估。
 
-## 8. 完成定义
+## 8. 完成证据
 
-1. package manifest 无 `cross-fetch`；
-2. 活动源码/测试无 polyfill import；
-3. 锁文件无已知旧链路；
-4. Native Fetch/MSW 行为测试通过；
-5. 全量前端和 desktop mock 测试通过；
-6. 两级 deprecation 门禁通过；
-7. 仓库无相关 suppression；
-8. frontend quality 与 upstream-sync spec 已更新。
+1. package manifest、活动 source/import 和 lock 已无 `cross-fetch` 旧链路；
+2. Native Fetch/MSW 四个行为测试全部通过；
+3. 普通 `--throw-deprecation` 与聚焦 pending+throw 入口通过；
+4. 7/7 DEP0040 JSON checks、13/13 DEP0040/CI contracts、全量 140 files/963 tests 通过；
+5. 519 个活动 module 文件、2,812 个 specifier 和 68 个可执行配置面完成失败关闭扫描；
+6. 独立 Trellis review 已补强 exact Node、AST parse、package/snapshot、alias/reverse-origin、组合 suppression 和跨 realm cleanup 断言；
+7. Child 5 已归档；Windows/macOS/Linux ARM64/正式 Release 是 parent 级独立门禁，不回退本地完成结论。

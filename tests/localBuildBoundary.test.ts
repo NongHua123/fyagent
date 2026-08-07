@@ -114,8 +114,9 @@ describe("local build boundary", () => {
 
     for (const document of CURRENT_DOCUMENTS.slice(0, 4)) {
       const content = read(document);
-      expect(content).toContain("mise exec -- pnpm dev");
-      expect(content).toContain("mise exec -- pnpm build");
+      expect(content).toContain("mise run dev");
+      expect(content).toContain("mise run build");
+      expect(content).not.toMatch(/mise exec -- pnpm (?:dev|build)/);
       expect(content).not.toContain("dist-bundle/");
     }
   });

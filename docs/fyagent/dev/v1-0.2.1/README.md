@@ -1,3 +1,8 @@
+> **历史设计包：** 以下正文按原样保留，不再是当前版本、开发环境、任务 API 或
+> CI/Release 合同的权威来源。当前入口见
+> [v1-0.3.0](../v1-0.3.0/00-README.md) 与
+> [mise task catalog](../../development/mise-tasks.md)。
+
 # FyAgent 0.2.1：Windows 安装目录选择与全局版本治理
 
 > 目标版本：`0.2.1`  

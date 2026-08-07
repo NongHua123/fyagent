@@ -1,6 +1,6 @@
 # CC Switch v3.19.2 完整合并设计
 
-> **交付状态**：Proposed / 拟实施  
+> **交付状态**：Implemented, locally verified, archived / 已实施、本地验证并归档
 > **关联决策**：28–30、39–51  
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
@@ -8,16 +8,12 @@
 
 [Decision / 已决策] 从项目方提供的 FyAgent `55173d2b` 基线完整合并 `upstream/v3.19.2`，保留上游祖先关系。该 merge commit 不承载本次工具链、CI、交叉构建或 `DEP0040` 重构。
 
-[Pending Verification / 待验证] 真实仓库中必须验证：
+[Observed / 已核实] 真实仓库已完成以下核验：
 
 ```bash
-git remote get-url origin
-git remote get-url --push origin
-git remote get-url upstream
-git remote get-url --push upstream
-git fetch --prune upstream
-git fetch upstream tag v3.19.2
-git rev-parse v3.19.2^{commit}
+mise run upstream:check
+mise run upstream:fetch -- v3.19.2
+mise run upstream:audit -- v3.19.2
 ```
 
 预期远程：
@@ -28,13 +24,15 @@ upstream fetch    = https://github.com/farion1231/cc-switch.git
 upstream push     = DISABLED
 ```
 
+实际 tag object 为 `f6882b69f0a30968dcc6dbb1153b6b12b50e6b1a`，peeled commit 为 `43eaf07355af145aebfee301801779e824d4c221`，merge base 为 `28529620f438b2ed25c812f6364825d846a4a9d6`。两父 merge commit `f4462765e9b3a2efd1deb13aabf3ce349166a058` 的第二父为上述 peeled commit。
+
 ## 2. Git 流程
 
 ```text
 55173d2b
   └─ create isolated integration branch
       └─ fetch verified v3.19.2 tag
-          └─ git merge --no-ff --no-commit <verified-tag>
+          └─ mise run upstream:merge:prepare -- v3.19.2 --apply
               ├─ resolve semantic conflicts
               ├─ run ordinary CI-equivalent checks available locally
               └─ create one explicit merge commit
@@ -45,12 +43,12 @@ upstream push     = DISABLED
 
 ## 3. 冲突裁决
 
-| 层级 | 规则 | 典型内容 |
-|---|---|---|
-| 1 | 必须保留 FyAgent 身份 | 名称、仓库 URL、bundle ID、deep link、数据/日志目录、`FYAGENT_*`、图标、资产命名、许可。 |
-| 2 | 默认跟随上游共享产品逻辑 | 安全、数据正确性、Provider/CLI/MCP/Skills、平台兼容、代理、性能。 |
-| 3 | 以本项目工程决策覆盖 | Node/Rust/Actions/mise/uv、交叉构建移除、Release 契约、DEP0040。 |
-| 4 | 保留 FyAgent 专属功能 | 上游没有实现不是删除本地功能的理由。 |
+| 层级 | 规则                     | 典型内容                                                                                 |
+| ---- | ------------------------ | ---------------------------------------------------------------------------------------- |
+| 1    | 必须保留 FyAgent 身份    | 名称、仓库 URL、bundle ID、deep link、数据/日志目录、`FYAGENT_*`、图标、资产命名、许可。 |
+| 2    | 默认跟随上游共享产品逻辑 | 安全、数据正确性、Provider/CLI/MCP/Skills、平台兼容、代理、性能。                        |
+| 3    | 以本项目工程决策覆盖     | Node/Rust/Actions/mise/uv、交叉构建移除、Release 契约、DEP0040。                         |
+| 4    | 保留 FyAgent 专属功能    | 上游没有实现不是删除本地功能的理由。                                                     |
 
 每个语义冲突应记录：文件、上游行为、FyAgent 行为、最终裁决、理由、覆盖测试、重新评估条件。
 
@@ -68,7 +66,7 @@ upstream push     = DISABLED
 
 ## 6. Release notes 处理
 
-[Decision / 已决策] merge commit 正常接收上游 release-note 文件；后续文档子任务删除 `docs/release-notes/v3.19.2-*.md`。保留：
+[Decision / 已决策] merge commit 已正常接收上游 release-note 文件；Child 6 后续删除 `docs/release-notes/v3.19.2-*.md`。在删除提交真实发生前，该项保持进行中。保留：
 
 - merge ancestry；
 - `docs/upstream/cc-switch-v3.19.2.md`；
@@ -79,7 +77,7 @@ upstream push     = DISABLED
 
 ## 7. 验证与回退
 
-根据决策 49，不新增上游产品专用 workflow。merge commit 至少必须通过普通 Required CI 覆盖的检查；完整跨平台/签名路径由最终 Release workflow 验证。
+根据决策 49，没有新增上游产品专用 workflow。merge 隔离提交已通过当时可用的本地前端/Rust/身份/许可/数据路径合同；完整跨平台和无签名包路径仍由最终 CI/Release workflow 验证。
 
 回退要求：上游 merge commit 与后续重构分离，使维护者可以在未叠加后续提交时 `git revert -m 1 <merge-commit>`。回退前仍需评估数据库/数据行为，不得只看 Git 文件差异。
 

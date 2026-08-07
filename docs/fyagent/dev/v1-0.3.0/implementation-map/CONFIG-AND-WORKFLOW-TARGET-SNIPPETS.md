@@ -1,24 +1,39 @@
-# Code, Configuration, and Workflow Target Snippets
+# Code, Configuration, and Workflow Implementation Crosswalk
 
-> [Proposed / 拟实施] These snippets are design aids, not files claimed to be implemented. Reconcile them with the real tree after the upstream merge and use reviewed current Action SHAs/container digests.
+> [Implemented locally / 本地已实施] These excerpts summarize the current tree. The real files and executable contracts are authoritative; this crosswalk does not replace them or prove remote Actions runs.
 
 ## `mise.toml` ownership skeleton
 
 ```toml
-min_version = "<derived-from-used-features>"
+min_version = "2026.8.0"
 
 [settings]
 lockfile = true
+task.run_auto_install = false
 idiomatic_version_file_enable_tools = ["node", "pnpm", "rust"]
 
 [tools]
 uv = "latest"
 
+[tool_alias]
+pnpm = "github:pnpm/pnpm"
+uv = "github:astral-sh/uv"
+
 [task_config]
-includes = [".mise/tasks"]
+includes = [
+  ".mise/tasks/core.toml",
+  ".mise/tasks/frontend.toml",
+  ".mise/tasks/rust.toml",
+  ".mise/tasks/python.toml",
+  ".mise/tasks/trellis.toml",
+  ".mise/tasks/upstream.toml",
+  ".mise/tasks/contracts.toml",
+  ".mise/tasks/release.toml",
+  ".mise/tasks/hooks.toml",
+]
 ```
 
-Do not declare Python, Node, pnpm, or Rust versions again in this file. Do not disable auto-install globally.
+Do not declare Python, Node, pnpm, or Rust versions again in this file. D115 disables task-triggered implicit installation, not mise's global tool capability: `mise run bootstrap` performs the explicit locked install before ordinary tasks run.
 
 ## Python project
 
@@ -44,14 +59,13 @@ dev = []
 package = false
 python-preference = "only-managed"
 python-downloads = "automatic"
-required-version = ">=<minimum-capability-version>"
 ```
 
 The actual approved uv version is resolved by `mise.lock`; `uv.lock` owns Python package resolution.
 
 ## Codex hooks target
 
-`.codex/hooks.json` should reference canonical tasks, for example:
+`.codex/hooks.json` references canonical tasks:
 
 ```json
 {
@@ -66,7 +80,7 @@ The actual approved uv version is resolved by `mise.lock`; `uv.lock` owns Python
 }
 ```
 
-The task implementation uses `uv run --locked --no-sync --offline`. Confirm the exact hook schema against the installed Codex version before applying.
+The implemented task uses `uv run --locked --no-sync --offline`; protocol and degradation tests are part of the local contract.
 
 ## Required CI shape
 
@@ -84,14 +98,15 @@ permissions:
   contents: read
 ```
 
-Use full immutable Action SHAs, explicit runners, and a final `CI / Required` job that inspects every required dependency result. Node/Rust/pnpm versions are read from standard files. Do not copy placeholder SHAs from this document.
+The current workflow uses reviewed full immutable Action SHAs, explicit runners, and a final `CI / Required` job that inspects the exact six dependency results. Node/Rust/pnpm versions are read from standard files. Real PR/main evidence remains pending; real `merge_group` evidence is blocked by repository-governance prerequisites.
 
 ## Linux Release job shape
 
 ```yaml
-runs-on: ubuntu-24.04 # or the reviewed explicit ARM64 counterpart
+runs-on: ubuntu-24.04 # x64; ubuntu-24.04-arm for ARM64
 container:
-  image: ubuntu:22.04@sha256:<reviewed-digest>
+  # x64 shown; ARM64 uses its reviewed architecture-specific manifest.
+  image: ubuntu:22.04@sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e
 ```
 
 The host and container architectures match. No QEMU or cross-architecture target is used.
@@ -102,4 +117,4 @@ The host and container architectures match. No QEMU or cross-architecture target
 - import "cross-fetch/polyfill";
 ```
 
-Remove the direct `cross-fetch` dependency, regenerate `pnpm-lock.yaml` with pnpm 10.12.3, add a real native Fetch/MSW test, and run the focused pending-deprecation probe. Do not add a replacement polyfill or warning suppression.
+Commit `4e407df4` removed the direct `cross-fetch` dependency, regenerated `pnpm-lock.yaml` with pnpm 10.12.3, and added real native Fetch/MSW behavior plus focused pending-deprecation and suppression contracts. No replacement polyfill was added.

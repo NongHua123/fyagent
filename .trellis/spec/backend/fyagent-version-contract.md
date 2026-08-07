@@ -68,10 +68,10 @@ workspace version.
 ### Version command interface
 
 ```text
-pnpm run version:get
-pnpm run version:check [-- --tag vX.Y.Z]
-pnpm run version:set X.Y.Z [-- --apply | --dry-run]
-pnpm run version:bump patch|minor|major [-- --apply | --dry-run]
+mise run version:get
+mise run version:check [-- --tag vX.Y.Z]
+mise run version:set -- X.Y.Z [--apply]
+mise run version:bump -- patch|minor|major [--apply]
 ```
 
 - get prints one stable SemVer X.Y.Z with no prefix, prerelease, or build
@@ -91,9 +91,11 @@ pnpm run version:bump patch|minor|major [-- --apply | --dry-run]
   repair only the two local version values. Do not describe this boundary as a
   durable multi-file transaction.
 - bump validates the existing contract first, derives patch, minor, or major,
-  then uses the same preview/apply path. --dry-run is retained as an explicit
-  alias for the default preview; combining it with --apply is an error. get and
-  check reject --apply.
+  then uses the same preview/apply path. The repository task API is already
+  preview-by-default and therefore exposes only the explicit `--apply` write
+  flag. The underlying package script retains `--dry-run` for compatibility,
+  but active project instructions use the mise task. get and check reject
+  `--apply`.
 - Versions must also fit MSI ProductVersion: major and minor are at most 255;
   patch is at most 65535.
 
@@ -178,6 +180,10 @@ FYAGENT_INSTALLDIR_CHECK_ID
   and attestations with `requiredCi: null`, but never publishes. The same-SHA
   Required CI gate is formal-tag-only; only the exact qualifying tag push can
   enter publish.
+- That post-merge exact-main-SHA sequence is implemented and locally verified,
+  but [D113](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md)
+  remains **Pending acceptance / Release NO-GO**. Do not create the tag or
+  dispatch the preflight merely because the executable contract exists.
 - Release assets use the unprefixed application version, for example:
 
   ```text
@@ -273,8 +279,8 @@ FYAGENT_INSTALLDIR_CHECK_ID
 - Good: The x64 MSI embeds the x64 helper and the ARM64 MSI embeds the ARM64
   helper. Both tables run the native policy in UI and Execute, and both fail
   maintenance safely when the HKLM anchor is absent.
-- Base: pnpm run version:set X.Y.Z and the equivalent explicit --dry-run report
-  only Cargo.toml and local Cargo.lock changes without writing. An authorized
+- Base: `mise run version:set -- X.Y.Z` reports only Cargo.toml and local
+  Cargo.lock changes without writing. An authorized
   workflow_dispatch for the exact trusted main/workflow SHA produces all ten unsigned
   installers, two evidence JSON files, and attestation evidence as workflow
   artifacts with `requiredCi: null`, but never creates or updates a GitHub Release.
@@ -307,16 +313,16 @@ FYAGENT_INSTALLDIR_CHECK_ID
 - Local checks, when their host prerequisites are available:
 
   ```bash
-  mise exec -- pnpm typecheck
-  mise exec -- pnpm format:check
-  mise exec -- pnpm test:unit
-  mise exec -- node --test tests/version.test.mjs
-  mise exec -- cargo fmt --all --check --manifest-path src-tauri/Cargo.toml
-  mise exec -- cargo clippy --workspace --all-targets --manifest-path src-tauri/Cargo.toml -- -D warnings
-  mise exec -- cargo test --workspace --manifest-path src-tauri/Cargo.toml
-  app_version="$(mise exec -- pnpm --silent run version:get)"
-  mise exec -- pnpm run version:check -- --tag "v$app_version"
-  mise exec -- pnpm vitest run tests/localBuildBoundary.test.ts tests/releaseWorkflow.test.ts tests/downloadManifest.test.ts tests/releaseAssets.test.ts
+  mise run typecheck
+  mise run format:check
+  mise run test:unit
+  mise run rust:fmt:check
+  mise run rust:clippy
+  mise run rust:test
+  mise run version:check -- --tag v0.3.0
+  # Uses the package wrappers with strict deprecation options; do not bypass
+  # them with a direct Vitest invocation.
+  mise run release:check
   # Child 6 closeout, after the final audited MANIFEST.sha256 regeneration:
   (cd docs/fyagent/dev/v1-0.3.0 && sha256sum -c MANIFEST.sha256)
   ```
@@ -346,8 +352,8 @@ identity, and makes MSI architecture/policy verification accidental.
 ### Correct
 
 ```bash
-pnpm run version:set 0.3.0 -- --apply
-pnpm run version:check -- --tag v0.3.0
+mise run version:set -- 0.3.0 --apply
+mise run version:check -- --tag v0.3.0
 ```
 
 Then let eligibility freeze the version/source plus successful Required CI

@@ -17,6 +17,15 @@
 
 </div>
 
+> [!WARNING]
+> **FyAgent 0.3.0 ist als stabiler, öffentlicher und bewusst unsignierter
+> Release definiert.** Windows-Programm und MSI haben den Authenticode-Status
+> `NotSigned`; die macOS-App ist weder mit Developer ID signiert noch
+> notarisiert. Lesen Sie vor der Installation die englischen
+> [v0.3.0 Release Notes](docs/release-notes/v0.3.0-en.md) und prüfen Sie die
+> Release-Nachweise. Bis der formale Workflow abgeschlossen ist, behauptet
+> dieser Hinweis nicht, dass der Release bereits veröffentlicht wurde.
+
 ## Warum FyAgent?
 
 Modernes KI-gestütztes Programmieren stützt sich auf Werkzeuge wie Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw und Hermes — doch jedes hat sein eigenes Konfigurationsformat. Der Wechsel des API-Anbieters bedeutet, JSON-, TOML- oder `.env`-Dateien von Hand zu bearbeiten, und es gibt keine einheitliche Möglichkeit, MCP und Skills über mehrere Werkzeuge hinweg zu verwalten.
@@ -29,7 +38,7 @@ Modernes KI-gestütztes Programmieren stützt sich auf Werkzeuge wie Claude Code
 - **Schnellumschaltung über System-Tray** — Wechseln Sie Anbieter sofort über das Tray-Menü, ohne die vollständige App öffnen zu müssen
 - **Cloud-Synchronisierung** — Synchronisieren Sie Anbieterdaten geräteübergreifend über Dropbox, OneDrive, iCloud oder WebDAV-Server
 - **Plattformübergreifend** — Native Desktop-App für Windows, macOS und Linux, gebaut mit Tauri 2
-- **Integrierte Hilfsprogramme** — Enthält diverse Hilfsprogramme für die Login-Bestätigung beim Erststart, das Umgehen von Signaturen, die Synchronisierung von Plugin-Erweiterungen und mehr
+- **Integrierte Hilfsprogramme** — Enthält Hilfsprogramme für die Login-Bestätigung beim Erststart, Umgebungsdiagnosen, die Synchronisierung von Plugin-Erweiterungen und mehr
 
 ## Screenshots
 
@@ -39,7 +48,7 @@ Modernes KI-gestütztes Programmieren stützt sich auf Werkzeuge wie Claude Code
 
 ## Funktionen
 
-[Vollständiges Changelog](CHANGELOG.md) | [Release Notes](docs/release-notes/v3.16.1-en.md)
+[Vollständiges Changelog](CHANGELOG.md) | [v0.3.0 Release Notes](docs/release-notes/v0.3.0-en.md)
 
 ### Anbieterverwaltung
 
@@ -99,7 +108,11 @@ FyAgent bietet eine Funktion „Gemeinsames Konfigurations-Snippet", um gemeinsa
 <details>
 <summary><strong>Installation unter macOS</strong></summary>
 
-Laden Sie das mit dem jeweiligen Release veröffentlichte `.dmg` herunter. Codesignatur und Notarisierung sind releasespezifisch; prüfen Sie vor der Installation die für genau diesen FyAgent-Build veröffentlichten Nachweise.
+FyAgent 0.3.0 ist bewusst unsigniert und nicht notarisiert; macOS kann den
+ersten Start blockieren. Versuchen Sie einmal, FyAgent zu öffnen, und verwenden
+Sie danach Apples unterstützten Weg **Systemeinstellungen → Datenschutz &
+Sicherheit → Dennoch öffnen**. Prüfen Sie zuerst Release Notes und Nachweise;
+deaktivieren Sie Gatekeeper nicht und entfernen Sie keine Quarantäneattribute.
 
 </details>
 
@@ -175,23 +188,56 @@ Ausführliche Anleitungen zu jeder Funktion finden Sie im **[Benutzerhandbuch](d
 
 ### Windows-Nutzer
 
-Laden Sie das neueste Installationsprogramm `FyAgent-v{version}-Windows.msi` von der Seite [Releases](https://github.com/NongHua123/fyagent/releases) herunter. FyAgent veröffentlicht kein portables Windows-ZIP mehr; verwenden Sie den MSI-Installer für den unterstützten installationsweiten Pfad.
+Laden Sie auf x64 Windows `FyAgent-0.3.0-Windows.msi` und auf ARM64 Windows
+`FyAgent-0.3.0-Windows-arm64.msi` von
+[Releases](https://github.com/NongHua123/fyagent/releases). FyAgent
+veröffentlicht kein portables Windows-ZIP mehr; verwenden Sie den unterstützten
+systemweiten MSI-Pfad.
+
+> **Unsignierter Build:** Programm und MSI von v0.3.0 haben bewusst den
+> Authenticode-Status `NotSigned`; Windows SmartScreen kann warnen. Prüfen Sie
+> vor dem Fortfahren Dateiname, Manifest und Attestierungsnachweise. Deaktivieren
+> Sie SmartScreen nicht und schwächen Sie keine verwaltete Sicherheitsrichtlinie.
 
 ### macOS-Nutzer
 
-Laden Sie `FyAgent-v{version}-macOS.dmg` (empfohlen) oder `.zip` von der Seite [Releases](https://github.com/NongHua123/fyagent/releases) herunter.
+Laden Sie `FyAgent-0.3.0-macOS.dmg` (empfohlen) oder
+`FyAgent-0.3.0-macOS.zip` von
+[Releases](https://github.com/NongHua123/fyagent/releases) herunter.
 
-> **Hinweis**: Der Status von Codesignatur und Notarisierung ist releasespezifisch. Prüfen Sie vor der Installation die für den heruntergeladenen FyAgent-Build veröffentlichten Nachweise.
+> **Unsignierter Build:** v0.3.0 ist weder mit Developer ID signiert noch
+> notarisiert. Versuchen Sie einmal, die App zu öffnen, und verwenden Sie danach
+> **Systemeinstellungen → Datenschutz & Sicherheit → Dennoch öffnen**. Prüfen
+> Sie zuerst die Release-Nachweise; deaktivieren Sie Gatekeeper nicht und
+> entfernen Sie keine Quarantäneattribute.
 
 ### Linux-Nutzer
 
-Laden Sie den neuesten Linux-Build, einschließlich der unter Arch Linux nutzbaren Builds, von der Seite [Releases](https://github.com/NongHua123/fyagent/releases) herunter:
+Laden Sie den nativen Linux-Build für Ihre Architektur von
+[Releases](https://github.com/NongHua123/fyagent/releases) herunter:
 
-- `FyAgent-v{version}-Linux-{arch}.deb` (Debian/Ubuntu)
-- `FyAgent-v{version}-Linux-{arch}.rpm` (Fedora/RHEL/openSUSE)
-- `FyAgent-v{version}-Linux-{arch}.AppImage` (portabel; für `{arch}` `x86_64` oder `arm64` wählen)
+- x64: `FyAgent-0.3.0-Linux-x86_64.AppImage`,
+  `FyAgent-0.3.0-Linux-x86_64.deb` oder
+  `FyAgent-0.3.0-Linux-x86_64.rpm`
+- ARM64: `FyAgent-0.3.0-Linux-arm64.AppImage`,
+  `FyAgent-0.3.0-Linux-arm64.deb` oder
+  `FyAgent-0.3.0-Linux-arm64.rpm`
 
 > **Flatpak**: Nicht in den offiziellen Releases enthalten. Sie können es selbst aus dem `.deb` bauen — eine Anleitung finden Sie unter [`flatpak/README.md`](flatpak/README.md).
+
+<details>
+<summary><strong>Exakter v0.3.0-Anhangsvertrag</strong></summary>
+
+Der formale Release erlaubt genau die oben genannten zehn Installer: zwei für
+macOS, zwei Windows-MSI und sechs Linux-Dateien. Hinzu kommen genau drei
+Nachweisdateien — `download-manifest.json` mit den SHA-256-Werten aller
+Installer, `build-metadata.json` und `artifact-attestation.sigstore.json` —,
+also **13 Anhänge insgesamt**. Der Workflow lehnt fehlende, doppelte,
+umbenannte oder zusätzliche Dateien ab. Bis formaler Workflow und unabhängige
+Nachprüfung abgeschlossen sind, ist dies ein Vertrag und kein veröffentlichtes
+Ergebnis.
+
+</details>
 
 <details>
 <summary><strong>Architekturüberblick</strong></summary>
@@ -245,24 +291,29 @@ Laden Sie den neuesten Linux-Build, einschließlich der unter Arch Linux nutzbar
   Version 2026.8.0
 - [Systemvoraussetzungen für Tauri 2.0](https://v2.tauri.app/start/prerequisites/)
 
-`mise.toml` ist die einzige maßgebliche Quelle für die lokalen Versionen von
-Node.js, pnpm, Python und Rust/Cargo. Die Tauri CLI wird mit den
-Projektabhängigkeiten installiert; installieren oder wählen Sie keine
-abweichenden Werkzeuge anhand allgemeiner Mindestversionsangaben.
+Node.js 24.19.0, pnpm 10.12.3, Rust 1.97.1 und Python 3.14.7 sind jeweils in
+`.node-version`, `package.json`, `rust-toolchain.toml` und `.python-version`
+festgelegt. `mise.toml` verwaltet Aufgaben-API und uv-Selektor; `mise.lock`,
+`uv.lock` und die von uv verwaltete `.venv` fixieren die freigegebene
+Python-Umgebung. Die Tauri CLI wird mit den Projektabhängigkeiten installiert.
 
 Prüfen Sie die Repository-Konfiguration und initialisieren Sie anschließend die
 Entwicklungsumgebung:
 
 ```bash
 mise trust
-mise install
-mise exec -- pnpm install --frozen-lockfile
+mise run bootstrap
+mise run system:check
+mise run dev
 ```
 
-Die folgenden Befehle verwenden ausdrücklich `mise exec --` und lösen daher
-auch ohne Shell-Aktivierung die festgelegten Werkzeuge auf. In einer bewusst
-aktivierten mise-Shell kann das Präfix entfallen. Unter WSL dürfen verwaltete
-Werkzeuge nicht aus `/mnt/<drive>` oder über Windows-Shims aufgelöst werden.
+`mise trust` ist eine ausdrückliche Sicherheitsentscheidung des Entwicklers und
+wird von keiner Projektaufgabe automatisch ausgeführt. `bootstrap` installiert
+keine privilegierten Systempakete, ändert keine Git-Remotes, aktualisiert keine
+Locks und veröffentlicht nichts. Unter WSL dürfen verwaltete Werkzeuge nicht
+aus `/mnt/<drive>` oder über Windows-Shims aufgelöst werden. Die vollständige
+API steht im generierten
+[canonical task catalog](docs/fyagent/development/mise-tasks.md).
 
 ### Native Builds auf der Host-Plattform
 
@@ -271,8 +322,8 @@ Betriebssystem. Die Standardbefehle akzeptieren kein anderes Betriebssystem
 oder Architekturziel:
 
 ```bash
-mise exec -- pnpm dev
-mise exec -- pnpm build
+mise run dev
+mise run build
 ```
 
 FyAgent-Installer werden ausschließlich durch GitHub Actions auf nativen
@@ -283,51 +334,51 @@ Paketierung ist kein unterstützter Release-Pfad.
 ### Entwicklungsbefehle
 
 ```bash
-# Abhängigkeiten installieren
-mise exec -- pnpm install --frozen-lockfile
+# Gesperrte Abhängigkeiten installieren und Umgebung prüfen
+mise run bootstrap
 
 # Entwicklungsmodus (Hot Reload)
-mise exec -- pnpm dev
+mise run dev
 
 # Typprüfung
-mise exec -- pnpm typecheck
+mise run typecheck
 
 # Code formatieren
-mise exec -- pnpm format
+mise run format
 
 # Codeformatierung prüfen
-mise exec -- pnpm format:check
+mise run format:check
 
 # Frontend-Unit-Tests ausführen
-mise exec -- pnpm test:unit
+mise run test:unit
 
 # Tests im Watch-Modus ausführen (für die Entwicklung empfohlen)
-mise exec -- pnpm test:unit:watch
+mise run test:unit:watch
 
 # Anwendung bauen
-mise exec -- pnpm build
+mise run build
 
 # Debug-Version bauen
-mise exec -- pnpm tauri build --debug
+mise run build:debug
 ```
 
 ### Entwicklung des Rust-Backends
 
 ```bash
 # Rust-Code formatieren
-mise exec -- cargo fmt --manifest-path src-tauri/Cargo.toml
+mise run rust:fmt
 
 # Clippy-Prüfungen ausführen
-mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml
+mise run rust:clippy
 
 # Backend-Tests ausführen
-mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
+mise run rust:test
 
 # Bestimmte Tests ausführen
-mise exec -- cargo test --manifest-path src-tauri/Cargo.toml test_name
+mise run rust:test test_name
 
-# Tests mit dem Feature test-hooks ausführen
-mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --features test-hooks
+# Vollständiges Host-Gate vor einem PR
+mise run check
 ```
 
 ### Testleitfaden
@@ -342,13 +393,13 @@ mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --features test-hoo
 
 ```bash
 # Alle Tests ausführen
-mise exec -- pnpm test:unit
+mise run test:unit
 
 # Watch-Modus (automatische erneute Ausführung)
-mise exec -- pnpm test:unit:watch
+mise run test:unit:watch
 
-# Mit Coverage-Bericht
-mise exec -- pnpm test:unit --coverage
+# Vollständiges Frontend-Gate
+mise run check:frontend
 ```
 
 ### Tech-Stack
@@ -408,9 +459,9 @@ Issues und Vorschläge sind willkommen!
 
 Bitte stellen Sie vor dem Einreichen von PRs Folgendes sicher:
 
-- Typprüfung besteht: `mise exec -- pnpm typecheck`
-- Formatprüfung besteht: `mise exec -- pnpm format:check`
-- Unit-Tests bestehen: `mise exec -- pnpm test:unit`
+- Vollständiges Host-Gate ausführen: `mise run check`
+- Während der Entwicklung fokussierte Aufgaben aus dem
+  [canonical task catalog](docs/fyagent/development/mise-tasks.md) wählen
 
 Eröffnen Sie für neue Funktionen bitte vor dem Einreichen eines PR ein Issue zur Diskussion. PRs für Funktionen, die nicht gut zum Projekt passen, können geschlossen werden.
 

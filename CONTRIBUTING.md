@@ -20,67 +20,89 @@ There are many ways to contribute:
 
 ### Prerequisites
 
+- Git and Git LFS where visual assets require it
 - [mise](https://mise.jdx.dev/getting-started.html) 2026.8.0 or newer,
   installed globally
 - [Tauri 2.0 prerequisites](https://v2.tauri.app/start/prerequisites/)
 
-The repository's `mise.toml` is the single source of truth for Node.js, pnpm,
-Python, and Rust/Cargo versions. Tauri CLI is installed as a project dependency.
-After reviewing the config, trust it once and install the pinned tools:
+The repository pins Node.js, pnpm, Rust, uv, and uv-managed Python through their
+owned version and lock files. Do not substitute arbitrary system runtimes.
+After reviewing the repository configuration, initialize the environment:
 
 ```bash
 mise trust
-mise install
+mise run bootstrap
+mise run system:check
+mise run dev
 ```
 
-The examples below use `mise exec --` so they also work without shell
-activation. You may omit that prefix in an intentionally mise-activated shell.
+`mise trust` is a developer security decision and is never run automatically
+by a project task. `bootstrap` does not install privileged OS packages, change
+Git remotes, refresh locks, tag, or publish.
 
-### Quick Start
+### Before a Pull Request
 
 ```bash
-# Install dependencies
-mise exec -- pnpm install --frozen-lockfile
-
-# Start development server with hot reload
-mise exec -- pnpm dev
+mise run check
 ```
 
-### Useful Commands
+This is the complete current-host gate. GitHub's stable `CI / Required` check
+is the multi-platform merge authority.
 
-| Command | Description |
-|---------|-------------|
-| `mise exec -- pnpm dev` | Start dev server (hot reload) |
-| `mise exec -- pnpm build` | Production build |
-| `mise exec -- pnpm typecheck` | TypeScript type checking |
-| `mise exec -- pnpm test:unit` | Run unit tests |
-| `mise exec -- pnpm format` | Format code (Prettier) |
-| `mise exec -- pnpm format:check` | Check code formatting |
-
-For Rust backend:
+Useful focused tasks include:
 
 ```bash
-mise exec -- cargo fmt --manifest-path src-tauri/Cargo.toml
-mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml
-mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
+mise run typecheck
+mise run format:check
+mise run test:unit
+mise run test:i18n
+mise run test:desktop:mock
+mise run rust:fmt:check
+mise run rust:check
+mise run rust:clippy
+mise run rust:test
+mise run release:check
 ```
+
+See the generated
+[canonical task catalog](docs/fyagent/development/mise-tasks.md). Active
+development documentation uses `mise run <task>` rather than direct project
+pnpm/Cargo/system-Python commands. GitHub Actions is the deliberate exception:
+workflows install their exact tools without trusting or executing repository
+mise configuration.
+
+### Local Build Boundary
+
+```bash
+mise run build:renderer
+mise run build:binary
+mise run build
+mise run build:debug
+```
+
+These tasks build only the current host OS and architecture. Formal Windows
+x64/ARM64, Linux x64/ARM64, and macOS Universal Release assets are produced by
+GitHub Actions. Local Linux/WSL-to-Windows or macOS cross-builds are unsupported.
 
 ## Code Style
 
-- **Frontend**: Prettier for formatting and strict TypeScript (`mise exec -- pnpm typecheck`)
-- **Backend**: `mise exec -- cargo fmt` for formatting, `mise exec -- cargo clippy` for linting
+- **Frontend**: Prettier formatting and strict TypeScript
+- **Backend**: rustfmt, locked Cargo checks, Clippy with warnings denied, and tests
 - **Tauri 2.0**: Command names must use camelCase
+- **Runtime tests**: Node 24 native Fetch with MSW/Tauri fakes; do not restore a
+  Fetch polyfill or suppress deprecation warnings
+- **User-visible text**: update all four registered locales and preserve
+  accessibility roles, keyboard/focus behavior, labels, and error states
 
 Run all checks before submitting:
 
 ```bash
-mise exec -- pnpm typecheck
-mise exec -- pnpm format:check
-mise exec -- pnpm test:unit
-mise exec -- cargo fmt --check --manifest-path src-tauri/Cargo.toml
-mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
-mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
+mise run check
 ```
+
+Formatting, visual-baseline updates, icon generation, version application,
+dependency updates, and other source-modifying tasks must be invoked explicitly
+and reviewed; they do not belong in ordinary read-only checks.
 
 ## Pull Request Guidelines
 
@@ -91,10 +113,12 @@ mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
 
 ### PR Checklist
 
-- [ ] `mise exec -- pnpm typecheck` passes
-- [ ] `mise exec -- pnpm format:check` passes
-- [ ] `mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings` passes (if Rust code changed)
+- [ ] `mise run check` passes on the current host
 - [ ] Updated i18n files if user-facing text changed
+- [ ] Exact tests, platform limitations, risk, and rollback are recorded
+- [ ] Durable contract changes update the owning `.trellis/spec/**` and test
+- [ ] Upstream tag/SHA/conflict or Release asset/permission impact is recorded
+      when applicable
 
 ### Commit Convention
 
@@ -121,6 +145,40 @@ By submitting a PR, you agree to the following:
 5. **Maintainers may close without explanation.** PRs that appear to be unreviewed AI output — hallucinated fixes, unnecessary refactors, bulk changes with no context — may be closed at the maintainer's discretion.
 
 **In short**: AI is a tool, not a substitute for understanding. Use it to help you contribute better, not to shift work onto maintainers.
+
+## Trellis and durable contracts
+
+Complex cross-layer, security, persistence, or release work should have an
+approved Trellis PRD, design, and implementation plan. Repository operations
+use the canonical task API:
+
+```bash
+mise run trellis:context
+mise run trellis:task -- <subcommand> [args]
+mise run trellis:session:add -- [args]
+```
+
+When implementation establishes a durable engineering rule, update the owning
+`.trellis/spec/**` file and its enforcing test. Keep historical design packages
+as historical evidence instead of rewriting old decisions to look current.
+
+## Upstream CC Switch changes
+
+`origin` is FyAgent's writable repository and `upstream` is fetch-only. Formal
+upstream tag work uses the `upstream:*` tasks, verifies the immutable tag object
+and peeled commit, preserves a two-parent merge commit and MIT ancestry, and
+stops before any automatic commit or push. A PR that contains upstream work
+must record the tag, full SHAs, conflict decisions, FyAgent-specific contracts
+preserved, tests, and rollback boundary.
+
+## Evidence and release changes
+
+A PR must distinguish local/static checks from real native-runner or published
+Release evidence. Changes to workflows, permissions, installers, asset names,
+attestations, or publication logic must run `mise run release:check` and name
+the remaining remote gates. Do not claim a signed/notarized artifact, a native
+platform result, a protected branch/environment, or a published Release from a
+local check alone.
 
 ## Licensing and contribution rights
 
@@ -179,65 +237,82 @@ FyAgent maintains four locale resources. When modifying user-facing text:
 
 ### 前提条件
 
+- Git；视觉资产需要时安装 Git LFS
 - 全局安装 [mise](https://mise.jdx.dev/getting-started.html) 2026.8.0 或更高版本
 - [Tauri 2.0 开发环境](https://v2.tauri.app/start/prerequisites/)
 
-仓库中的 `mise.toml` 是 Node.js、pnpm、Python 和 Rust/Cargo 版本的单一事实源；
-Tauri CLI 作为项目依赖安装。检查配置后，信任一次并安装固定的开发工具：
+仓库通过各自的版本与 lock 文件固定 Node.js、pnpm、Rust、uv 和由 uv 管理的 Python；
+不要替换为任意系统运行时。检查仓库配置后初始化环境：
 
 ```bash
 mise trust
-mise install
+mise run bootstrap
+mise run system:check
+mise run dev
 ```
 
-下列示例使用 `mise exec --`，未配置 shell 激活时也能使用仓库固定的工具。
-若当前 shell 已明确激活 mise，可以省略该前缀。
+`mise trust` 是开发者自己的安全决策，项目任务绝不会自动执行它。`bootstrap` 不安装
+提权系统包、不修改 Git remote、不刷新 lock、不打 tag，也不发布。
 
-### 快速开始
+### 提交 Pull Request 前
 
 ```bash
-# 安装依赖
-mise exec -- pnpm install --frozen-lockfile
-
-# 启动开发服务器（热重载）
-mise exec -- pnpm dev
+mise run check
 ```
 
-### 常用命令
+这是当前宿主的完整门禁；GitHub 上名称稳定的 `CI / Required` 是多平台合并权威。
 
-| 命令 | 说明 |
-|------|------|
-| `mise exec -- pnpm dev` | 启动开发服务器（热重载） |
-| `mise exec -- pnpm build` | 构建生产版本 |
-| `mise exec -- pnpm typecheck` | TypeScript 类型检查 |
-| `mise exec -- pnpm test:unit` | 运行单元测试 |
-| `mise exec -- pnpm format` | 格式化代码（Prettier） |
-| `mise exec -- pnpm format:check` | 检查代码格式 |
-
-Rust 后端命令：
+常用聚焦任务：
 
 ```bash
-mise exec -- cargo fmt --manifest-path src-tauri/Cargo.toml
-mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml
-mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
+mise run typecheck
+mise run format:check
+mise run test:unit
+mise run test:i18n
+mise run test:desktop:mock
+mise run rust:fmt:check
+mise run rust:check
+mise run rust:clippy
+mise run rust:test
+mise run release:check
 ```
+
+完整 API 见生成的
+[canonical task catalog](docs/fyagent/development/mise-tasks.md)。活动开发文档使用
+`mise run <task>`，不使用直接项目 pnpm/Cargo/系统 Python 命令。GitHub Actions 是
+明确例外：workflow 安装精确工具，但不会信任或执行仓库 mise 配置。
+
+### 本地构建边界
+
+```bash
+mise run build:renderer
+mise run build:binary
+mise run build
+mise run build:debug
+```
+
+这些任务只构建当前宿主系统和架构。正式 Windows x64/ARM64、Linux x64/ARM64 和
+macOS Universal Release 资产由 GitHub Actions 生成。不支持 Linux/WSL 到 Windows
+或 macOS 的本地交叉构建。
 
 ## 代码规范
 
-- **前端**：使用 Prettier 格式化和严格 TypeScript（`mise exec -- pnpm typecheck`）
-- **后端**：使用 `mise exec -- cargo fmt` 格式化、`mise exec -- cargo clippy` 检查
+- **前端**：使用 Prettier 格式化和严格 TypeScript
+- **后端**：使用 rustfmt、locked Cargo check、拒绝 warning 的 Clippy 和测试
 - **Tauri 2.0**：命令名必须使用 camelCase
+- **运行时测试**：使用 Node 24 原生 Fetch 与 MSW/Tauri fake；不得恢复 Fetch
+  polyfill 或抑制弃用告警
+- **用户可见文本**：同步四份 locale，并保持角色、键盘/焦点、标签和错误状态等
+  无障碍行为
 
 提交前运行所有检查：
 
 ```bash
-mise exec -- pnpm typecheck
-mise exec -- pnpm format:check
-mise exec -- pnpm test:unit
-mise exec -- cargo fmt --check --manifest-path src-tauri/Cargo.toml
-mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
-mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
+mise run check
 ```
+
+格式化、视觉基线更新、图标生成、版本 apply、依赖升级等修改型任务必须显式执行并
+审阅，不能混入普通只读检查。
 
 ## Pull Request 指南
 
@@ -248,10 +323,11 @@ mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
 
 ### PR 检查清单
 
-- [ ] `mise exec -- pnpm typecheck` 通过
-- [ ] `mise exec -- pnpm format:check` 通过
-- [ ] `mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings` 通过（如修改了 Rust 代码）
+- [ ] 当前宿主的 `mise run check` 通过
 - [ ] 如修改了用户可见文本，已更新国际化文件
+- [ ] 已记录精确测试、平台限制、风险和回退
+- [ ] 长期契约变更已更新对应 `.trellis/spec/**` 与测试
+- [ ] 适用时已记录上游 tag/SHA/冲突，或 Release 资产/权限影响
 
 ### 提交信息规范
 
@@ -278,6 +354,34 @@ chore(deps): update dependencies
 5. **维护者可以直接关闭。** 看起来是未经审阅的 AI 产出的 PR——虚构的修复、不必要的重构、缺乏上下文的批量改动——维护者可自行决定关闭。
 
 **一句话总结**：AI 是工具，不是理解力的替代品。用它来帮助你更好地贡献，而不是把工作转移给维护者。
+
+## Trellis 与长期契约
+
+跨层、安全、持久化或发布等复杂工作应先形成获批的 Trellis PRD、设计和实施计划。
+仓库操作使用 canonical task API：
+
+```bash
+mise run trellis:context
+mise run trellis:task -- <subcommand> [args]
+mise run trellis:session:add -- [args]
+```
+
+实现形成长期工程规则时，要更新对应 `.trellis/spec/**` 和执行测试。历史设计包保持为
+历史证据，不得把旧决策改写成当前事实。
+
+## 上游 CC Switch 变更
+
+`origin` 是 FyAgent 可写仓库，`upstream` 只允许 fetch。正式上游标签工作使用
+`upstream:*` 任务，验证不可变 tag object 与 peeled commit，保留双亲 merge commit
+和 MIT ancestry，并在任何自动 commit/push 前停止。包含上游变更的 PR 必须记录 tag、
+完整 SHA、冲突裁决、保留的 FyAgent 专属契约、测试与回退边界。
+
+## 证据与发布变更
+
+PR 必须区分本地/静态检查与真实原生 runner 或已发布 Release 证据。修改 workflow、
+权限、安装包、资产名、attestation 或发布事务时，运行 `mise run release:check` 并列出
+尚未完成的远程门禁。不得用本地检查声称已完成签名/公证、原生平台、受保护分支/环境
+或正式 Release 发布。
 
 ## 许可与贡献权利
 

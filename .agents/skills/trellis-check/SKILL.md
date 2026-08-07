@@ -25,7 +25,7 @@ Read the current task artifacts in order:
 - `implement.md` if present
 
 ```bash
-python3 ./.trellis/scripts/get_context.py --mode packages
+mise run trellis:context -- --mode packages
 ```
 
 For each changed package/layer, read the spec index and follow its **Quality Check** section:
@@ -77,7 +77,7 @@ Skip this step if your change is confined to a single layer.
 
 - [ ] Searched for existing similar code before creating new?
   ```bash
-  grep -r "pattern" src/
+  rg "pattern" src/
   ```
 - [ ] If 2+ places define same value → extracted to shared constant?
 - [ ] After batch modification, all occurrences updated?

@@ -1,3 +1,8 @@
+> **历史设计包：** 以下正文按原样保留，不再是当前版本、开发环境、任务 API 或
+> CI/Release 合同的权威来源。当前入口见
+> [v1-0.3.0](../v1-0.3.0/00-README.md) 与
+> [mise task catalog](../../development/mise-tasks.md)。
+
 # CC Switch `feature/fyagent-v1` 功能需求与设计文档包
 
 > 文档基线核查日期：2026-08-03（Asia/Shanghai）  

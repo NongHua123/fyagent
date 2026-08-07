@@ -2,13 +2,12 @@
 
 ## Reproducible Core Frontend Checks
 
-For an ordinary renderer change, start with these core checks declared by
-`package.json`:
+For an ordinary renderer change, start with the repository task API:
 
 ```bash
-mise exec -- pnpm typecheck
-mise exec -- pnpm format:check
-mise exec -- pnpm test:unit
+mise run typecheck
+mise run format:check
+mise run test:unit
 ```
 
 Run local checks through the repository's
@@ -22,8 +21,8 @@ For desktop-shell, responsive-header, window-layout, or desktop-acceptance
 changes, also run:
 
 ```bash
-mise exec -- pnpm test:desktop:mock
-mise exec -- pnpm test:desktop:visual:preflight
+mise run test:desktop:mock
+mise run test:desktop:visual:preflight
 ```
 
 `test:desktop:mock` is mock-only and must not be reported as a real desktop,
@@ -74,8 +73,8 @@ with the portable `--throw-deprecation` flag. The focused command adds the
 pending gate:
 
 ```bash
-mise exec -- pnpm test:unit
-mise exec -- pnpm test:native-fetch
+mise run test:unit
+mise run release:check
 ```
 
 The focused pending probe is deliberately supplemental. Node 24.19.0 may not
@@ -122,8 +121,8 @@ same leaf-key set. When adding, renaming, or deleting user-visible text:
 
 - change all four locale files in the same patch;
 - keep nested keys as objects and translation leaves as strings; and
-- run `mise exec -- pnpm test:i18n` (or the focused
-  `mise exec -- pnpm test:unit tests/config/localeKeyParity.test.ts`) before
+- run `mise run test:i18n` (or the focused
+  `mise run test:unit -- tests/config/localeKeyParity.test.ts`) before
   relying on fallback text.
 
 Do not add a locale-specific key merely to silence a rendering issue. Fix the

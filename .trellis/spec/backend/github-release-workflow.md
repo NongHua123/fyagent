@@ -31,6 +31,12 @@ on:
 - no branch push, broad `v*` tag, manual signed mode, manual tag dispatch,
   partial platform mode, or local publish path exists.
 
+The post-merge exact-main-SHA sequence above is implemented in the workflow
+and locally verified, but governance decision
+[D113](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md)
+remains **Pending acceptance / Release NO-GO**. Its presence in code is not
+approval to dispatch, tag, or publish.
+
 Local implementation and static tests do not authorize dispatch, tag creation,
 or publication. Remote preflight, formal Release, and post-publication evidence
 remain required before the owning Trellis task can close.
@@ -92,6 +98,12 @@ bound to the workflow `GITHUB_SHA`, not to a different unmerged candidate.
 v0.3.0 therefore runs its first preflight after merge on the exact `main` SHA.
 A future unmerged-candidate design requires a separate trusted reusable
 workflow or custom predicate and is outside this release.
+
+This is the implemented D113 deviation, not a completed release decision. The
+project must resolve the **Pending acceptance** entry in the
+[decision register](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md)
+before remote preflight or tag creation; until then formal Release remains
+NO-GO without changing the workflow semantics described here.
 
 This workflow-only admission is intentionally weaker than administrator-backed
 branch/tag rulesets or a protected environment. FyAgent 0.3.0 accepts that
@@ -285,5 +297,7 @@ bundle behavior require their matching runners.
 A green local suite proves the implementation contract, not publication.
 Closure requires the exact source's main `CI / Required`, one successful
 post-merge same-SHA full-matrix unsigned preflight, the tag-triggered formal run, the public stable
-Release, independent re-download/digest/signature checks, attestation evidence,
-and audited Trellis closeout records.
+Release, independent re-download/digest/unsigned-state checks, attestation evidence,
+and audited Trellis closeout records. Before that sequence begins, D113 must
+also move from Pending acceptance through an explicit project decision; local
+contract success alone cannot clear this Release NO-GO.

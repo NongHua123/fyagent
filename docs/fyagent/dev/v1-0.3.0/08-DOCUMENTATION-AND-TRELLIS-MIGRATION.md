@@ -1,7 +1,7 @@
 # 文档与 Trellis 迁移设计
 
-> **交付状态**：Proposed / 拟实施  
-> **关联决策**：50、52–56、88–100  
+> **交付状态**：In progress / 实施中；远程 closeout 后才能完成
+> **关联决策**：50、52–56、88–115
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
 ## 1. 目标
@@ -10,7 +10,7 @@
 
 ## 2. 活动文档范围
 
-完整修订稿位于 `repository-overlay/documentation/`：
+活动文件正在真实仓库树中通过三方比较修订。`repository-overlay/documentation/` 是 2026-08-07 冻结快照，只用于比对，不再是替换源：
 
 - `README.md`、`README_ZH.md`、`README_JA.md`、`README_DE.md`；
 - `CONTRIBUTING.md`；
@@ -18,21 +18,21 @@
 - `flatpak/README.md`；
 - `tests/e2e/visual-baselines/README.md`；
 - `docs/upstream/cc-switch-v3.19.2.md`；
-- `docs/fyagent/development/mise-tasks.md`（标记为 proposed catalog）；
+- `docs/fyagent/development/mise-tasks.md`（已由真实 task metadata 生成）；
 - 历史版本目录 README 的归档声明。
 
 四份 README 只展示核心流程；详细 task 表只维护一份，命令名不翻译。
 
 ## 3. Trellis specs
 
-### 重写
+### 已由前序 child 实施，Child 6 只做索引/命令收口
 
 - `backend/development-environment.md`；
 - `backend/github-release-workflow.md`；
 - `backend/windows-release-boundary.md`；
 - `frontend/quality-guidelines.md`。
 
-### 新增
+### 已由前序 child 新增
 
 - `backend/task-runner-contract.md`；
 - `backend/upstream-sync.md`；
@@ -51,21 +51,21 @@ backend/frontend index 必须列出新规范并统一使用 `mise run check` 等
 项目实际操作入口统一包装：
 
 ```text
-mise run trellis:init-developer
+mise run trellis:init-developer -- <name>
 mise run trellis:context
-mise run trellis:task
-mise run trellis:session:add
+mise run trellis:task -- <subcommand> [args]
+mise run trellis:session:add -- --title <title> --commit <hashes> --summary <summary>
 ```
 
 修改 `.trellis/workflow.md` 与 trellis-start/continue/before-dev/brainstorm/check/finish-work；新增 `fyagent-trellis` 本地 skill。通用 `trellis-meta/references/**` 不批量改写，以避免复制模板架构文档。
 
 ## 5. Codex hooks
 
-配置文件的实际实施不在本 overlay 中，但目标合同明确：hook 命令改为 `mise run codex:hook:*`；内部 `uv run --locked --no-sync --offline`。环境未准备时输出合法 JSON 和可见警告、继续用户操作；脚本损坏/非法 JSON 仍失败。
+`.codex/hooks.json` 与 wrappers 已实施：hook 命令使用 `mise run --silent codex:hook:*`，内部使用 `uv run --locked --no-sync --offline`。环境未准备时输出合法 JSON 和可见警告、继续用户操作；脚本损坏/非法 JSON 仍失败关闭。
 
 ## 6. 旧任务归档
 
-当前五个未归档任务拟复制到 `archive/2026-08/`，先写入：
+当前五个旧任务仍在活动目录，后续由主执行流先写入以下元数据，再按四个 child、旧 parent 的顺序归档：
 
 ```json
 {
@@ -75,11 +75,11 @@ mise run trellis:session:add
 }
 ```
 
-使用现有 `task.py archive --no-commit` 的技术关闭行为；文档统一称 superseded，不称“已实施完成”。完整 proposed archive 位于 Trellis overlay。
+使用 canonical `mise run trellis:task -- archive <task> --no-commit` 技术关闭行为；文档统一称 superseded，不称“已实施完成”。冻结 overlay 中的 archive 只保留原始建议，不可复制到真实 archive。
 
 ## 7. 文档漂移门禁
 
-未来 `tasks:docs:check` / `check:contracts` 检查活动范围：
+当前 `tasks:docs:check` / `check:contracts` 检查活动范围：
 
 - 无 `mise exec --`；
 - 不直接调用项目 pnpm/Cargo/Trellis Python；
@@ -93,4 +93,8 @@ mise run trellis:session:add
 
 ## 8. 应用 overlay 的边界
 
-overlay 是完整文档草稿，不是自动 patch。实施者必须在上游合并和代码配置改造后复核产品功能/版本/路径，再选择性替换。尤其 README 产品段落可能因 v3.19.2 合并而变化，不能不经比较直接覆盖。
+overlay 已于 2026-08-07 冻结，共 111 个文件：108 个冻结 payload 和 3 个中央冻结声明。真实实施必须在当前树与上游 merge 结果上选择性移植仍有效内容；禁止复制、同步或整文件覆盖 108 个 payload。本轮 diff 只更新 3 个中央声明；当前树和长期 specs 是唯一活动事实源。
+
+## 9. 完成边界
+
+本 child 可在本地完成活动文档、spec、workflow/skill、旧任务 superseded archive 和合同验证；但保持 `in_progress`，直到正式 Release 后写入真实 run/Release URL、13 附件摘要、digest、attestation 与独立下载检查，刷新 `MANIFEST.sha256`，再归档尚等待远程证据的 child 与 parent 并记录 journal。任何 pending/blocked 项都不得用占位 URL 或“Released”替代。

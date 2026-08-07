@@ -1,6 +1,6 @@
-# 上游来源与验证计划
+# 上游来源与已验证 provenance
 
-> **交付状态**：Observed / 已核实 + Pending Verification / 待验证  
+> **交付状态**：Verified local Git provenance / 本地 Git provenance 已核实
 > **关联决策**：39–51、101  
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
@@ -17,19 +17,29 @@ License:             MIT (upstream-derived portions)
 
 GitHub 发布页说明本版数据库 schema 保持 v16、没有新增迁移；这不替代 FyAgent 数据兼容性测试。
 
-## 实施时必须记录
+## 实际 Git 证据
 
 ```bash
-git fetch upstream tag v3.19.2
-git rev-parse v3.19.2^{commit}
-git show --no-patch --format='%H %D' v3.19.2
-git merge-base 55173d2b v3.19.2
-git log --oneline --left-right --cherry-pick <merge-base>...v3.19.2
-git diff --stat <merge-base>...v3.19.2
+mise run upstream:check
+mise run upstream:fetch -- v3.19.2
+mise run upstream:audit -- v3.19.2
 ```
 
-验证 tag 实际解析到公开 commit `43eaf07355af145aebfee301801779e824d4c221`，并记录真实 merge base、commit set、diff stat、merge commit SHA、冲突清单和许可更新。
+`upstream:audit` 报告 tag object、peeled commit、merge base、待合入 commits 和 diff summary；下面的 SHA 是真实运行及 merge graph 的冻结证据，而不是要求维护者绕过 task API 重新拼接 Git 命令。
 
-## 不确定性
+| 字段             | 已核实值                                               |
+| ---------------- | ------------------------------------------------------ |
+| 实施基线         | `55173d2b32c4acf182b6ec504d7ad326ade2bb9b`             |
+| recovery ref     | `refs/backup/fyagent-v0.3.0-baseline`                  |
+| tag object       | `f6882b69f0a30968dcc6dbb1153b6b12b50e6b1a`             |
+| peeled commit    | `43eaf07355af145aebfee301801779e824d4c221`             |
+| merge base       | `28529620f438b2ed25c812f6364825d846a4a9d6` (`v3.19.1`) |
+| two-parent merge | `f4462765e9b3a2efd1deb13aabf3ce349166a058`             |
+| first parent     | `194edb22ef6896f865e08a21b27d5b846dbaf54d`             |
+| second parent    | `43eaf07355af145aebfee301801779e824d4c221`             |
 
-上传包无 `.git`，本设计无法验证 `55173d2b` 是否确实包含上游 v3.19.1 ancestry，但公开 commit 页面已给出 `43eaf07355af145aebfee301801779e824d4c221`；仍不得只凭网页假定本地 tag/ref 未被污染，供应链清单必须记录本地 Git 验证结果。
+本地 tag object/peeled commit 与 upstream `ls-remote` 一致；`git merge-base --is-ancestor refs/tags/v3.19.2 f4462765` 通过。merge 产生 33 个冲突，均按身份、共享上游逻辑、工程治理和 FyAgent 专属能力分层裁决，没有全局 ours/theirs。
+
+## 证据边界
+
+原始上传包不含 `.git` 的限制已由真实 checkout 核验消除。该 provenance 证明本地 merge graph 与来源，不证明远程 PR/main、`v0.3.0` tag、installer 或 GitHub attestation；这些仍属于后续远程 evidence。
