@@ -22,6 +22,7 @@ import {
   MODELS_DEV_SYNC_CONFIG_QUERY_KEY,
   syncModelsDevPricingOnStartup,
 } from "./lib/modelsDevAutoSync";
+import { initializeWindowActivity } from "@/lib/windowActivity";
 
 installGlobalErrorHandlers();
 
@@ -112,6 +113,8 @@ async function bootstrap() {
     // 忽略拉取错误，继续渲染
     reportFrontendError("get_init_error", e);
   }
+
+  initializeWindowActivity();
 
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>

@@ -359,4 +359,61 @@ describe("DeepLinkImportDialog", () => {
       await screen.findByText("deeplink.providerActivationDisabled"),
     ).toBeInTheDocument();
   });
+
+  it("renders masked usage access token and user id for provider imports", async () => {
+    renderDialog();
+
+    await act(async () => {
+      emitTauriEvent("deeplink-import", {
+        version: "v1",
+        resource: "provider",
+        app: "claude",
+        name: "Test Provider",
+        homepage: "https://example.com",
+        endpoint: "https://api.example.com",
+        apiKey: "sk-provider-key",
+        usageEnabled: true,
+        usageScript: btoa("console.log('usage');"),
+        usageApiKey: "sk-usage-key",
+        usageBaseUrl: "https://usage.example.com",
+        usageAccessToken: "pat-secret-token",
+        usageUserId: "user-12345",
+        usageAutoInterval: 60,
+      });
+    });
+
+    expect(await screen.findByText("用量访问令牌")).toBeInTheDocument();
+    expect(screen.getByText("用量用户 ID")).toBeInTheDocument();
+    expect(screen.getByText("user-12345")).toBeInTheDocument();
+    expect(screen.getByText("pat-************")).toBeInTheDocument();
+  });
+
+  it("shows usage credentials even when the deep link carries no usage script", async () => {
+    renderDialog();
+
+    await act(async () => {
+      emitTauriEvent("deeplink-import", {
+        version: "v1",
+        resource: "provider",
+        app: "claude",
+        name: "Token Only Provider",
+        homepage: "https://example.com",
+        endpoint: "https://api.example.com",
+        apiKey: "sk-provider-key",
+        usageAccessToken: "pat-secret-token",
+        usageUserId: "user-12345",
+      });
+    });
+
+    expect(await screen.findByText("用量访问令牌")).toBeInTheDocument();
+    expect(screen.getByText("pat-************")).toBeInTheDocument();
+    expect(screen.getByText("用量用户 ID")).toBeInTheDocument();
+    expect(screen.getByText("user-12345")).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "这是一段 JavaScript 代码，启用后会在查询用量时执行。请确认来源可信后再导入。",
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("脚本代码")).not.toBeInTheDocument();
+  });
 });

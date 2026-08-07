@@ -157,6 +157,27 @@ export const geminiProviderPresets: GeminiProviderPreset[] = [
     iconColor: "#5B7FFF",
   },
   {
+    name: "Qiniu",
+    nameKey: "providerForm.presets.qiniu",
+    websiteUrl: "https://s.qiniu.com/nMvAvy",
+    apiKeyUrl: "https://s.qiniu.com/nMvAvy",
+    settingsConfig: {
+      env: {
+        GOOGLE_GEMINI_BASE_URL: "https://api.qnaigc.com/bypass/vertex",
+        GEMINI_MODEL: "gemini-3.6-flash",
+      },
+    },
+    baseURL: "https://api.qnaigc.com/bypass/vertex",
+    model: "gemini-3.6-flash",
+    description: "Qiniu",
+    category: "aggregator",
+    endpointCandidates: [
+      "https://api.qnaigc.com/bypass/vertex",
+      "https://api.modelink.ai/bypass/vertex",
+    ],
+    icon: "qiniu",
+  },
+  {
     name: "AICoding",
     websiteUrl: "https://aicoding.inc",
     apiKeyUrl: "https://aicoding.inc",

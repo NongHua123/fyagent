@@ -25,6 +25,8 @@ import {
   Shield,
   Cpu,
   LayoutDashboard,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Provider, VisibleApps } from "@/types";
@@ -83,7 +85,9 @@ import {
   getSkillsPageHeaderActions,
   type SkillsPageSource,
 } from "@/components/skills/SkillsPage";
-import UnifiedSkillsPanel from "@/components/skills/UnifiedSkillsPanel";
+import UnifiedSkillsPanel, {
+  type SkillsCheckUpdatesState,
+} from "@/components/skills/UnifiedSkillsPanel";
 import { DeepLinkImportDialog } from "@/components/DeepLinkImportDialog";
 import { FirstRunNoticeDialog } from "@/components/FirstRunNoticeDialog";
 import { AgentsPanel } from "@/components/agents/AgentsPanel";
@@ -238,6 +242,16 @@ function App() {
   const windowLayoutMode = useWindowLayoutMode();
   const isCompactWindow = windowLayoutMode === "constrained";
   const isTopLevelProviderView = Boolean(currentView === "providers");
+  const [mcpManagementBusy, setMcpManagementBusy] = useState(false);
+  const [skillsManagementBusy, setSkillsManagementBusy] = useState(false);
+  const [skillsNavigationBusy, setSkillsNavigationBusy] = useState(false);
+  const [promptManagementBusy, setPromptManagementBusy] = useState(false);
+  const [promptNavigationBusy, setPromptNavigationBusy] = useState(false);
+  const [skillsCheckUpdatesState, setSkillsCheckUpdatesState] =
+    useState<SkillsCheckUpdatesState>({
+      isChecking: false,
+      hasSkills: false,
+    });
 
   useEffect(() => {
     localStorage.setItem(VIEW_STORAGE_KEY, currentView);
@@ -692,6 +706,10 @@ function App() {
   }, [activeApp, isWorkBuddyActive]);
 
   const currentViewRef = useRef(currentView);
+  const managementBusy =
+    mcpManagementBusy || skillsNavigationBusy || promptNavigationBusy;
+  const managementBusyRef = useRef(false);
+  managementBusyRef.current = managementBusy;
 
   useEffect(() => {
     currentViewRef.current = currentView;
@@ -700,6 +718,10 @@ function App() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "," && (event.metaKey || event.ctrlKey)) {
+        if (managementBusyRef.current) {
+          event.preventDefault();
+          return;
+        }
         event.preventDefault();
         setCurrentView("settings");
         return;
@@ -711,6 +733,7 @@ function App() {
 
       const view = currentViewRef.current;
       if (view === "providers") return;
+      if (managementBusyRef.current) return;
 
       if (isTextEditableTarget(event.target)) return;
 
@@ -1128,6 +1151,8 @@ function App() {
               open={true}
               onOpenChange={() => setCurrentView("providers")}
               appId={sharedFeatureApp}
+              onInteractionBlockedChange={setPromptManagementBusy}
+              onNavigationBlockedChange={setPromptNavigationBusy}
             />
           );
         case "hermesMemory":
@@ -1137,6 +1162,9 @@ function App() {
             <UnifiedSkillsPanel
               ref={unifiedSkillsPanelRef}
               onOpenDiscovery={handleOpenSkillsDiscovery}
+              onInteractionBlockedChange={setSkillsManagementBusy}
+              onNavigationBlockedChange={setSkillsNavigationBusy}
+              onCheckUpdatesStateChange={setSkillsCheckUpdatesState}
               currentApp={
                 sharedFeatureApp === "openclaw" ? "claude" : sharedFeatureApp
               }
@@ -1157,6 +1185,7 @@ function App() {
             <UnifiedMcpPanel
               ref={mcpPanelRef}
               onOpenChange={() => setCurrentView("providers")}
+              onInteractionBlockedChange={setMcpManagementBusy}
             />
           );
         case "agents":
@@ -1500,6 +1529,7 @@ function App() {
                   <Button
                     variant="outline"
                     size="icon"
+                    disabled={managementBusy}
                     onClick={() =>
                       setCurrentView(
                         currentView === "skillsDiscovery"
@@ -1507,7 +1537,10 @@ function App() {
                           : "providers",
                       )
                     }
-                    className="mr-2 rounded-lg"
+                    className={cn(
+                      "mr-2 rounded-lg",
+                      managementBusy && "disabled:opacity-100",
+                    )}
                   >
                     <ArrowLeft className="w-4 h-4" />
                   </Button>
@@ -1625,8 +1658,9 @@ function App() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      disabled={promptManagementBusy}
                       onClick={() => promptPanelRef.current?.openAdd()}
-                      className="hover:bg-black/5 dark:hover:bg-white/5"
+                      className="hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5"
                     >
                       <Plus className="w-4 h-4 mr-2" />
                       {t("prompts.add")}
@@ -1637,8 +1671,9 @@ function App() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        disabled={mcpManagementBusy}
                         onClick={() => mcpPanelRef.current?.openImport()}
-                        className="hover:bg-black/5 dark:hover:bg-white/5"
+                        className="hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5"
                       >
                         <Download className="w-4 h-4 mr-2" />
                         {t("mcp.importExisting")}
@@ -1646,8 +1681,9 @@ function App() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        disabled={mcpManagementBusy}
                         onClick={() => mcpPanelRef.current?.openAdd()}
-                        className="hover:bg-black/5 dark:hover:bg-white/5"
+                        className="hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5"
                       >
                         <Plus className="w-4 h-4 mr-2" />
                         {t("mcp.addMcp")}
@@ -1659,10 +1695,36 @@ function App() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        disabled={
+                          skillsManagementBusy ||
+                          skillsCheckUpdatesState.isChecking ||
+                          !skillsCheckUpdatesState.hasSkills
+                        }
+                        onClick={() =>
+                          unifiedSkillsPanelRef.current?.checkUpdates()
+                        }
+                        className={cn(
+                          "hover:bg-black/5 dark:hover:bg-white/5",
+                          skillsManagementBusy && "disabled:opacity-100",
+                        )}
+                      >
+                        {skillsCheckUpdatesState.isChecking ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-4 h-4 mr-2" />
+                        )}
+                        {skillsCheckUpdatesState.isChecking
+                          ? t("skills.checkingUpdates")
+                          : t("skills.checkUpdates")}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={skillsManagementBusy}
                         onClick={() =>
                           unifiedSkillsPanelRef.current?.openRestoreFromBackup()
                         }
-                        className="hover:bg-black/5 dark:hover:bg-white/5"
+                        className="hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5"
                       >
                         <History className="w-4 h-4 mr-2" />
                         {t("skills.restoreFromBackup.button")}
@@ -1670,10 +1732,11 @@ function App() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        disabled={skillsManagementBusy}
                         onClick={() =>
                           unifiedSkillsPanelRef.current?.openInstallFromZip()
                         }
-                        className="hover:bg-black/5 dark:hover:bg-white/5"
+                        className="hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5"
                       >
                         <FolderArchive className="w-4 h-4 mr-2" />
                         {t("skills.installFromZip.button")}
@@ -1681,10 +1744,11 @@ function App() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        disabled={skillsManagementBusy}
                         onClick={() =>
                           unifiedSkillsPanelRef.current?.openImport()
                         }
-                        className="relative hover:bg-black/5 dark:hover:bg-white/5"
+                        className="relative hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5"
                         title={
                           hasUnmanagedSkills
                             ? t("skills.unmanagedAvailable")
@@ -1703,8 +1767,11 @@ function App() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={handleOpenSkillsDiscovery}
-                        className="hover:bg-black/5 dark:hover:bg-white/5"
+                        disabled={skillsManagementBusy}
+                        onClick={() =>
+                          unifiedSkillsPanelRef.current?.openDiscovery()
+                        }
+                        className="hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5"
                       >
                         <Search className="w-4 h-4 mr-2" />
                         {t("skills.discover")}

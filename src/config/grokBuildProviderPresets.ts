@@ -191,6 +191,23 @@ export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
     iconColor: "#5B7FFF",
   },
   {
+    name: "Qiniu",
+    nameKey: "providerForm.presets.qiniu",
+    websiteUrl: "https://s.qiniu.com/nMvAvy",
+    apiKeyUrl: "https://s.qiniu.com/nMvAvy",
+    auth: grokAuth(),
+    config: grokPresetConfig(
+      "Qiniu",
+      "https://api.qnaigc.com/bypass/openai/v1",
+    ),
+    endpointCandidates: [
+      "https://api.qnaigc.com/bypass/openai/v1",
+      "https://api.modelink.ai/bypass/openai/v1",
+    ],
+    category: "aggregator",
+    icon: "qiniu",
+  },
+  {
     name: "SubRouter",
     websiteUrl: "https://subrouter.ai",
     apiKeyUrl: "https://subrouter.ai/register",
@@ -383,23 +400,6 @@ export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
     config: grokPresetConfig("DMXAPI", "https://www.dmxapi.cn/v1"),
     endpointCandidates: ["https://www.dmxapi.cn/v1"],
     category: "aggregator",
-  },
-  {
-    name: "Qiniu",
-    nameKey: "providerForm.presets.qiniu",
-    websiteUrl: "https://s.qiniu.com/nMvAvy",
-    apiKeyUrl: "https://s.qiniu.com/nMvAvy",
-    auth: grokAuth(),
-    config: grokPresetConfig(
-      "Qiniu",
-      "https://api.qnaigc.com/bypass/openai/v1",
-    ),
-    endpointCandidates: [
-      "https://api.qnaigc.com/bypass/openai/v1",
-      "https://api.modelink.ai/bypass/openai/v1",
-    ],
-    category: "aggregator",
-    icon: "qiniu",
   },
   {
     name: "SudoCode.chat",
