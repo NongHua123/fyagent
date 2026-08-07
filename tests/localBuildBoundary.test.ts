@@ -70,15 +70,22 @@ describe("local build boundary", () => {
       ),
     ).toBe(false);
 
-    const mise = read("mise.toml");
+    const taskSources = [
+      read("mise.toml"),
+      ...fs
+        .readdirSync(path.join(ROOT, ".mise/tasks"))
+        .filter((name) => name.endsWith(".toml"))
+        .map((name) => read(path.posix.join(".mise/tasks", name))),
+    ].join("\n");
     for (const task of RETIRED_TASKS) {
-      expect(mise).not.toContain(`[tasks."${task}"]`);
+      expect(taskSources).not.toContain(`[tasks."${task}"]`);
+      expect(taskSources).not.toContain(`["${task}"]`);
     }
     for (const retiredPath of RETIRED_PATHS) {
-      expect(mise).not.toContain(retiredPath);
+      expect(taskSources).not.toContain(retiredPath);
     }
-    expect(mise).not.toContain("llvm-tools");
-    expect(mise).not.toMatch(/targets\s*=/);
+    expect(taskSources).not.toContain("llvm-tools");
+    expect(taskSources).not.toMatch(/^targets\s*=/m);
 
     const lock = read("mise.lock");
     expect(lock).not.toContain("llvm-tools");
@@ -93,6 +100,17 @@ describe("local build boundary", () => {
     expect(packageJson.scripts.build).toBe("pnpm tauri build");
     expect(packageJson.scripts.dev).not.toContain("--target");
     expect(packageJson.scripts.build).not.toContain("--target");
+
+    const nativeTasks = read(".mise/tasks/core.toml");
+    for (const task of ["dev", "build", "build:binary", "build:debug"]) {
+      expect(nativeTasks).toContain(
+        task.includes(":") ? `["${task}"]` : `[${task}]`,
+      );
+    }
+    expect(nativeTasks).not.toContain("--target");
+    expect(read(".mise/tasks/rust.toml")).toContain(
+      'run = "node scripts/tasks/rust.mjs test"',
+    );
 
     for (const document of CURRENT_DOCUMENTS.slice(0, 4)) {
       const content = read(document);

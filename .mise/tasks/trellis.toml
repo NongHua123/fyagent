@@ -1,0 +1,44 @@
+["trellis:init-developer"]
+description = "Initialize the Trellis developer identity through the uv-managed Python environment"
+usage = '''
+arg "<name>" help="Developer identity"
+'''
+env = { FYAGENT_TASK_EFFECT = "trellis-state" }
+run = "node scripts/tasks/trellis.mjs init-developer"
+
+["trellis:get-developer"]
+description = "Read the current Trellis developer identity"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/trellis.mjs get-developer"
+
+["trellis:context"]
+description = "Read Trellis workflow, package, phase, or record context"
+usage = '''
+arg "[args]" var=#true double_dash="optional" help="Arguments forwarded to get_context.py"
+'''
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/trellis.mjs context"
+
+["trellis:task"]
+description = "Run a Trellis task.py subcommand through the uv-managed Python environment"
+usage = '''
+arg "<args>" var=#true double_dash="optional" help="task.py subcommand and arguments"
+'''
+env = { FYAGENT_TASK_EFFECT = "trellis-state" }
+run = "node scripts/tasks/trellis.mjs task"
+
+["trellis:session:add"]
+description = "Record a Trellis session journal entry through the uv-managed Python environment"
+usage = '''
+arg "<args>" var=#true double_dash="optional" help="Arguments forwarded to add_session.py"
+'''
+env = { FYAGENT_TASK_EFFECT = "trellis-state" }
+run = "node scripts/tasks/trellis.mjs session-add"
+
+["trellis:validate"]
+description = "Validate one Trellis task or every active Trellis task manifest"
+usage = '''
+arg "[task]" help="Optional task identifier"
+'''
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/trellis.mjs validate"

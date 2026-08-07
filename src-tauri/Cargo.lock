@@ -1777,7 +1777,7 @@ dependencies = [
 
 [[package]]
 name = "fyagent"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1854,7 +1854,7 @@ dependencies = [
 
 [[package]]
 name = "fyagent-installer-actions"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "windows-sys 0.61.2",
 ]

@@ -1,0 +1,17 @@
+["codex:hook:workflow-state"]
+description = "Inject Trellis workflow state into a Codex prompt without syncing Python"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+raw = true
+run = "node scripts/tasks/codex-hook-runner.mjs workflow-state"
+
+["codex:hook:subagent-context"]
+description = "Inject curated Trellis context into a native Codex subagent without syncing Python"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+raw = true
+run = "node scripts/tasks/codex-hook-runner.mjs subagent-context"
+
+["codex:hooks:check"]
+description = "Verify Codex hook protocol, integrity, offline execution, and side-effect boundaries"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+raw = true
+run = "node scripts/tasks/codex-hook-runner.mjs check"

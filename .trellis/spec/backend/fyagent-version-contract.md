@@ -1,4 +1,4 @@
-# FyAgent 0.2.1 Installer and Version Contract
+# FyAgent 0.3.0 Installer and Version Contract
 
 ## 1. Scope / Trigger
 
@@ -6,12 +6,12 @@ Read this contract before changing any FyAgent application version, release-tag
 rule, release asset name, download manifest, Windows MSI template, installer
 custom action, or native Windows MSI release gate.
 
-The current implementation baseline is application version 0.2.1. The raw
-reference package at docs/fyagent/dev/v1-0.2.1/ is the requirements input for
-this domain, not a generated implementation artifact. Preserve every byte in
-that package and verify its MANIFEST.sha256; record adaptations to this checkout
-here or in the relevant code-spec instead of mechanically rewriting the
-reference package.
+The current implementation baseline is application version 0.3.0. The package
+at docs/fyagent/dev/v1-0.3.0/ is this iteration's requirements, decisions, and
+evidence workspace. Preserve the original input intent and Git history, but
+revise the package auditably as implementation evidence becomes available.
+Child 6 regenerates MANIFEST.sha256 only after the final evidence update; do not
+claim the pre-closeout manifest proves bytes that are still being revised.
 
 This is a cross-layer contract:
 
@@ -69,20 +69,30 @@ workspace version.
 ```text
 pnpm run version:get
 pnpm run version:check [-- --tag vX.Y.Z]
-pnpm run version:set X.Y.Z [-- --dry-run]
-pnpm run version:bump patch|minor|major [-- --dry-run]
+pnpm run version:set X.Y.Z [-- --apply | --dry-run]
+pnpm run version:bump patch|minor|major [-- --apply | --dry-run]
 ```
 
 - get prints one stable SemVer X.Y.Z with no prefix, prerelease, or build
   metadata.
 - check validates the complete version contract. With --tag, it accepts only
   exactly vX.Y.Z for the canonical version.
-- set performs a structural preflight, then changes only
-  [workspace.package].version and the two permitted local Cargo.lock package
-  versions. It performs a post-write contract check and restores touched files
-  if a write or validation fails.
+- set performs a structural preflight and previews by default. Only --apply
+  changes [workspace.package].version and the two permitted local Cargo.lock
+  package versions. Each target uses a unique temporary file in the target
+  directory, followed by a complete write, file fsync, close, and rename-based
+  per-file atomic replacement. A controlled failure or failed post-write check
+  restores every already replaced target through the same atomic replacement
+  path and removes temporary files.
+- The two Cargo files are not one power-loss-atomic filesystem transaction. A
+  process or machine failure between the two per-file renames can leave version
+  drift; version:check detects it, and a later structurally valid --apply may
+  repair only the two local version values. Do not describe this boundary as a
+  durable multi-file transaction.
 - bump validates the existing contract first, derives patch, minor, or major,
-  then uses the same set path. dry-run writes nothing.
+  then uses the same preview/apply path. --dry-run is retained as an explicit
+  alias for the default preview; combining it with --apply is an error. get and
+  check reject --apply.
 - Versions must also fit MSI ProductVersion: major and minor are at most 255;
   patch is at most 65535.
 
@@ -147,7 +157,7 @@ FYAGENT_INSTALLDIR_CHECK_ID
   workspace package version blocks unless a separately approved dependency
   change requires more.
 - package.json scripts version:get, version:check, version:set, and
-  version:bump must remain exact Node 20-compatible entry points to
+  version:bump must remain exact Node 24.19.0 entry points to
   scripts/version.mjs.
 - Versioned product documents can contain historical snapshots. They are not
   application metadata and do not count as duplicate version sources.
@@ -239,19 +249,20 @@ FYAGENT_INSTALLDIR_CHECK_ID
 | Silent install or Execute policy denial                                                                         | The Execute action records the same rejection and Type 19 aborts before file installation.                                    |
 | Repair/upgrade has no trusted HKLM InstallDir anchor                                                            | Type 19 stops maintenance before validation/file writes.                                                                      |
 | Transaction is a true pure uninstall                                                                            | Skip directory admission only for the complete rendered INSTALLDIR component closure.                                         |
-| Raw v1-0.2.1 reference bytes change                                                                             | MANIFEST.sha256 verification fails; do not normalize the reference package to silence a style check.                          |
+| A v1-0.3.0 package edit is untracked, or the final regenerated manifest does not match                          | Traceability/closeout fails; preserve the edit history and regenerate MANIFEST.sha256 only with final evidence.               |
 
 ## 5. Good / Base / Bad Cases
 
-- Good: Cargo has workspace.package.version = 0.2.1, both local packages
-  inherit it, and version:check with tag v0.2.1 succeeds. The tag push freezes
-  app_version=0.2.1, release_tag=v0.2.1, and one source SHA before all
+- Good: Cargo has workspace.package.version = 0.3.0, both local packages
+  inherit it, and version:check with tag v0.3.0 succeeds. The tag push freezes
+  app_version=0.3.0, release_tag=v0.3.0, and one source SHA before all
   platform jobs use those exact outputs.
 - Good: The x64 MSI embeds the x64 helper and the ARM64 MSI embeds the ARM64
   helper. Both tables run the native policy in UI and Execute, and both fail
   maintenance safely when the HKLM anchor is absent.
-- Base: pnpm run version:set X.Y.Z -- --dry-run reports only Cargo.toml and
-  local Cargo.lock changes. A branch workflow_dispatch produces the explicitly
+- Base: pnpm run version:set X.Y.Z and the equivalent explicit --dry-run report
+  only Cargo.toml and local Cargo.lock changes without writing. A branch
+  workflow_dispatch produces the explicitly
   unsigned macOS artifact but never creates or updates a GitHub Release.
 - Bad: Add a version property back to package.json, use GITHUB_REF_NAME as the
   platform version, trim v from a tag in a platform job, or hand-edit a
@@ -264,9 +275,10 @@ FYAGENT_INSTALLDIR_CHECK_ID
 ## 6. Tests Required
 
 - Version tests must cover get/check/set/bump, stable SemVer and MSI bounds,
-  dry-run, preflight failure, rollback after a failed write/verification,
-  duplicate version fields, missing workspace member/script/local lock block,
-  and non-exact tags.
+  dry-run, preflight failure, per-file atomic replacement, cleanup after a
+  partially written temporary file, rollback after a later replacement or
+  post-write verification failure, duplicate version fields, missing workspace
+  member/script/local lock block, and non-exact tags.
 - tests/versionConsistency.test.ts must delegate to the canonical script.
   tests/downloadManifest.test.ts must assert frozen version/tag/source SHA,
   unprefixed asset names, URL shape, and invalid-input rejection.
@@ -290,7 +302,8 @@ FYAGENT_INSTALLDIR_CHECK_ID
   app_version="$(mise exec -- pnpm --silent run version:get)"
   mise exec -- pnpm run version:check -- --tag "v$app_version"
   mise exec -- pnpm vitest run tests/localBuildBoundary.test.ts tests/releaseWorkflow.test.ts
-  (cd docs/fyagent/dev/v1-0.2.1 && sha256sum -c MANIFEST.sha256)
+  # Child 6 closeout, after the final audited MANIFEST.sha256 regeneration:
+  (cd docs/fyagent/dev/v1-0.3.0 && sha256sum -c MANIFEST.sha256)
   ```
 
 - Native release evidence remains separate: Windows x64 and ARM64 must cover
@@ -316,8 +329,8 @@ identity, and makes MSI architecture/policy verification accidental.
 ### Correct
 
 ```bash
-pnpm run version:set 0.2.2
-pnpm run version:check -- --tag v0.2.2
+pnpm run version:set 0.3.0 -- --apply
+pnpm run version:check -- --tag v0.3.0
 ```
 
 Then let version-contract freeze its three outputs, pass APP_VERSION,

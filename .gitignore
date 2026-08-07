@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.venv/
 /dist-macos/
 __pycache__/
 *.py[cod]
@@ -9,6 +10,10 @@ __pycache__/
 *.log
 .env
 .env.local
+mise.local.toml
+mise.local.lock
+mise.*.local.toml
+mise.*.local.lock
 *.tsbuildinfo
 .npmrc
 CLAUDE.md

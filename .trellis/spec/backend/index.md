@@ -36,9 +36,10 @@ Before changing Rust/Tauri host code:
 | Guide                                                                          | Use it for                                                                                                                     |
 | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
 | [Codex Desktop Installer](./codex-desktop-installer.md)                        | The fixed-source installer service, IPC DTOs, job events, and platform boundaries.                                             |
-| [FyAgent 0.2.1 Version and Installer](./fyagent-version-contract.md)           | Cargo version single source, version commands, frozen release values, native MSI directory policy, and release gates.          |
+| [FyAgent 0.3.0 Version and Installer](./fyagent-version-contract.md)           | Cargo version single source, version commands, frozen release values, native MSI directory policy, and release gates.          |
 | [GitHub Release Workflow](./github-release-workflow.md)                        | Manually dispatched unsigned macOS artifacts and signed tag release boundaries.                                                |
 | [Development Environment](./development-environment.md)                        | mise-first local tool versions, compatibility declarations, platform boundaries, and WSL PATH isolation.                       |
+| [Repository Task Runner](./task-runner-contract.md)                            | Canonical mise task metadata, parameter transport, DAG side effects, maintenance safety, and generated documentation.          |
 | [Application Brand Assets](./application-brand-assets.md)                      | Cross-platform app icons, About reuse, macOS tray templates, and validation.                                                   |
 | [Application Identity](./application-identity.md)                              | Cross-layer FyAgent identity, clean-break behavior, and provenance exceptions.                                                 |
 | [CC Switch Upstream Synchronization](./upstream-sync.md)                       | Immutable upstream tag verification, two-parent merge ancestry, conflict precedence, and provenance boundaries.                |
@@ -52,9 +53,9 @@ Run the **Tests Required** section of every contract affected by the change.
 For ordinary Rust/Tauri changes, the baseline local checks are:
 
 ```bash
-mise exec -- cargo fmt --all --check --manifest-path src-tauri/Cargo.toml
-mise exec -- cargo clippy --workspace --all-targets --manifest-path src-tauri/Cargo.toml -- -D warnings
-mise exec -- cargo test --workspace --manifest-path src-tauri/Cargo.toml
+mise run rust:fmt:check
+mise run rust:clippy
+mise run rust:test
 ```
 
 Add the applicable renderer, version, Windows, macOS, or release

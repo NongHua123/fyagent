@@ -5,8 +5,11 @@ import { describe, expect, it } from "vitest";
 const repositoryRoot = path.resolve(__dirname, "..");
 const versionScript = path.join(repositoryRoot, "scripts", "version.mjs");
 
-function runVersionCommand(command: "get" | "check"): string {
-  return execFileSync(process.execPath, [versionScript, command], {
+function runVersionCommand(
+  command: "get" | "check",
+  ...args: string[]
+): string {
+  return execFileSync(process.execPath, [versionScript, command, ...args], {
     cwd: repositoryRoot,
     encoding: "utf8",
   });
@@ -21,6 +24,13 @@ describe("FyAgent application version contract", () => {
   it("prints the same canonical version consumed by the contract check", () => {
     const version = runVersionCommand("get").trim();
     const contract = runVersionCommand("check").trim();
+
+    expect(contract).toBe("FyAgent version contract OK: " + version);
+  });
+
+  it("accepts only the tag derived from the canonical version", () => {
+    const version = runVersionCommand("get").trim();
+    const contract = runVersionCommand("check", "--tag", "v" + version).trim();
 
     expect(contract).toBe("FyAgent version contract OK: " + version);
   });

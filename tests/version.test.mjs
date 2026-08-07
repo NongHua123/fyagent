@@ -165,13 +165,19 @@ function writeJsonFixture(root, relativePath, value) {
   writeFixture(root, relativePath, JSON.stringify(value, null, 2) + "\n");
 }
 
-test("set updates only the canonical Cargo value and local lock entries", (t) => {
+function versionTemporaryFiles(root) {
+  return fs
+    .readdirSync(path.join(root, "src-tauri"))
+    .filter((name) => name.includes(".fyagent-version-"));
+}
+
+test("set applies only the canonical Cargo value and local lock entries", (t) => {
   const root = createFixture();
   t.after(() => removeFixture(root));
 
   const packageBefore = readFixture(root, "package.json");
   const tauriBefore = readFixture(root, "src-tauri/tauri.conf.json");
-  const result = run(root, "set", "0.2.1");
+  const result = run(root, "set", "0.2.1", "--apply");
 
   assert.equal(result.status, 0, result.stderr);
   assert.match(
@@ -188,6 +194,7 @@ test("set updates only the canonical Cargo value and local lock entries", (t) =>
   );
   assert.equal(readFixture(root, "package.json"), packageBefore);
   assert.equal(readFixture(root, "src-tauri/tauri.conf.json"), tauriBefore);
+  assert.deepEqual(versionTemporaryFiles(root), []);
 });
 
 test("check enforces exact release tag equality", (t) => {
@@ -229,18 +236,51 @@ test("set rejects prerelease, v-prefixed, and MSI-incompatible values", (t) => {
   assert.match(run(root, "set", "256.0.0").stderr, /ProductVersion limits/);
 });
 
-test("dry-run reports both writable targets without modifying either", (t) => {
+test("set previews by default and --dry-run is the same non-writing mode", (t) => {
   const root = createFixture();
   t.after(() => removeFixture(root));
   const cargoBefore = readFixture(root, "src-tauri/Cargo.toml");
   const lockBefore = readFixture(root, "src-tauri/Cargo.lock");
 
-  const result = run(root, "set", "0.2.1", "--dry-run");
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /would update src-tauri\/Cargo\.toml/);
-  assert.match(result.stdout, /would update src-tauri\/Cargo\.lock/);
+  const preview = run(root, "set", "0.2.1");
+  const dryRun = run(root, "set", "0.2.1", "--dry-run");
+  assert.equal(preview.status, 0, preview.stderr);
+  assert.equal(dryRun.status, 0, dryRun.stderr);
+  assert.equal(preview.stdout, dryRun.stdout);
+  assert.match(preview.stdout, /would update src-tauri\/Cargo\.toml/);
+  assert.match(preview.stdout, /would update src-tauri\/Cargo\.lock/);
   assert.equal(readFixture(root, "src-tauri/Cargo.toml"), cargoBefore);
   assert.equal(readFixture(root, "src-tauri/Cargo.lock"), lockBefore);
+});
+
+test("write authorization flags reject conflicts and read commands reject apply", (t) => {
+  const root = createFixture();
+  t.after(() => removeFixture(root));
+
+  const conflict = run(root, "set", "0.2.1", "--apply", "--dry-run");
+  assert.equal(conflict.status, 1);
+  assert.match(conflict.stderr, /mutually exclusive/);
+
+  for (const command of ["get", "check"]) {
+    const result = run(root, command, "--apply");
+    assert.equal(result.status, 1, command + ": " + result.stderr);
+  }
+});
+
+test("apply is a no-op when all canonical values already match", (t) => {
+  const root = createFixture();
+  t.after(() => removeFixture(root));
+  const cargoPath = path.join(root, "src-tauri", "Cargo.toml");
+  const lockPath = path.join(root, "src-tauri", "Cargo.lock");
+  const cargoBefore = fs.statSync(cargoPath);
+  const lockBefore = fs.statSync(lockPath);
+
+  const result = run(root, "set", "0.2.0", "--apply");
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /version already matched; no files changed/);
+  assert.equal(fs.statSync(cargoPath).mtimeMs, cargoBefore.mtimeMs);
+  assert.equal(fs.statSync(lockPath).mtimeMs, lockBefore.mtimeMs);
 });
 
 test("bump implements stable SemVer arithmetic", (t) => {
@@ -253,7 +293,7 @@ test("bump implements stable SemVer arithmetic", (t) => {
   for (const [kind, expected] of cases) {
     const root = createFixture();
     t.after(() => removeFixture(root));
-    const result = run(root, "bump", kind);
+    const result = run(root, "bump", kind, "--apply");
     assert.equal(result.status, 0, kind + ": " + result.stderr);
     const getResult = run(root, "get");
     assert.equal(getResult.status, 0, getResult.stderr);
@@ -326,6 +366,41 @@ test("check requires workspace shape, package inheritance, and local package nam
   assert.match(result.stderr, /name must be "fyagent-installer-actions"/);
 });
 
+test("check rejects duplicate Cargo sections and local lock version fields", (t) => {
+  const duplicateSection = createFixture();
+  t.after(() => removeFixture(duplicateSection));
+  const cargoPath = "src-tauri/Cargo.toml";
+  writeFixture(
+    duplicateSection,
+    cargoPath,
+    readFixture(duplicateSection, cargoPath) +
+      '\n[workspace.package]\nversion = "0.2.0"\n',
+  );
+
+  let result = run(duplicateSection, "check");
+  assert.equal(result.status, 1);
+  assert.match(
+    result.stderr,
+    /must declare \[workspace\.package\] exactly once; found 2/,
+  );
+
+  const duplicateLockVersion = createFixture();
+  t.after(() => removeFixture(duplicateLockVersion));
+  const lockPath = "src-tauri/Cargo.lock";
+  writeFixture(
+    duplicateLockVersion,
+    lockPath,
+    readFixture(duplicateLockVersion, lockPath).replace(
+      'name = "fyagent"\nversion = "0.2.0"',
+      'name = "fyagent"\nversion = "0.2.0"\nversion = "0.2.0"',
+    ),
+  );
+
+  result = run(duplicateLockVersion, "check");
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /must contain exactly one version/);
+});
+
 test("check rejects missing or non-local workspace lock package entries", (t) => {
   const root = createFixture();
   t.after(() => removeFixture(root));
@@ -373,7 +448,7 @@ test("set repairs version drift in local lock entries without touching dependenc
   );
   writeFixture(root, lockPath, drifted);
 
-  const result = run(root, "set", "0.2.1");
+  const result = run(root, "set", "0.2.1", "--apply");
   assert.equal(result.status, 0, result.stderr);
   const lock = readFixture(root, lockPath);
   assert.match(lock, /name = "fyagent"\nversion = "0\.2\.1"/);
@@ -392,33 +467,44 @@ test("set refuses an invalid structural contract before writing", (t) => {
 
   const cargoBefore = readFixture(root, "src-tauri/Cargo.toml");
   const lockBefore = readFixture(root, "src-tauri/Cargo.lock");
-  const result = run(root, "set", "0.2.1");
+  const result = run(root, "set", "0.2.1", "--apply");
   assert.equal(result.status, 1);
   assert.match(result.stderr, /cannot update an invalid version contract/);
   assert.equal(readFixture(root, "src-tauri/Cargo.toml"), cargoBefore);
   assert.equal(readFixture(root, "src-tauri/Cargo.lock"), lockBefore);
 });
 
-test("set restores the canonical value when a later lock write fails", (t) => {
+test("set never truncates the target or leaves a partial temporary file", (t) => {
   const root = createFixture();
   t.after(() => removeFixture(root));
-  const hookPath = path.join(root, "fail-lock-write.cjs");
+  const hookPath = path.join(root, "fail-temporary-write.cjs");
   writeFixture(
     root,
-    "fail-lock-write.cjs",
+    "fail-temporary-write.cjs",
     [
       'const fs = require("node:fs");',
-      'const path = require("node:path");',
+      "const originalOpenSync = fs.openSync;",
       "const originalWriteFileSync = fs.writeFileSync;",
-      "fs.writeFileSync = function patchedWriteFileSync(filePath, data, ...args) {",
-      '  if (process.env.FYAGENT_VERSION_TEST_FAIL_LOCK_WRITE === "1" &&',
-      '      path.basename(String(filePath)) === "Cargo.lock" &&',
-      "      String(data).includes('version = \"0.2.1\"')) {",
-      '    const error = new Error("injected Cargo.lock write failure");',
+      "const originalWriteSync = fs.writeSync;",
+      "const temporaryDescriptors = new Set();",
+      "let injected = false;",
+      "fs.openSync = function patchedOpenSync(filePath, ...args) {",
+      "  const descriptor = originalOpenSync.call(this, filePath, ...args);",
+      '  if (String(filePath).includes(".Cargo.toml.fyagent-version-")) {',
+      "    temporaryDescriptors.add(descriptor);",
+      "  }",
+      "  return descriptor;",
+      "};",
+      "fs.writeFileSync = function patchedWriteFileSync(file, data, ...args) {",
+      '  if (!injected && process.env.FYAGENT_VERSION_TEST_FAIL_TEMP_WRITE === "1" &&',
+      "      temporaryDescriptors.has(file)) {",
+      "    injected = true;",
+      '    originalWriteSync.call(fs, file, Buffer.from("partial"));',
+      '    const error = new Error("injected temporary write failure");',
       '    error.code = "EIO";',
       "    throw error;",
       "  }",
-      "  return originalWriteFileSync.call(this, filePath, data, ...args);",
+      "  return originalWriteFileSync.call(this, file, data, ...args);",
       "};",
       "",
     ].join("\n"),
@@ -432,26 +518,135 @@ test("set restores the canonical value when a later lock write fails", (t) => {
   const result = runWithEnvironment(
     root,
     {
-      FYAGENT_VERSION_TEST_FAIL_LOCK_WRITE: "1",
+      FYAGENT_VERSION_TEST_FAIL_TEMP_WRITE: "1",
       NODE_OPTIONS: nodeOptions,
     },
     "set",
     "0.2.1",
+    "--apply",
+  );
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /injected temporary write failure/);
+  assert.equal(readFixture(root, "src-tauri/Cargo.toml"), cargoBefore);
+  assert.equal(readFixture(root, "src-tauri/Cargo.lock"), lockBefore);
+  assert.deepEqual(versionTemporaryFiles(root), []);
+});
+
+test("set restores the canonical value when a later lock replacement fails", (t) => {
+  const root = createFixture();
+  t.after(() => removeFixture(root));
+  const hookPath = path.join(root, "fail-lock-replacement.cjs");
+  writeFixture(
+    root,
+    "fail-lock-replacement.cjs",
+    [
+      'const fs = require("node:fs");',
+      'const path = require("node:path");',
+      "const originalRenameSync = fs.renameSync;",
+      "let injected = false;",
+      "fs.renameSync = function patchedRenameSync(source, destination) {",
+      '  if (!injected && process.env.FYAGENT_VERSION_TEST_FAIL_LOCK_RENAME === "1" &&',
+      '      path.basename(String(destination)) === "Cargo.lock" &&',
+      "      fs.readFileSync(source, 'utf8').includes('version = \"0.2.1\"')) {",
+      "    injected = true;",
+      '    const error = new Error("injected Cargo.lock replacement failure");',
+      '    error.code = "EIO";',
+      "    throw error;",
+      "  }",
+      "  return originalRenameSync.call(this, source, destination);",
+      "};",
+      "",
+    ].join("\n"),
+  );
+
+  const cargoBefore = readFixture(root, "src-tauri/Cargo.toml");
+  const lockBefore = readFixture(root, "src-tauri/Cargo.lock");
+  const nodeOptions = [process.env.NODE_OPTIONS ?? "", "--require=" + hookPath]
+    .filter(Boolean)
+    .join(" ");
+  const result = runWithEnvironment(
+    root,
+    {
+      FYAGENT_VERSION_TEST_FAIL_LOCK_RENAME: "1",
+      NODE_OPTIONS: nodeOptions,
+    },
+    "set",
+    "0.2.1",
+    "--apply",
   );
 
   assert.equal(result.status, 1);
   assert.match(result.stderr, /rollback succeeded/);
   assert.equal(readFixture(root, "src-tauri/Cargo.toml"), cargoBefore);
   assert.equal(readFixture(root, "src-tauri/Cargo.lock"), lockBefore);
+  assert.deepEqual(versionTemporaryFiles(root), []);
 });
 
-test("the contract parser accepts CRLF Cargo manifests and lockfiles", (t) => {
+test("set rolls both files back when post-write contract verification fails", (t) => {
+  const root = createFixture();
+  t.after(() => removeFixture(root));
+  const hookPath = path.join(root, "fail-post-write-check.cjs");
+  writeFixture(
+    root,
+    "fail-post-write-check.cjs",
+    [
+      'const fs = require("node:fs");',
+      'const path = require("node:path");',
+      "const originalRenameSync = fs.renameSync;",
+      "const originalWriteFileSync = fs.writeFileSync;",
+      "let injected = false;",
+      "fs.renameSync = function patchedRenameSync(source, destination) {",
+      '  if (!injected && process.env.FYAGENT_VERSION_TEST_FAIL_POST_CHECK === "1" &&',
+      '      path.basename(String(destination)) === "Cargo.lock" &&',
+      "      fs.readFileSync(source, 'utf8').includes('version = \"0.2.1\"')) {",
+      "    const result = originalRenameSync.call(this, source, destination);",
+      "    injected = true;",
+      '    const packagePath = path.join(path.dirname(String(destination)), "..", "package.json");',
+      '    const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8"));',
+      '    packageJson.version = "0.2.1";',
+      '    originalWriteFileSync.call(fs, packagePath, JSON.stringify(packageJson), "utf8");',
+      "    return result;",
+      "  }",
+      "  return originalRenameSync.call(this, source, destination);",
+      "};",
+      "",
+    ].join("\n"),
+  );
+
+  const cargoBefore = readFixture(root, "src-tauri/Cargo.toml");
+  const lockBefore = readFixture(root, "src-tauri/Cargo.lock");
+  const nodeOptions = [process.env.NODE_OPTIONS ?? "", "--require=" + hookPath]
+    .filter(Boolean)
+    .join(" ");
+  const result = runWithEnvironment(
+    root,
+    {
+      FYAGENT_VERSION_TEST_FAIL_POST_CHECK: "1",
+      NODE_OPTIONS: nodeOptions,
+    },
+    "set",
+    "0.2.1",
+    "--apply",
+  );
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /failed contract verification/);
+  assert.match(result.stderr, /rollback succeeded/);
+  assert.equal(readFixture(root, "src-tauri/Cargo.toml"), cargoBefore);
+  assert.equal(readFixture(root, "src-tauri/Cargo.lock"), lockBefore);
+  assert.deepEqual(versionTemporaryFiles(root), []);
+});
+
+test("apply preserves CRLF Cargo manifests and lockfiles", (t) => {
   const root = createFixture({ eol: "\r\n" });
   t.after(() => removeFixture(root));
 
   const checkResult = run(root, "check");
   assert.equal(checkResult.status, 0, checkResult.stderr);
-  const setResult = run(root, "set", "0.2.1");
+  const setResult = run(root, "set", "0.2.1", "--apply");
   assert.equal(setResult.status, 0, setResult.stderr);
   assert.equal(run(root, "check").status, 0);
+  assert.doesNotMatch(readFixture(root, "src-tauri/Cargo.toml"), /(?<!\r)\n/);
+  assert.doesNotMatch(readFixture(root, "src-tauri/Cargo.lock"), /(?<!\r)\n/);
 });

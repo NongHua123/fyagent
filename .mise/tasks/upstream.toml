@@ -1,0 +1,35 @@
+["upstream:check"]
+description = "Verify immutable upstream identity, push-disable, worktree, and merge-state safety"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/upstream.mjs check"
+
+["upstream:fetch"]
+description = "Fetch one validated upstream tag without changing remotes or other tags"
+usage = '''
+arg "<tag>" help="Exact upstream tag such as v3.19.2"
+'''
+env = { FYAGENT_TASK_EFFECT = "git-fetch" }
+run = "node scripts/tasks/upstream.mjs fetch"
+
+["upstream:audit"]
+description = "Report upstream tag object, peeled commit, merge base, commits, and diff summary"
+usage = '''
+arg "<tag>" help="Exact locally fetched upstream tag"
+'''
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/upstream.mjs audit"
+
+["upstream:merge:prepare"]
+description = "Preview or enter an uncommitted two-parent upstream merge state"
+usage = '''
+arg "<tag>" help="Exact locally fetched upstream tag"
+flag "--apply" help="Run git merge --no-ff --no-commit after safety checks"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/upstream.mjs merge-prepare"
+
+["upstream:merge:abort"]
+description = "Abort only an active Git merge after explicit confirmation"
+env = { FYAGENT_TASK_EFFECT = "git-state" }
+confirm = { message = "Abort the active Git merge and restore its pre-merge index/worktree state?", default = "no" }
+run = "node scripts/tasks/upstream.mjs merge-abort"

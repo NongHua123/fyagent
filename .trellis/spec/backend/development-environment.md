@@ -2,163 +2,181 @@
 
 ## 1. Scope / Trigger
 
-Read this contract before changing development tool versions, onboarding
-instructions, local build/test commands, WSL scripts, or any workflow that
-selects repository development tools. It applies to local development on
-Windows, macOS, Linux, and WSL. CI and release runners retain their explicit
-platform setup until a separately validated migration changes them.
+Read this contract before changing repository tool versions, `mise.toml`, any
+lockfile, Python/Trellis execution, local onboarding commands, WSL behavior, or
+the canonical task API. It applies to native development on Linux, macOS,
+Windows, and WSL. GitHub Actions deliberately installs tools with native setup
+actions instead of installing mise.
 
-## 2. Signatures
+## 2. Authoritative Version Sources
 
-The local development environment is declared by:
-
-```text
-mise.toml  human-reviewed tool versions, options, platforms, and tasks
-mise.lock  generated download URLs and checksums where supported
-```
-
-Developers install one global mise binary. The repository requires mise
-`>= 2026.8.0`; project scripts do not download or privately install mise.
-
-The active versions are:
+Each standard ecosystem file is the only human-maintained version source for
+its tool:
 
 ```text
-Node.js 22.12.0
-pnpm    10.12.3
-Python  3.12.8
-Rust    1.95.0 + rustfmt + clippy
+.node-version                    Node.js 24.19.0
+package.json#packageManager      pnpm@10.12.3
+rust-toolchain.toml              Rust 1.97.1, minimal + rustfmt + clippy
+.python-version                  Python 3.14.7 (consumed only by uv)
+mise.toml#[tools]                uv = "latest"
+mise.lock                        approved uv resolution and tool artifacts
 ```
 
-The local Rust definition deliberately provisions no non-host targets or
-`llvm-tools`. Native GitHub Actions jobs install the exact target required by
-their Windows, Linux, or macOS release build. Tauri CLI is a project dependency
-installed by pnpm rather than a separately managed global tool.
+`mise.toml` must not repeat Node, pnpm, Rust, or Python versions. It enables the
+Node, pnpm, and Rust idiomatic files, declares only `uv = "latest"`, includes
+the domain task TOMLs, and disables automatic installation when ordinary tasks
+start. The repository requires mise `>= 2026.8.0`; repository scripts never
+download or privately install mise.
 
-## 3. Contracts
+The audited repository aliases are:
 
-- The user-installed global mise is the required version manager and command
-  environment for local development. After reviewing the repository config,
-  run `mise trust` once and `mise install` whenever the declared tools change.
-- `task.run_auto_install = false` makes `mise run` enter repository task
-  scripts without first installing missing tools. Bootstrap remains an
-  explicit developer action; no task may silently change tools or trust state.
-- Copy-pasteable project commands must use `mise exec -- <command>` so they do
-  not depend on shell activation. An unprefixed `node`, `pnpm`, `python`,
-  `rustc`, or `cargo` command is valid only in a shell where mise is activated
-  or its shims are intentionally configured.
-- `mise.toml` is the primary local tool-version declaration. `.node-version`,
-  `package.json#packageManager`, and `rust-toolchain.toml` are compatibility
-  inputs for their ecosystems and must resolve to the same versions.
-- `mise.lock` records `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`,
-  `windows-x64`, and `windows-arm64`, recording URLs and checksums for each tool
-  where its mise backend publishes a lockable artifact. Do not hand-edit it.
-  After an intentional version change, regenerate all target platforms with:
+```toml
+[tool_alias]
+pnpm = "github:pnpm/pnpm"
+uv = "github:astral-sh/uv"
+```
 
-  ```bash
-  mise lock --platform linux-x64,linux-arm64,macos-x64,macos-arm64,windows-x64,windows-arm64
-  ```
+They are required because the default aqua resolution observed with mise
+2026.8.1 selected x64 Windows assets under a `windows-arm64` key even though
+both upstream releases publish native ARM64 assets. A lock regenerated from an
+empty file through the aliases selects `pnpm-win-arm64.exe` and
+`uv-aarch64-pc-windows-msvc.zip`; `lockfile-check.mjs` rejects a platform key
+whose URL names another architecture.
 
-- mise manages language runtimes and portable development tools. The host
-  package manager remains responsible for native compilers, linkers, headers,
-  WebView libraries, and other platform prerequisites required by Tauri.
-- A tool-version change must update all compatibility declarations, regenerate
-  `mise.lock`, update affected documentation, and pass the environment
-  consistency tests in the same change.
-- Commands executed in WSL must not resolve managed tools from `/mnt/<drive>`
-  or a Windows shim. Fix PATH or invoke `mise exec`; do not work around
-  UNC/cmd.exe failures with copied dependencies.
-- Project scripts must not download a second mise binary or override
-  `MISE_DATA_DIR`, `MISE_CACHE_DIR`, `MISE_STATE_DIR`, `MISE_CARGO_HOME`,
-  `MISE_RUSTUP_HOME`, `CARGO_HOME`, or `RUSTUP_HOME` to create a private mise
-  installation. Project scripts reuse the reviewed global mise installation
-  and must not change repository trust state.
-- GitHub Actions CI and release jobs are not local onboarding paths. Preserve
-  their explicit runner setup, caching, signing, and target provisioning until
-  a dedicated migration validates every runner architecture and release path.
-- Local mise currently provides Node 22.12.0, while CI/release version commands
-  must remain compatible with Node 20. Treat that as a compatibility contract,
-  not permission to align or upgrade either runtime as part of a FyAgent
-  application-version bump.
-- Run version commands through the local command boundary:
+`mise.lock` targets `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`,
+`windows-x64`, and `windows-arm64`. Node, pnpm, and uv have a generated HTTPS
+URL and SHA-256 checksum for every platform. The `core:rust` backend currently
+emits no platform artifact records: mise reports those six entries as skipped,
+so the lock stores exact Rust version/options and native jobs must additionally
+prove the selected rustup toolchain. Do not fabricate Rust checksums or present
+the platform list alone as artifact evidence.
 
-  ```bash
-  mise exec -- pnpm run version:get
-  mise exec -- pnpm run version:check
-  mise exec -- pnpm run version:set X.Y.Z -- --dry-run
-  mise exec -- pnpm run version:bump patch -- --dry-run
-  ```
+## 3. uv-owned Python Project
 
-  The commands' canonical metadata, allowed Cargo.lock writes, preflight, and
-  rollback behavior are defined by
-  [FyAgent 0.2.1 Version and Installer Contract](./fyagent-version-contract.md).
-  A version bump must not refresh Node, Rust, pnpm, WiX, or unrelated
-  dependencies.
+The repository is not a Python package. `pyproject.toml` defines an empty
+development environment with `requires-python = ">=3.14,<3.15"`, an empty
+`dev` dependency group, and:
 
-- Filesystem tests that require a write to fail must create a deterministic
-  invalid shape inside the isolated test root, such as using a regular file as
-  the requested target's parent. Do not infer failure from a fixed absolute
-  "nonexistent" path or permission bits: root, elevated Windows accounts, and
-  container mounts can make those paths writable. Shared fixture locks must
-  recover poisoning when every holder resets the fixture after acquisition, so
-  one assertion failure does not hide the root cause behind cascading lock
-  failures.
+```toml
+[tool.uv]
+package = false
+python-preference = "only-managed"
+python-downloads = "automatic"
+```
 
-## 4. Validation & Error Matrix
+uv exclusively owns Python selection, downloads, `.venv`, project dependencies,
+and `uv.lock`. There is no system-Python fallback and mise does not inject
+`.venv` into every task. Repeatable Python dependencies enter
+`pyproject.toml`/`uv.lock`; one-off dependencies use `python:with` or
+`python:tool`.
 
-| Condition                                                                     | Required result                                                                            |
-| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Global mise is missing or older than 2026.8.0                                 | Stop before installing project dependencies or running development commands                |
-| A managed command resolves outside mise in a non-activated shell              | Re-run through `mise exec` or correctly activate mise                                      |
-| A WSL managed command resolves under `/mnt`                                   | Stop and repair PATH; never invoke the Windows shim                                        |
-| `mise.toml` differs from `.node-version`, packageManager, or Rust toolchain   | Fail the consistency test                                                                  |
-| A configured platform is absent from all applicable `mise.lock` tool entries  | Regenerate the full target list; document any backend artifact gap before claiming support |
-| A native library is unavailable through mise                                  | Install and document the minimum host package; do not add another runtime manager          |
-| Existing global mise has different tools installed                            | Project `mise.toml` wins; no globally selected tool version is assumed                     |
-| A project script downloads mise or configures private mise/Cargo/rustup homes | Reject the change and reuse the user-installed global mise                                 |
-| A version bump changes toolchains or non-local Cargo.lock dependencies        | Reject it as scope drift; use the version command's narrow write set                       |
+Ordinary Python and Trellis tasks use `uv run --locked` and may prepare the
+locked environment. Codex hooks use
+`uv run --locked --no-sync --offline`: an unprepared environment returns an
+explicit, non-blocking fallback, while malformed hook code or protocol output
+fails closed.
 
-## 5. Good / Base / Bad Cases
+## 4. Setup and Execution Boundaries
 
-- Good: install global mise once, review and trust the repository config, run
-  `mise install`, then use `mise exec -- pnpm test:unit` and
-  `mise exec -- cargo test --manifest-path src-tauri/Cargo.toml`.
-- Base: configure mise shell activation for interactive work and run the same
-  unprefixed commands after verifying that `mise which` owns each managed tool.
-- Base: install a documented native compiler or header with the host package
-  manager while keeping language runtimes under mise.
-- Bad: install arbitrary Node/Rust versions independently, use a Windows pnpm
-  shim from WSL, provision non-host release targets locally, or bootstrap a
-  private mise copy for one workflow.
+After independently reviewing the repository config, a developer may trust it
+once outside any repository task. The standard flow is:
 
-## 6. Tests Required
+```bash
+mise trust
+mise run bootstrap
+mise run system:check
+mise run dev
+```
 
-- Parse `mise.toml`, `.node-version`, `package.json`, and
-  `rust-toolchain.toml`; assert equivalent exact versions.
-- Assert `mise.lock` contains applicable entries for every configured platform
-  and the expected target-free Rust tool/options entry.
-- Run `mise install`, then verify `node`, `pnpm`, `python`, `rustc`, `cargo`,
-  rustfmt, and clippy from inside `mise exec`; assert local Rust has no release
-  target or `llvm-tools` declaration.
-- Verify maintained onboarding and quality-gate documents identify mise as the
-  local command environment and use explicit `mise exec` examples.
-- In WSL packaging tests, compare `command -v` with global `mise which` and fail
-  if a managed command differs or resolves below `/mnt`.
-- Assert tasks, scripts, and hooks contain no `mise trust`, `mise untrust`,
-  private mise download, or private Cargo/rustup home mutation.
-- Run the version command tests through Node and assert release CI's Node 20
-  compatibility without treating the local Node 22 declaration as a required
-  CI upgrade.
-- Run filesystem failure-path integration tests under an elevated/root context
-  as well as an ordinary user context; both must fail at the intended path
-  shape boundary without creating an absolute host directory, and a deliberately
-  poisoned shared fixture lock must be recoverable by the next holder.
+No task runs `mise trust` or `mise untrust`. `bootstrap` is the only high-level
+environment preparation task. It may run locked mise installation, frozen pnpm
+installation, `uv sync --locked`, strict environment checks, and task
+validation. It must not install system packages, change trust, change Git
+remotes, refresh locks, build, tag, sign, upload, or publish.
 
-## 7. Wrong vs Correct
+`env:check` is strict and read-only. It verifies the standard sources, actual
+versions, executable ownership, WSL path isolation, generated lock structure,
+uv-managed Python, `.venv`, offline locked Python execution, Rust components
+and sysroot, mise task metadata, and Codex hook task presence. `--json` emits
+one machine-readable report and any failed check exits nonzero.
 
-Wrong: follow broad minimum-version prose, run whichever Node/Rust tool happens
-to be on PATH, or assume a passing command used the repository toolchain.
+`system:check` is strict and read-only. It probes current-host Tauri
+prerequisites and prints official package/tool hints; it never calls `sudo`, a
+system package manager, or an installer.
 
-Correct: install and trust global mise once, install the versions declared by
-the repository, run project commands through `mise exec` (or a verified
-activated shell), and treat missing native libraries as explicit host
-dependencies.
+All maintained local project operations use `mise run <task>`. Legacy
+direct-execution examples are temporary migration debt owned by
+`08-07-migrate-docs-and-trellis-specs` and are explicitly allowlisted by
+`docs-contract-check.mjs`; new occurrences fail the contract. CI and Release
+remain the explicit non-mise execution boundary.
+
+## 5. Lock and Update Governance
+
+Normal bootstrap/install consumes existing locks and never bumps them. An
+intentional full lock regeneration is:
+
+```bash
+mise lock --platform linux-x64,linux-arm64,macos-x64,macos-arm64,windows-x64,windows-arm64
+mise run tasks:validate
+```
+
+Generate the lock from an empty-file state when changing a backend alias, then
+run it a second time and require byte stability. Do not hand-edit a checksum,
+URL, backend, platform key, or generated marker.
+
+Toolchain and dependency update tasks are ecosystem-specific and preview by
+default. They require `--apply` before writing; no task commits, tags, pushes,
+changes remotes, opens a PR, or publishes. A failed toolchain update restores
+the standard version file and `mise.lock` captured before the attempt.
+
+## 6. Validation / Error Matrix
+
+| Condition                                                      | Required result                                                                         |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| mise is missing or older than 2026.8.0                         | Stop before dependency preparation                                                      |
+| Ordinary task is started with a missing tool                   | Fail and direct the developer to `bootstrap`; never auto-trust                          |
+| A standard version differs from the actual executable          | `env:check` fails                                                                       |
+| `mise.toml` repeats Node/pnpm/Rust/Python                      | Lock and environment contracts fail                                                     |
+| Python resolves outside uv management or `.venv` is absent     | Python/environment checks fail                                                          |
+| WSL resolves a managed executable below `/mnt/<drive>`         | Fail and repair PATH; never invoke the Windows shim                                     |
+| Lock platform URL names another architecture                   | Fail, even when checksum and URL are otherwise valid                                    |
+| Rust lock has no platform assets                               | Record exact version/options plus native rustup evidence; never invent an asset claim   |
+| A script changes mise trust or private mise/Cargo/rustup homes | Reject the change                                                                       |
+| A standard dev/build/test task accepts `--target`              | Reject before Cargo/Tauri execution                                                     |
+| Host native libraries are missing                              | `system:check` fails with a non-elevating installation hint                             |
+| A prerequisite command is absent or cannot be launched         | Record a failed check with its installation hint and finish the machine-readable report |
+
+## 7. Tests Required
+
+- Parse every standard source and assert Node 24.19.0, pnpm 10.12.3, Rust
+  1.97.1, and Python 3.14.7 without duplicate mise declarations.
+- Regenerate `mise.lock` from no prior lock, target all six platforms, and
+  require an identical second generation.
+- Structurally validate backend identity, URLs, SHA-256 checksums, platform
+  architecture, native Windows ARM64 pnpm/uv assets, Rust options, and absence
+  of mise-managed Python, release targets, and `llvm-tools`.
+- Run `uv lock --check --offline`, `uv sync --locked`, and locked/no-sync/offline
+  Python 3.14.7 through the created `.venv`.
+- Run `mise config ls --json`, `mise tasks ls --json`, `env:check --json`, and
+  current-host `system:check`; path comparisons must work with native Windows
+  separators, and an empty PATH probe must still return the complete JSON
+  failure report with a hint for every missing prerequisite.
+- Verify Node/pnpm/uv resolve to `mise which`, and prove Rust with
+  `mise which rustc`, the exact rustup active toolchain, components, and sysroot.
+- Exercise a parameter plus flag through real `mise run`, and prove filters
+  cannot smuggle `--target` into Rust tests.
+- Run `developmentEnvironment.test.ts`, `miseTaskContract.test.ts`,
+  `taskDocs.test.ts`, `systemCheck.test.ts`, and `localBuildBoundary.test.ts`.
+- Obtain native Windows ARM64, Linux ARM64, Windows x64, macOS, and Linux x64
+  runner evidence before claiming all supported platforms verified. Local
+  Linux success is not substitute evidence for another OS/architecture.
+
+## 8. Wrong vs Correct
+
+Wrong: duplicate versions in mise, accept an x64 URL under an ARM64 key, use a
+system Python fallback, run a repository trust task, silently install system
+packages, or call a current-host build with a foreign target.
+
+Correct: standard ecosystem files select exact versions, mise orchestrates and
+locks audited assets, uv owns Python, canonical tasks make side effects
+explicit, and native runners close every platform-specific evidence gate.

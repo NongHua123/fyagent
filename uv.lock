@@ -1,0 +1,13 @@
+version = 1
+revision = 3
+requires-python = "==3.14.*"
+
+[[package]]
+name = "fyagent-development-environment"
+version = "0.0.0"
+source = { virtual = "." }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = []

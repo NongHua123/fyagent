@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -X utf8 .codex/hooks/inject-workflow-state.py",
+            "command": "mise run --silent --skip-tools --deny-net codex:hook:workflow-state",
             "timeout": 15
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -X utf8 .codex/hooks/inject-subagent-context.py",
+            "command": "mise run --silent --skip-tools --deny-net codex:hook:subagent-context",
             "timeout": 15
           }
         ]

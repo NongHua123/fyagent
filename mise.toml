@@ -3,6 +3,7 @@ min_version = "2026.8.0"
 [settings]
 lockfile = true
 task.run_auto_install = false
+idiomatic_version_file_enable_tools = ["node", "pnpm", "rust"]
 lockfile_platforms = [
   "linux-x64",
   "linux-arm64",
@@ -13,7 +14,21 @@ lockfile_platforms = [
 ]
 
 [tools]
-node = "22.12.0"
-pnpm = "10.12.3"
-python = "3.12.8"
-rust = { version = "1.95.0", profile = "minimal", components = ["rustfmt", "clippy"] }
+uv = "latest"
+
+[tool_alias]
+pnpm = "github:pnpm/pnpm"
+uv = "github:astral-sh/uv"
+
+[task_config]
+includes = [
+  ".mise/tasks/core.toml",
+  ".mise/tasks/frontend.toml",
+  ".mise/tasks/rust.toml",
+  ".mise/tasks/python.toml",
+  ".mise/tasks/trellis.toml",
+  ".mise/tasks/upstream.toml",
+  ".mise/tasks/contracts.toml",
+  ".mise/tasks/release.toml",
+  ".mise/tasks/hooks.toml",
+]

@@ -1,0 +1,74 @@
+["python:sync"]
+description = "Synchronize the uv-managed Python environment from uv.lock"
+env = { FYAGENT_TASK_EFFECT = "dependency-environment" }
+run = "uv sync --locked"
+
+["python:lock"]
+description = "Preview or intentionally refresh uv.lock"
+usage = '''
+flag "--apply" help="Refresh uv.lock; otherwise only check lock freshness"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/python.mjs lock"
+
+["python:lock:check"]
+description = "Verify uv.lock is current without synchronizing or accessing the network"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "uv lock --check --offline"
+
+["python:check"]
+description = "Verify uv ownership, Python version, .venv, pyproject, and uv.lock contracts"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/toolchain-check.mjs --python-only"
+
+["python:add:dev"]
+description = "Preview or add repeatable development dependencies to pyproject.toml and uv.lock"
+usage = '''
+arg "<requirements>" var=#true help="PEP 508 development requirements"
+flag "--apply" help="Run uv add --dev; otherwise print the validated plan"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/python.mjs add-dev"
+
+["python:remove:dev"]
+description = "Preview or remove repeatable development dependencies"
+usage = '''
+arg "<packages>" var=#true help="Development dependency names"
+flag "--apply" help="Run uv remove --dev; otherwise print the validated plan"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/python.mjs remove-dev"
+
+["python:update"]
+description = "Preview or apply a targeted uv dependency lock upgrade"
+usage = '''
+arg "<packages>" var=#true help="Locked package names to upgrade"
+flag "--apply" help="Upgrade matching uv.lock entries; otherwise print the plan"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/python.mjs update"
+
+["python:with"]
+description = "Run a command with one isolated temporary Python requirement"
+usage = '''
+arg "<requirement>" help="Temporary PEP 508 requirement"
+arg "<command>" var=#true double_dash="optional" help="Command and arguments"
+'''
+env = { FYAGENT_TASK_EFFECT = "user-command" }
+run = "node scripts/tasks/python.mjs with"
+
+["python:tool"]
+description = "Run an isolated Python CLI through uv tool run"
+usage = '''
+arg "<command>" var=#true double_dash="optional" help="Tool name and arguments"
+'''
+env = { FYAGENT_TASK_EFFECT = "user-command" }
+run = "node scripts/tasks/python.mjs tool"
+
+["python:run"]
+description = "Run a command inside the locked uv project environment"
+usage = '''
+arg "<command>" var=#true double_dash="optional" help="Command and arguments"
+'''
+env = { FYAGENT_TASK_EFFECT = "user-command" }
+run = "node scripts/tasks/python.mjs run"

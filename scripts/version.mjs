@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -83,10 +84,22 @@ function escapeRegExp(value) {
 function findTomlSection(text, sectionName, fileLabel) {
   const { lines, eol } = splitLines(text);
   const wanted = "[" + sectionName + "]";
-  const start = lines.findIndex((line) => line.trim() === wanted);
-  if (start < 0) {
+  const starts = lines
+    .map((line, index) => (line.trim() === wanted ? index : -1))
+    .filter((index) => index >= 0);
+  if (starts.length === 0) {
     fail(fileLabel + " is missing " + wanted);
   }
+  if (starts.length !== 1) {
+    fail(
+      fileLabel +
+        " must declare " +
+        wanted +
+        " exactly once; found " +
+        starts.length,
+    );
+  }
+  const start = starts[0];
 
   let end = lines.length;
   for (let index = start + 1; index < lines.length; index += 1) {
@@ -332,12 +345,26 @@ function parseCargoLockPackages(lockText) {
   return starts.map((start, index) => {
     const end = starts[index + 1] ?? lockText.length;
     const block = lockText.slice(start, end);
-    const name = block.match(/^name\s*=\s*"([^"]+)"[ \t]*\r?$/m)?.[1] ?? null;
-    const version =
-      block.match(/^version\s*=\s*"([^"]+)"[ \t]*\r?$/m)?.[1] ?? null;
-    const source =
-      block.match(/^source\s*=\s*"([^"]+)"[ \t]*\r?$/m)?.[1] ?? null;
-    return { start, end, block, name, version, source };
+    const names = [...block.matchAll(/^name\s*=\s*"([^"]+)"[ \t]*\r?$/gm)].map(
+      (match) => match[1],
+    );
+    const versions = [
+      ...block.matchAll(/^version\s*=\s*"([^"]+)"[ \t]*\r?$/gm),
+    ].map((match) => match[1]);
+    const sources = [
+      ...block.matchAll(/^source\s*=\s*"([^"]+)"[ \t]*\r?$/gm),
+    ].map((match) => match[1]);
+    return {
+      start,
+      end,
+      block,
+      name: names[0] ?? null,
+      nameCount: names.length,
+      version: versions[0] ?? null,
+      versionCount: versions.length,
+      source: sources[0] ?? null,
+      sourceCount: sources.length,
+    };
   });
 }
 
@@ -372,14 +399,21 @@ function inspectLocalLockPackages(
     }
 
     const entry = entries[0];
-    if (entry.source !== null) {
+    if (entry.nameCount !== 1) {
+      errors.push(
+        "src-tauri/Cargo.lock package " +
+          packageName +
+          " must contain exactly one name",
+      );
+    }
+    if (entry.sourceCount !== 0) {
       errors.push(
         "src-tauri/Cargo.lock " +
           packageName +
           " must be a local workspace package without source",
       );
     }
-    if (entry.version === null) {
+    if (entry.versionCount !== 1) {
       errors.push(
         "src-tauri/Cargo.lock package " +
           packageName +
@@ -545,11 +579,54 @@ function snapshotChanges(changes) {
   return new Map(changes.map(({ filePath }) => [filePath, readText(filePath)]));
 }
 
+function replaceFileAtomically(filePath, content) {
+  const directory = path.dirname(filePath);
+  const temporaryPath = path.join(
+    directory,
+    "." +
+      path.basename(filePath) +
+      ".fyagent-version-" +
+      process.pid +
+      "-" +
+      randomUUID() +
+      ".tmp",
+  );
+  const mode = fs.statSync(filePath).mode;
+  let descriptor;
+
+  try {
+    descriptor = fs.openSync(temporaryPath, "wx", mode);
+    fs.writeFileSync(descriptor, content, "utf8");
+    fs.fsyncSync(descriptor);
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.renameSync(temporaryPath, filePath);
+  } finally {
+    if (descriptor !== undefined) {
+      try {
+        fs.closeSync(descriptor);
+      } catch {
+        // Preserve the replacement failure; the unique temporary path is still
+        // cleaned below and the original target has not been renamed.
+      }
+    }
+    try {
+      fs.unlinkSync(temporaryPath);
+    } catch (error) {
+      if (
+        !(error instanceof Error && "code" in error && error.code === "ENOENT")
+      ) {
+        throw error;
+      }
+    }
+  }
+}
+
 function restoreFiles(originals, filePaths) {
   const errors = [];
   for (const filePath of filePaths) {
     try {
-      fs.writeFileSync(filePath, originals.get(filePath), "utf8");
+      replaceFileAtomically(filePath, originals.get(filePath));
     } catch (error) {
       errors.push(
         relativePath(filePath) +
@@ -565,8 +642,8 @@ function writeWithRollback(changes, originals) {
   const touched = [];
   try {
     for (const { filePath, content } of changes) {
+      replaceFileAtomically(filePath, content);
       touched.push(filePath);
-      fs.writeFileSync(filePath, content, "utf8");
     }
   } catch (error) {
     const rollbackErrors = restoreFiles(originals, [...touched].reverse());
@@ -583,7 +660,7 @@ function writeWithRollback(changes, originals) {
   }
 }
 
-function setVersion(nextVersion, { dryRun = false } = {}) {
+function setVersion(nextVersion, { apply = false } = {}) {
   validateVersion(nextVersion);
 
   const cargoText = readText(paths.cargoManifest);
@@ -611,7 +688,7 @@ function setVersion(nextVersion, { dryRun = false } = {}) {
     changes.push({ filePath: paths.cargoLock, content: nextLockText });
   }
 
-  if (dryRun) {
+  if (!apply) {
     console.log(currentVersion + " -> " + nextVersion);
     for (const { filePath } of changes) {
       console.log("would update " + relativePath(filePath));
@@ -671,7 +748,12 @@ function bumpVersion(currentVersion, kind) {
 }
 
 function parseOptions(args) {
-  const options = { dryRun: false, tag: undefined, positional: [] };
+  const options = {
+    apply: false,
+    dryRun: false,
+    tag: undefined,
+    positional: [],
+  };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     // pnpm forwards its argument separator to lifecycle scripts. It does not
@@ -682,6 +764,8 @@ function parseOptions(args) {
     }
     if (arg === "--dry-run") {
       options.dryRun = true;
+    } else if (arg === "--apply") {
+      options.apply = true;
     } else if (arg === "--tag") {
       const value = args[index + 1];
       if (!value) {
@@ -697,6 +781,9 @@ function parseOptions(args) {
       options.positional.push(arg);
     }
   }
+  if (options.apply && options.dryRun) {
+    fail("--apply and --dry-run are mutually exclusive");
+  }
   return options;
 }
 
@@ -706,13 +793,14 @@ function printUsage() {
       "Usage:",
       "  node scripts/version.mjs get",
       "  node scripts/version.mjs check [--tag vX.Y.Z]",
-      "  node scripts/version.mjs set X.Y.Z [--dry-run]",
-      "  node scripts/version.mjs bump patch|minor|major [--dry-run]",
+      "  node scripts/version.mjs set X.Y.Z [--apply | --dry-run]",
+      "  node scripts/version.mjs bump patch|minor|major [--apply | --dry-run]",
       "",
       "The canonical FyAgent application version is src-tauri/Cargo.toml",
       "[workspace.package].version. The script updates only the canonical value",
       "and local Cargo.lock package entries; dependency, toolchain, schema,",
       "protocol, and historical documentation versions are outside its scope.",
+      "set and bump preview by default; pass --apply to write the two files.",
     ].join("\n"),
   );
 }
@@ -723,7 +811,12 @@ function main() {
 
   switch (command) {
     case "get": {
-      if (options.positional.length !== 0 || options.tag || options.dryRun) {
+      if (
+        options.positional.length !== 0 ||
+        options.tag ||
+        options.dryRun ||
+        options.apply
+      ) {
         fail("get does not accept arguments");
       }
       const version = readWorkspaceVersion(readText(paths.cargoManifest));
@@ -732,7 +825,7 @@ function main() {
       break;
     }
     case "check": {
-      if (options.positional.length !== 0 || options.dryRun) {
+      if (options.positional.length !== 0 || options.dryRun || options.apply) {
         fail("check accepts only --tag vX.Y.Z");
       }
       const version = checkContract({ tag: options.tag });
@@ -742,19 +835,21 @@ function main() {
     case "set": {
       if (options.positional.length !== 1 || options.tag) {
         fail(
-          "set requires exactly one X.Y.Z argument and optionally --dry-run",
+          "set requires exactly one X.Y.Z argument and optionally --apply or --dry-run",
         );
       }
-      setVersion(options.positional[0], { dryRun: options.dryRun });
+      setVersion(options.positional[0], { apply: options.apply });
       break;
     }
     case "bump": {
       if (options.positional.length !== 1 || options.tag) {
-        fail("bump requires patch, minor, or major and optionally --dry-run");
+        fail(
+          "bump requires patch, minor, or major and optionally --apply or --dry-run",
+        );
       }
       const current = checkContract();
       const next = bumpVersion(current, options.positional[0]);
-      setVersion(next, { dryRun: options.dryRun });
+      setVersion(next, { apply: options.apply });
       break;
     }
     case "help":
