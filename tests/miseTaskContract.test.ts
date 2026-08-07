@@ -157,6 +157,13 @@ describe("canonical mise task API", () => {
     );
   });
 
+  it("validates every active Trellis task when no task is specified", () => {
+    const result = mise("trellis:validate");
+    expect(result.status, output(result)).toBe(0);
+    expect(output(result)).toMatch(/Validated \d+ active Trellis task\(s\)/);
+    expect(output(result)).not.toContain("the following arguments are required");
+  }, 60_000);
+
   it("forwards the task CLI help flag through the canonical wrapper", () => {
     const result = mise("trellis:task", "--", "--help");
     expect(result.status, output(result)).toBe(0);
