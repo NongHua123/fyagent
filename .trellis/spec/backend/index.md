@@ -42,6 +42,7 @@ Before changing Rust/Tauri host code:
 | [Development Environment](./development-environment.md)                        | mise-first local tool versions, compatibility declarations, platform boundaries, and WSL PATH isolation.                       |
 | [Application Brand Assets](./application-brand-assets.md)                      | Cross-platform app icons, About reuse, macOS tray templates, and validation.                                                   |
 | [Application Identity](./application-identity.md)                              | Cross-layer FyAgent identity, clean-break behavior, and provenance exceptions.                                                 |
+| [CC Switch Upstream Synchronization](./upstream-sync.md)                       | Immutable upstream tag verification, two-parent merge ancestry, conflict precedence, and provenance boundaries.                |
 | [Deep-Link Import Security](./deeplink-import-security.md)                     | Untrusted `fyagent://` request validation, explicit provider activation approval, and credential-safe confirmation behavior.   |
 | [FyAgent v1-0.1 Configuration Domains](./fyagent-v1-0-1-config-domains.md)     | Codex capability/restart contracts and WorkBuddy's isolated secure configuration domain; versioning lives in its own contract. |
 | [Windows Formal Release and Runtime Activation](./windows-release-boundary.md) | Explicit elevated-release manifest selection, protected activation forwarding, and pre-CLI privilege gates.                    |

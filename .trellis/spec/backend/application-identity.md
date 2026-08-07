@@ -13,8 +13,8 @@ application identity. It does not migrate, alias, discover, import, or clean up
 the former application's local state. This boundary prevents an incomplete
 compatibility layer from making old and new state appear interchangeable.
 
-Repository provenance is a separate contract: the repository remains
-`NongHua123/cc-switch`. Real repository URLs, release links, historical facts,
+Repository provenance is a separate contract: the repository is
+`NongHua123/fyagent`. Real repository URLs, release links, historical facts,
 licenses, and upstream attribution must remain factual even when they contain
 the former name. Never invent a FyAgent domain, repository, package listing,
 or attribution to make text look uniform.
@@ -43,9 +43,9 @@ The active application identity is:
 The source repository and public source/release links remain:
 
 ```text
-repository: NongHua123/cc-switch
-source:     https://github.com/NongHua123/cc-switch
-releases:   https://github.com/NongHua123/cc-switch/releases
+repository: NongHua123/fyagent
+source:     https://github.com/NongHua123/fyagent
+releases:   https://github.com/NongHua123/fyagent/releases
 ```
 
 ## 3. Contracts
@@ -112,7 +112,7 @@ releases:   https://github.com/NongHua123/cc-switch/releases
 - Good: a fresh install registers `fyagent://`, stores state in `~/.fyagent`,
   launches the `fyagent` binary under `com.fyagent.desktop`, and produces
   FyAgent-named artifacts while source links still point to the real
-  `NongHua123/cc-switch` repository.
+  `NongHua123/fyagent` repository.
 - Base: the machine also contains the former application and its data. FyAgent
   leaves both untouched and presents independent fresh state.
 - Bad: startup checks the former data directory, accepts the former URL scheme,
@@ -164,5 +164,5 @@ let root = home.join(".fyagent");
 ```text
 # Product identity and repository provenance are deliberately independent.
 product:    FyAgent
-repository: https://github.com/NongHua123/cc-switch
+repository: https://github.com/NongHua123/fyagent
 ```

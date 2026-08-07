@@ -37,6 +37,11 @@
     "integrationStrategy": "pull-request-merge-commit",
     "releaseEvidenceState": "pending",
     "role": "child",
-    "sequence": "1"
+    "sequence": "1",
+    "upstreamTagObject": "f6882b69f0a30968dcc6dbb1153b6b12b50e6b1a",
+    "upstreamCommit": "43eaf07355af145aebfee301801779e824d4c221",
+    "mergeBase": "28529620f438b2ed25c812f6364825d846a4a9d6",
+    "mergeCommit": "f4462765e9b3a2efd1deb13aabf3ce349166a058",
+    "validationState": "verified"
   }
 }
