@@ -61,12 +61,12 @@ const TAURI_CONFIG = path.resolve(
   "src-tauri",
   "tauri.conf.json",
 );
-const WINDOWS_CROSS_BUILD = path.resolve(
+const WINDOWS_MSI_VERIFIER = path.resolve(
   __dirname,
   "..",
   "scripts",
-  "windows-cross",
-  "build-windows-msi.sh",
+  "release",
+  "verify-windows-msi.ps1",
 );
 const AUTO_LAUNCH = path.resolve(
   __dirname,
@@ -209,10 +209,16 @@ describe("FyAgent release workflow", () => {
     const msiStructureIndex = source.indexOf(
       "- name: Verify Windows MSI native directory validator structure",
     );
+    const payloadVerificationIndex = source.indexOf(
+      "- name: Verify Windows MSI payload and installer-actions binding",
+    );
+    const msiSignIndex = source.indexOf("- name: Sign and verify Windows MSI");
 
     expect(helperBuildIndex).toBeGreaterThan(-1);
     expect(bundleIndex).toBeGreaterThan(helperBuildIndex);
     expect(msiStructureIndex).toBeGreaterThan(bundleIndex);
+    expect(payloadVerificationIndex).toBeGreaterThan(msiStructureIndex);
+    expect(msiSignIndex).toBeGreaterThan(payloadVerificationIndex);
     expect(source).toContain("--package fyagent-installer-actions");
     expect(source).toContain("aarch64-pc-windows-msvc");
     expect(source).toContain("FYAGENT_INSTALLER_ACTIONS_DLL");
@@ -232,6 +238,38 @@ describe("FyAgent release workflow", () => {
     expect(source).toContain("MSI INSTALLDIR component guard drifted");
     expect(source).toContain("Get-MsiRecords");
     expect(source).toContain("MSI sequence order failed");
+  });
+
+  it("extracts the MSI Binary stream and binds it to the architecture-matched helper", () => {
+    const verifier = fs.readFileSync(WINDOWS_MSI_VERIFIER, "utf8");
+
+    expect(source).toContain("./scripts/release/verify-windows-msi.ps1");
+    expect(source).toContain(
+      "-InstallerActionsDll $env:FYAGENT_INSTALLER_ACTIONS_DLL",
+    );
+    expect(source).toContain("-Architecture $(if ($isArm64)");
+    expect(source).toContain("-AppVersion $env:APP_VERSION");
+    expect(verifier).toContain("OpenDatabase($resolvedMsi, 0)");
+    expect(verifier).toContain("Binary.FyAgentInstallerActions");
+    expect(verifier).toContain("$binaryRecord.DataSize(1)");
+    expect(verifier).toContain("$binaryRecord.ReadStream(1, $requested, 1)");
+    expect(verifier).toContain("[Text.Encoding]::GetEncoding(28591)");
+    expect(verifier).toContain("0x8664");
+    expect(verifier).toContain("0xAA64");
+    expect(verifier).toContain("Get-FileHash");
+    expect(verifier).toContain("ProductName must be FyAgent");
+    expect(verifier).toContain("ARPNOREPAIR must be 1 or yes");
+    expect(verifier).toContain(
+      "complete fyagent URL protocol registry contract",
+    );
+    expect(verifier).toContain("Path payload ending in fyagent.exe");
+    expect(verifier).toContain("URL:FyAgent protocol");
+    expect(verifier).toContain("$database.SummaryInformation(0)");
+    expect(verifier).toContain("0x2000");
+    expect(verifier).toContain(
+      "Linux or retired cross-build host-path residue",
+    );
+    expect(verifier).toContain("FinalReleaseComObject");
   });
 
   it("extracts and checks the embedded elevated manifest before signing and after MSI bundling", () => {
@@ -302,6 +340,7 @@ describe("FyAgent release workflow", () => {
 
 describe("FyAgent Windows elevation and installer boundary", () => {
   const source = fs.readFileSync(PER_MACHINE_WIX_TEMPLATE, "utf8");
+  const releaseSource = fs.readFileSync(RELEASE_WORKFLOW, "utf8");
   const installDirUi = fs.readFileSync(INSTALL_DIR_UI_FRAGMENT, "utf8");
   const cargoToml = fs.readFileSync(CARGO_TOML, "utf8");
   const installerActionsManifest = fs.readFileSync(
@@ -315,7 +354,7 @@ describe("FyAgent Windows elevation and installer boundary", () => {
   const autoLaunch = fs.readFileSync(AUTO_LAUNCH, "utf8");
   const libRs = fs.readFileSync(LIB_RS, "utf8");
   const ciWorkflow = fs.readFileSync(CI_WORKFLOW, "utf8");
-  const windowsCrossBuild = fs.readFileSync(WINDOWS_CROSS_BUILD, "utf8");
+  const windowsMsiVerifier = fs.readFileSync(WINDOWS_MSI_VERIFIER, "utf8");
 
   it("selects normal-privilege test and elevated release manifests", () => {
     expect(testManifest).toContain(
@@ -348,13 +387,7 @@ describe("FyAgent Windows elevation and installer boundary", () => {
       "FYAGENT_WINDOWS_MANIFEST must be explicitly set to release",
     );
     expect(ciWorkflow).toContain("FYAGENT_WINDOWS_MANIFEST: test");
-    expect(windowsCrossBuild).toContain(
-      [
-        "    export CI=true",
-        "    export FYAGENT_WINDOWS_MANIFEST=release",
-        "    export CARGO_NET_OFFLINE=true",
-      ].join("\n"),
-    );
+    expect(releaseSource).toContain("FYAGENT_WINDOWS_MANIFEST: release");
     expect(
       fs.existsSync(
         path.resolve(__dirname, "..", "src-tauri", "common-controls.manifest"),
@@ -397,9 +430,7 @@ describe("FyAgent Windows elevation and installer boundary", () => {
       JSON.parse(fs.readFileSync(TAURI_CONFIG, "utf8")).bundle.windows.wix
         .fragmentPaths,
     ).toEqual(["wix/fyagent-install-dir-ui.wxs"]);
-    expect(fs.readFileSync(WINDOWS_CROSS_BUILD, "utf8")).toContain(
-      "src-tauri/wix/per-machine-main.wxs",
-    );
+    expect(releaseSource).toContain("WindowsInstaller.Installer");
   });
 
   it("uses an architecture-matched native Type 1 validator in UI and execute paths", () => {
@@ -435,6 +466,7 @@ describe("FyAgent Windows elevation and installer boundary", () => {
     expect(source).toContain('Root="HKLM"');
     expect(source).toContain("WIX_UPGRADE_DETECTED");
     expect(source).toContain('Id="AbortUntrustedFyAgentMaintenance"');
+    expect(source).toContain('Value="URL:FyAgent protocol"');
     expect(source).toContain(
       "(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND NOT FYAGENT_PREVIOUS_INSTALLDIR AND NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2)",
     );
@@ -511,21 +543,21 @@ describe("FyAgent Windows elevation and installer boundary", () => {
     expect(installDirUi).toContain(
       "NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2)",
     );
-    expect(windowsCrossBuild).toContain("FYAGENT_INSTALLER_ACTIONS_DLL");
-    expect(windowsCrossBuild).toContain("TAURI_FYAGENT_INSTALLER_ACTIONS_DLL");
-    expect(windowsCrossBuild).toContain("fyagent_installer_actions.dll");
-    expect(windowsCrossBuild).toContain("MsiLockPermissionsEx");
-    expect(windowsCrossBuild).toContain("msi_install_dir_component_list");
-    expect(windowsCrossBuild).toContain("msi_custom_action_matches");
-    expect(windowsCrossBuild).toContain("ValidateFyAgentInstallDirExecute");
-    expect(windowsCrossBuild).toContain(
+    expect(releaseSource).toContain("FYAGENT_INSTALLER_ACTIONS_DLL");
+    expect(releaseSource).toContain("TAURI_FYAGENT_INSTALLER_ACTIONS_DLL");
+    expect(releaseSource).toContain("fyagent_installer_actions.dll");
+    expect(releaseSource).toContain("MsiLockPermissionsEx");
+    expect(releaseSource).toContain("Test-InstallDirDescendant");
+    expect(releaseSource).toContain("Assert-MsiCustomAction");
+    expect(releaseSource).toContain("ValidateFyAgentInstallDirExecute");
+    expect(windowsMsiVerifier).toContain(
       "must not install the custom-action DLL as application payload",
     );
-    expect(windowsCrossBuild).toContain(
-      'APP_CARGO_TARGET_ROOT="$CARGO_TARGET_ROOT/app"',
+    expect(releaseSource).toContain(
+      "$installerActionsTarget = Join-Path $PWD 'src-tauri/target/installer-actions'",
     );
-    expect(windowsCrossBuild).toContain(
-      'INSTALLER_ACTIONS_TARGET_ROOT="$CARGO_TARGET_ROOT/installer-actions"',
+    expect(releaseSource).toContain(
+      "$env:CARGO_TARGET_DIR = $installerActionsTarget",
     );
   });
 

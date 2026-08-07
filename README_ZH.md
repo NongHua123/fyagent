@@ -262,26 +262,18 @@ mise exec -- pnpm install --frozen-lockfile
 若当前 shell 已明确激活 mise，可以省略该前缀。WSL 中禁止从 `/mnt/<drive>` 或
 Windows shim 解析受管工具。
 
-### 跨平台构建命令
+### 宿主平台原生构建
 
-以下 `mise` 任务调用仓库维护的跨平台构建脚本，并保留原有的预检门禁。任务启动时
-刻意不让 mise 自动安装缺失工具：常规开发使用上文的 `mise install`；macOS 包装脚本会
-在宿主机与风险检查通过后才配置固定工具；Windows 工作流要求启动前已准备好工具链。
+本地开发和打包仅支持当前宿主操作系统。标准命令不接受其他操作系统或架构目标：
 
 ```bash
-mise run build:cross-windows:x64
-mise run build:cross-windows:arm64
-mise run build:cross-windows
-mise run build:cross-macos:universal
+mise exec -- pnpm dev
+mise exec -- pnpm build
 ```
 
-Windows 任务需要已准备好的 x86_64 Linux 交叉编译工具链。
-`build:cross-windows` 是原子化的双架构交付入口，产物位于
-`dist-bundle/windows/<version>/<arch>/`。macOS 任务仅支持 WSL2 Ubuntu
-22.04 或 24.04；首次运行会提示确认固定 SDK、许可证、GPL 工具和实验性 DMG
-风险。无交互环境需要显式执行
-`mise run build:cross-macos:universal --accept-risk`。DMG、校验和及清单会输出到
-`dist-bundle/macos/`。这两个目录都由 Git 忽略，仅用于本地候选产物，不是公开发布位置。
+FyAgent 安装包只由 GitHub Actions 在原生 Windows x64/ARM64、Linux x64/ARM64
+和 macOS runner 上构建，其中 macOS job 生成 Universal 构建。本地从 Linux/WSL
+打包 Windows 或 macOS 不属于受支持的发布路径。
 
 ### 开发命令
 

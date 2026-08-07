@@ -38,7 +38,6 @@ Before changing Rust/Tauri host code:
 | [Codex Desktop Installer](./codex-desktop-installer.md)                        | The fixed-source installer service, IPC DTOs, job events, and platform boundaries.                                             |
 | [FyAgent 0.2.1 Version and Installer](./fyagent-version-contract.md)           | Cargo version single source, version commands, frozen release values, native MSI directory policy, and release gates.          |
 | [GitHub Release Workflow](./github-release-workflow.md)                        | Manually dispatched unsigned macOS artifacts and signed tag release boundaries.                                                |
-| [WSL macOS Universal DMG](./wsl-macos-cross-build.md)                          | Pinned WSL2 cross-toolchain, Universal-only experimental DMG, and native validation boundaries.                                |
 | [Development Environment](./development-environment.md)                        | mise-first local tool versions, compatibility declarations, platform boundaries, and WSL PATH isolation.                       |
 | [Application Brand Assets](./application-brand-assets.md)                      | Cross-platform app icons, About reuse, macOS tray templates, and validation.                                                   |
 | [Application Identity](./application-identity.md)                              | Cross-layer FyAgent identity, clean-break behavior, and provenance exceptions.                                                 |
@@ -58,7 +57,7 @@ mise exec -- cargo clippy --workspace --all-targets --manifest-path src-tauri/Ca
 mise exec -- cargo test --workspace --manifest-path src-tauri/Cargo.toml
 ```
 
-Add the applicable renderer, version, cross-build, Windows, macOS, or release
+Add the applicable renderer, version, Windows, macOS, or release
 contract checks rather than reporting an unrelated local command as platform or
 release evidence. A code-spec update that changes a contract must name its
 enforcing test; successful local static checks never prove a signed, notarized,

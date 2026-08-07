@@ -13,7 +13,7 @@ platform setup until a separately validated migration changes them.
 The local development environment is declared by:
 
 ```text
-mise.toml  human-reviewed tool versions, options, targets, and tasks
+mise.toml  human-reviewed tool versions, options, platforms, and tasks
 mise.lock  generated download URLs and checksums where supported
 ```
 
@@ -26,14 +26,13 @@ The active versions are:
 Node.js 22.12.0
 pnpm    10.12.3
 Python  3.12.8
-Rust    1.95.0 + rustfmt + clippy + llvm-tools
+Rust    1.95.0 + rustfmt + clippy
 ```
 
-The Rust definition also provisions `aarch64-apple-darwin` and
-`x86_64-apple-darwin` for the WSL macOS cross-build workflow, plus
-`aarch64-pc-windows-msvc` and `x86_64-pc-windows-msvc` for the Linux-to-Windows
-MSI cross-build workflow. Tauri CLI is a project dependency installed by pnpm
-rather than a separately managed global tool.
+The local Rust definition deliberately provisions no non-host targets or
+`llvm-tools`. Native GitHub Actions jobs install the exact target required by
+their Windows, Linux, or macOS release build. Tauri CLI is a project dependency
+installed by pnpm rather than a separately managed global tool.
 
 ## 3. Contracts
 
@@ -41,10 +40,8 @@ rather than a separately managed global tool.
   environment for local development. After reviewing the repository config,
   run `mise trust` once and `mise install` whenever the declared tools change.
 - `task.run_auto_install = false` makes `mise run` enter repository task
-  scripts without first installing missing tools. This preserves each
-  cross-build script's own gate order: Windows requires its prepared toolchain,
-  while macOS validates its host and risk acknowledgement before it provisions
-  its pinned tools.
+  scripts without first installing missing tools. Bootstrap remains an
+  explicit developer action; no task may silently change tools or trust state.
 - Copy-pasteable project commands must use `mise exec -- <command>` so they do
   not depend on shell activation. An unprefixed `node`, `pnpm`, `python`,
   `rustc`, or `cargo` command is valid only in a shell where mise is activated
@@ -52,7 +49,7 @@ rather than a separately managed global tool.
 - `mise.toml` is the primary local tool-version declaration. `.node-version`,
   `package.json#packageManager`, and `rust-toolchain.toml` are compatibility
   inputs for their ecosystems and must resolve to the same versions.
-- `mise.lock` targets `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`,
+- `mise.lock` records `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`,
   `windows-x64`, and `windows-arm64`, recording URLs and checksums for each tool
   where its mise backend publishes a lockable artifact. Do not hand-edit it.
   After an intentional version change, regenerate all target platforms with:
@@ -73,9 +70,8 @@ rather than a separately managed global tool.
 - Project scripts must not download a second mise binary or override
   `MISE_DATA_DIR`, `MISE_CACHE_DIR`, `MISE_STATE_DIR`, `MISE_CARGO_HOME`,
   `MISE_RUSTUP_HOME`, `CARGO_HOME`, or `RUSTUP_HOME` to create a private mise
-  installation. The WSL macOS workflow resolves the global mise path before
-  PATH isolation, then invokes that absolute binary for `mise install` and
-  `mise exec`.
+  installation. Project scripts reuse the reviewed global mise installation
+  and must not change repository trust state.
 - GitHub Actions CI and release jobs are not local onboarding paths. Preserve
   their explicit runner setup, caching, signing, and target provisioning until
   a dedicated migration validates every runner architecture and release path.
@@ -131,22 +127,24 @@ rather than a separately managed global tool.
 - Base: install a documented native compiler or header with the host package
   manager while keeping language runtimes under mise.
 - Bad: install arbitrary Node/Rust versions independently, use a Windows pnpm
-  shim from WSL, or bootstrap a private mise copy for one workflow.
+  shim from WSL, provision non-host release targets locally, or bootstrap a
+  private mise copy for one workflow.
 
 ## 6. Tests Required
 
 - Parse `mise.toml`, `.node-version`, `package.json`, and
   `rust-toolchain.toml`; assert equivalent exact versions.
-- Assert `mise.lock` contains applicable entries for every configured target
-  platform and the expected Rust tool/options entry.
+- Assert `mise.lock` contains applicable entries for every configured platform
+  and the expected target-free Rust tool/options entry.
 - Run `mise install`, then verify `node`, `pnpm`, `python`, `rustc`, `cargo`,
-  rustfmt, clippy, llvm-tools, and required Rust targets from inside `mise exec`.
+  rustfmt, and clippy from inside `mise exec`; assert local Rust has no release
+  target or `llvm-tools` declaration.
 - Verify maintained onboarding and quality-gate documents identify mise as the
   local command environment and use explicit `mise exec` examples.
 - In WSL packaging tests, compare `command -v` with global `mise which` and fail
   if a managed command differs or resolves below `/mnt`.
-- Assert WSL macOS scripts contain no mise download URL/checksum and do not
-  export private mise, Cargo, or rustup home variables.
+- Assert tasks, scripts, and hooks contain no `mise trust`, `mise untrust`,
+  private mise download, or private Cargo/rustup home mutation.
 - Run the version command tests through Node and assert release CI's Node 20
   compatibility without treating the local Node 22 declaration as a required
   CI upgrade.

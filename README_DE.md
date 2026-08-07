@@ -264,33 +264,21 @@ auch ohne Shell-Aktivierung die festgelegten Werkzeuge auf. In einer bewusst
 aktivierten mise-Shell kann das Präfix entfallen. Unter WSL dürfen verwaltete
 Werkzeuge nicht aus `/mnt/<drive>` oder über Windows-Shims aufgelöst werden.
 
-### Plattformübergreifende Build-Befehle
+### Native Builds auf der Host-Plattform
 
-Diese `mise`-Tasks rufen die repositoryeigenen Cross-Build-Skripte auf und
-behalten deren bestehende Preflight-Prüfungen bei. Bei der Task-Ausführung
-werden fehlende mise-Tools bewusst nicht automatisch installiert: Die normale
-Entwicklung verwendet das oben genannte `mise install`; der macOS-Wrapper
-provisioniert seine festgelegten Tools erst nach Host- und Risiko-Prüfung, und
-der Windows-Workflow setzt eine vorbereitete Toolchain voraus.
+Lokale Entwicklung und Paketierung unterstützen nur das aktuelle Host-
+Betriebssystem. Die Standardbefehle akzeptieren kein anderes Betriebssystem
+oder Architekturziel:
 
 ```bash
-mise run build:cross-windows:x64
-mise run build:cross-windows:arm64
-mise run build:cross-windows
-mise run build:cross-macos:universal
+mise exec -- pnpm dev
+mise exec -- pnpm build
 ```
 
-Die Windows-Tasks benötigen die vorbereitete x86_64-Linux-Cross-Build-Toolchain.
-`build:cross-windows` ist der atomare Einstieg für die Auslieferung beider
-Architekturen; die Kandidaten liegen unter
-`dist-bundle/windows/<version>/<arch>/`. Der macOS-Task wird nur unter WSL2
-Ubuntu 22.04 oder 24.04 unterstützt und fragt bei der ersten Ausführung die
-Bestätigung für SDK, Lizenz, GPL-Tool und den experimentellen DMG ab. In einer
-nicht-interaktiven Umgebung muss diese Bestätigung explizit mit
-`mise run build:cross-macos:universal --accept-risk` erfolgen. DMG, Prüfsumme
-und Manifest werden unter `dist-bundle/macos/` abgelegt. Beide Verzeichnisse
-werden von Git ignoriert, enthalten nur lokale Kandidaten und sind keine
-öffentlichen Release-Orte.
+FyAgent-Installer werden ausschließlich durch GitHub Actions auf nativen
+Windows-x64-/ARM64-, Linux-x64-/ARM64- und macOS-Runnern gebaut. Der macOS-Job
+erzeugt den Universal Build. Lokale Linux-/WSL-zu-Windows- oder macOS-
+Paketierung ist kein unterstützter Release-Pfad.
 
 ### Entwicklungsbefehle
 

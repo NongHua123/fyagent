@@ -747,6 +747,40 @@ jobs:
             throw "MSI summary template does not match $expectedArchitecture: $template"
           }
 
+      - name: Verify Windows MSI payload and installer-actions binding
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $isArm64 = $env:WINDOWS_RELEASE_ARCH -eq 'arm64'
+          $targetRoot = if ($isArm64) {
+            'src-tauri/target/aarch64-pc-windows-msvc/release'
+          } else {
+            'src-tauri/target/release'
+          }
+          $msis = @(
+            Get-ChildItem `
+              -Path (Join-Path $targetRoot 'bundle/msi') `
+              -Recurse `
+              -Filter *.msi `
+              -File `
+              -ErrorAction Stop
+          )
+          if ($msis.Count -ne 1) {
+            throw "Expected exactly one Windows MSI to verify, found $($msis.Count)"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:FYAGENT_INSTALLER_ACTIONS_DLL)) {
+            throw 'FYAGENT_INSTALLER_ACTIONS_DLL was not exported by the helper build step'
+          }
+
+          & ./scripts/release/verify-windows-msi.ps1 `
+            -MsiPath $msis[0].FullName `
+            -InstallerActionsDll $env:FYAGENT_INSTALLER_ACTIONS_DLL `
+            -Architecture $(if ($isArm64) { 'arm64' } else { 'x64' }) `
+            -AppVersion $env:APP_VERSION
+
       - name: Sign and verify Windows MSI
         if: runner.os == 'Windows'
         shell: pwsh

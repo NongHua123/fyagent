@@ -256,32 +256,20 @@ tools even when shell activation is not configured. In an intentionally
 mise-activated shell, the prefix may be omitted. WSL must not resolve managed
 tools from `/mnt/<drive>` or Windows shims.
 
-### Cross-Platform Build Commands
+### Native Platform Builds
 
-These `mise` tasks call the repository-owned cross-build scripts and retain
-their existing preflight gates. Task execution intentionally does not
-auto-install missing mise tools: normal development uses the `mise install`
-step above, the macOS wrapper provisions its pinned tools only after its host
-and risk checks, and the Windows workflow requires its toolchain to be prepared
-before it starts.
+Local development and packaging support only the current host operating
+system. The standard commands do not accept another OS or architecture target:
 
 ```bash
-mise run build:cross-windows:x64
-mise run build:cross-windows:arm64
-mise run build:cross-windows
-mise run build:cross-macos:universal
+mise exec -- pnpm dev
+mise exec -- pnpm build
 ```
 
-The Windows tasks require the existing prepared x86_64 Linux cross-build
-toolchain. `build:cross-windows` is the atomic dual-architecture delivery
-entry point; its candidates are published under
-`dist-bundle/windows/<version>/<arch>/`. The macOS task is supported only
-from WSL2 Ubuntu 22.04 or 24.04 and prompts for its pinned SDK, license, GPL
-tool, and experimental-DMG acknowledgement on first use. In a non-interactive
-environment, run `mise run build:cross-macos:universal --accept-risk` to
-provide that acknowledgement explicitly. It publishes the DMG, checksum, and
-manifest under `dist-bundle/macos/`. Both directories are Git-ignored local
-candidate outputs, not public release locations.
+FyAgent installers are built only by GitHub Actions on native Windows x64 and
+ARM64, Linux x64 and ARM64, and macOS runners. The macOS job produces the
+Universal build. Local Linux/WSL-to-Windows or macOS packaging is not a
+supported release path.
 
 ### Development Commands
 

@@ -106,8 +106,8 @@
             <RemoveShortcuts>Installed AND NOT UPGRADINGPRODUCTCODE</RemoveShortcuts>
             <!-- CostFinalize resolves component action states. Only a true
                  uninstall, where every component rooted at INSTALLDIR is
-                 absent, skips admission. The Linux candidate and Windows
-                 release gates compare this complete guard list with the
+                  absent, skips admission. The native Windows release verifier
+                  compares this complete guard list with the
                  rendered MSI Component/Directory tables, so any template
                  addition under INSTALLDIR must update this predicate. -->
             <Custom Action="AbortUntrustedFyAgentMaintenance" Before="ValidateFyAgentInstallDirExecute">(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND NOT FYAGENT_PREVIOUS_INSTALLDIR AND NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2)</Custom>
@@ -240,7 +240,7 @@
                 {{#each deep_link_protocols as |protocol| ~}}
                 <RegistryKey Root="HKLM" Key="Software\Classes\\{{protocol}}">
                     <RegistryValue Type="string" Name="URL Protocol" Value=""/>
-                    <RegistryValue Type="string" Value="URL:{{bundle_id}} protocol"/>
+                    <RegistryValue Type="string" Value="URL:FyAgent protocol"/>
                     <RegistryKey Key="DefaultIcon">
                         <RegistryValue Type="string" Value="&quot;[!Path]&quot;,0" />
                     </RegistryKey>

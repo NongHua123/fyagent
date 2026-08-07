@@ -4,7 +4,7 @@
 
 Read this contract before changing any FyAgent application version, release-tag
 rule, release asset name, download manifest, Windows MSI template, installer
-custom action, or Windows MSI cross-build/release gate.
+custom action, or native Windows MSI release gate.
 
 The current implementation baseline is application version 0.2.1. The raw
 reference package at docs/fyagent/dev/v1-0.2.1/ is the requirements input for
@@ -179,8 +179,8 @@ FYAGENT_INSTALLDIR_CHECK_ID
   recognized assets. The generated manifest has schema, version, tag, sourceSha,
   pubDate, and per-asset platform/kind/arch/name/size/sha256/url fields.
 - Signing, timestamping, notarization, and publication remain release gates.
-  A local cross-built candidate or a passing static workflow test does not
-  establish any of them.
+  A local native build or a passing static workflow test does not establish any
+  of them.
 
 ### Native MSI install-directory contract
 
@@ -234,7 +234,7 @@ FYAGENT_INSTALLDIR_CHECK_ID
 | A tag matches v\* but is not exactly the version-contract release tag                                           | version-contract fails before the platform matrix.                                                                            |
 | A platform asset has a v-prefixed version or differs from APP_VERSION                                           | platform/release manifest validation fails; it is not published.                                                              |
 | Manifest tag, source SHA, or recognized asset set is invalid                                                    | generate-download-manifest.mjs fails and publication stops.                                                                   |
-| Helper DLL PE machine, MSI summary architecture, or embedded Binary bytes differ                                | cross-build/release structure verification fails before candidate publication or signing.                                     |
+| Helper DLL PE machine, MSI summary architecture, or embedded Binary bytes differ                                | Native release structure verification fails before candidate publication or signing.                                          |
 | UI policy denial                                                                                                | Set valid=0 and stable error properties, show the policy dialog, and leave the user at the directory step without Error 1720. |
 | Silent install or Execute policy denial                                                                         | The Execute action records the same rejection and Type 19 aborts before file installation.                                    |
 | Repair/upgrade has no trusted HKLM InstallDir anchor                                                            | Type 19 stops maintenance before validation/file writes.                                                                      |
@@ -289,9 +289,7 @@ FYAGENT_INSTALLDIR_CHECK_ID
   mise exec -- cargo test --workspace --manifest-path src-tauri/Cargo.toml
   app_version="$(mise exec -- pnpm --silent run version:get)"
   mise exec -- pnpm run version:check -- --tag "v$app_version"
-  bash -n scripts/windows-cross/build-windows-msi.sh
-  shellcheck -S warning scripts/windows-cross/build-windows-msi.sh
-  mise exec -- bash scripts/windows-cross/build-windows-msi.sh --arch all
+  mise exec -- pnpm vitest run tests/localBuildBoundary.test.ts tests/releaseWorkflow.test.ts
   (cd docs/fyagent/dev/v1-0.2.1 && sha256sum -c MANIFEST.sha256)
   ```
 

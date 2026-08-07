@@ -262,29 +262,20 @@ mise exec -- pnpm install --frozen-lockfile
 省略できます。WSL では `/mnt/<drive>` または Windows shim の管理対象ツールを
 使用しないでください。
 
-### クロスプラットフォームビルドコマンド
+### ホストネイティブビルド
 
-以下の `mise` タスクはリポジトリ管理のクロスビルドスクリプトを呼び出し、既存の
-事前チェックをそのまま維持します。タスク実行時は、不足した mise ツールを
-意図的に自動インストールしません。通常の開発では上記の `mise install` を使用し、
-macOS ラッパーはホストとリスクのチェック後にのみ固定ツールをプロビジョニングし、Windows
-ワークフローは事前に準備されたツールチェーンを必要とします。
+ローカル開発とパッケージングは、現在のホスト OS のみをサポートします。標準コマンドは
+別の OS やアーキテクチャのターゲットを受け付けません：
 
 ```bash
-mise run build:cross-windows:x64
-mise run build:cross-windows:arm64
-mise run build:cross-windows
-mise run build:cross-macos:universal
+mise exec -- pnpm dev
+mise exec -- pnpm build
 ```
 
-Windows タスクには、準備済みの x86_64 Linux クロスビルドツールチェーンが必要です。
-`build:cross-windows` は両アーキテクチャを原子的に配布するための入口で、候補成果物は
-`dist-bundle/windows/<version>/<arch>/` に出力されます。macOS タスクは WSL2 Ubuntu
-22.04 または 24.04 でのみサポートされ、初回実行時に固定 SDK、ライセンス、GPL ツール、
-実験的 DMG に関する確認を求めます。非対話環境では
-`mise run build:cross-macos:universal --accept-risk` を明示的に実行してください。
-DMG、チェックサム、マニフェストは `dist-bundle/macos/` に出力されます。両方の
-ディレクトリは Git で無視され、ローカル候補成果物専用であり、公開リリース用ではありません。
+FyAgent のインストーラーは、GitHub Actions のネイティブな Windows x64/ARM64、
+Linux x64/ARM64、macOS runner でのみ構築されます。macOS job は Universal build を
+生成します。Linux/WSL から Windows または macOS をローカルでパッケージする方法は、
+サポート対象のリリース経路ではありません。
 
 ### 開発コマンド
 

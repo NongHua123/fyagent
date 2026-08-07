@@ -9,9 +9,9 @@ mandatory because a manifest selection, MSI directory policy, elevation
 decision, named-pipe endpoint, and pre-Tauri startup path form one cross-layer
 privilege boundary.
 
-It also applies when `scripts/windows-cross/build-windows-msi.sh` produces a
-Linux-built Windows MSI candidate. Cross-compilation changes the host tools,
-not the formal-release manifest or runtime privilege boundary.
+It applies equally to the native Windows x64 and ARM64 GitHub Actions jobs.
+Each runner builds, bundles, and verifies its own architecture; no local
+non-Windows build path is part of the formal release boundary.
 
 It distinguishes a distributable formal release from development and test
 artifacts. A release-profile test harness must remain test-manifest based;
@@ -26,13 +26,12 @@ FYAGENT_INSTALLER_ACTIONS_DLL = target-specific installer-actions DLL
 TAURI_FYAGENT_INSTALLER_ACTIONS_DLL = WiX/Tauri-visible form of that DLL path
 ```
 
-```text
-mise run build:cross-windows:x64
-mise run build:cross-windows:arm64
-mise run build:cross-windows
-./scripts/windows-cross/build-windows-msi.sh [--arch all|x64|arm64]
-
-dist-bundle/windows/<version>/<arch>/...
+```powershell
+./scripts/release/verify-windows-msi.ps1 `
+  -MsiPath <candidate.msi> `
+  -InstallerActionsDll <validated-helper.dll> `
+  -Architecture <x64|arm64> `
+  -AppVersion <X.Y.Z>
 ```
 
 ```text
@@ -78,20 +77,18 @@ or an unbounded argv payload.
   `FYAGENT_WINDOWS_MANIFEST`. `release` is the only choice that enables
   `fyagent_windows_release`; `test` and `dev` use the ordinary-user manifest.
   An unset value in a release profile fails the build rather than guessing.
-- The Linux-to-Windows MSI entrypoint exports
-  `FYAGENT_WINDOWS_MANIFEST=release` inside each architecture's actual Tauri
-  build subshell. Preflight success alone is not sufficient, and the variable
-  must not be left unset or changed to `test` for a distributable candidate.
-- The default local candidate publication root is
-  `dist-bundle/windows/`. A successful invocation publishes the selected
-  version under `dist-bundle/windows/<version>/`; `--output-dir` is the
-  explicit local override. Only `build:cross-windows` builds and atomically
-  publishes both architectures as one version tree.
+- Each native Windows Release job exports `FYAGENT_WINDOWS_MANIFEST=release`
+  on both the actual application build and MSI bundle steps. An earlier check
+  is insufficient, and the variable must not be left unset or changed to
+  `test` for a distributable candidate.
+- Local development and bundle commands support only the current host. Formal
+  Windows x64 and ARM64 installers come only from their matching GitHub Actions
+  runners; no local cross-OS candidate publication directory exists.
 - Application version resolution and the MSI helper's workspace/package
   relationship are defined by
   [FyAgent 0.2.1 Version and Installer Contract](./fyagent-version-contract.md).
-  The cross-build script obtains the candidate version through version:get; it
-  must not recover it from a tag, package.json, or tauri.conf.json.
+  The Release version-contract job supplies the candidate version; platform
+  jobs must not recover it from package.json or tauri.conf.json.
 - installer-actions is an independent Windows cdylib using the locked
   windows-sys dependency family. Build it separately for each target before
   Tauri bundling, pass the same verified file through both helper environment
@@ -115,9 +112,9 @@ or an unbounded argv payload.
   uninstall whose exact INSTALLDIR component closure is validated from the
   rendered MSI tables. At this baseline the closure is
   CMP_UninstallShortcut, InstallDirectoryAcl, Path, and RegistryEntries.
-- `mise run` does not auto-install missing tools before this workflow starts;
-  the cross-build script's preflight requires the Windows toolchain to be
-  prepared explicitly rather than treating task execution as provisioning.
+- `mise run` does not auto-install missing tools or provision non-host Rust
+  targets. Repository tasks, scripts, and hooks never change mise trust state.
+  Release targets are installed explicitly by the matching native Actions job.
 - `fyagent-test.manifest` linker arguments use only
   `cargo:rustc-link-arg-tests`. Do not use the all-target
   `cargo:rustc-link-arg` form and do not try to cancel it for application
@@ -165,7 +162,7 @@ or an unbounded argv payload.
 | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `FYAGENT_WINDOWS_MANIFEST` is invalid                                                                                               | Build fails with the accepted values.                                                                                           |
 | Formal release uses release profile without an explicit manifest selection                                                          | Build fails; it never silently chooses elevated or test behavior.                                                               |
-| Linux-to-Windows MSI build omits `FYAGENT_WINDOWS_MANIFEST=release` from the architecture build subshell                            | `build.rs` fails before linking; do not weaken the fail-closed selection.                                                       |
+| A native Windows Release build or bundle omits `FYAGENT_WINDOWS_MANIFEST=release`                                                   | `build.rs` fails before linking; do not weaken the fail-closed selection.                                                       |
 | Test manifest uses all-target linker arguments or the application binary receives `/MANIFEST:NO`                                    | Reject the change; test linker arguments must be test-target-only and the formal binary must retain the `tauri-build` resource. |
 | Formal release process is non-elevated, not a local administrator, lacks a privilege status, or does not match the interactive user | `early_windows_startup_gate` returns `Blocked` with the appropriate safe code before Tauri construction.                        |
 | Development/test process is non-elevated                                                                                            | It may continue under the `asInvoker` test manifest.                                                                            |
@@ -175,21 +172,23 @@ or an unbounded argv payload.
 | Formal release reaches a user CLI command                                                                                           | Return the elevated-boundary message before probing or running the CLI.                                                         |
 | Target executable manifest inspection or signing validation fails in release workflow                                               | Fail the workflow before publishing the artifact.                                                                               |
 | Final signed MSI payload has not been extracted and inspected                                                                       | Keep final MSI-payload manifest acceptance pending; do not claim it was verified by the target-executable check.                |
-| Helper architecture, MSI Binary bytes, custom-action table, or INSTALLDIR component closure drifts                                  | Fail cross-build/release structure verification before candidate publication or signing.                                        |
+| Helper architecture, MSI Binary bytes, custom-action table, or INSTALLDIR component closure drifts                                  | Fail native release structure verification before candidate publication or signing.                                             |
 | UI validator rejects a path                                                                                                         | Show the recoverable policy dialog; do not raise Error 1720.                                                                    |
 | Execute validator rejects a path or repair/upgrade lacks its HKLM anchor                                                            | Type 19 aborts before InstallValidate/InstallFiles.                                                                             |
 
 ## 5. Good / Base / Bad Cases
 
-- Good: The signed release workflow and Linux-to-Windows MSI candidate build
-  explicitly use `FYAGENT_WINDOWS_MANIFEST=release`; test targets alone receive
-  the `asInvoker` linker input; startup proves the elevated process is the
-  interactive local administrator; a second invocation proves the server
-  endpoint before it forwards a bounded deep-link argv.
+- Good: Both native Windows Release jobs explicitly use
+  `FYAGENT_WINDOWS_MANIFEST=release`, build an architecture-matched helper,
+  extract its real MSI Binary stream, and prove PE/SHA-256 equality; test
+  targets alone receive the `asInvoker` linker input. Startup proves the
+  elevated process is the interactive local administrator, and a second
+  invocation proves the server endpoint before forwarding bounded deep-link
+  argv.
 - Base: A normal developer build or test harness uses
   `FYAGENT_WINDOWS_MANIFEST=test` (or `dev`) and retains ordinary-user startup
   semantics with fake/platform-neutral tests.
-- Bad: Leaving the cross-build manifest unset, sending the test manifest to all
+- Bad: Leaving the formal Release manifest unset, sending the test manifest to all
   linker targets, cancelling application manifests with `/MANIFEST:NO`, tying
   `requireAdministrator` to every release-profile binary, accepting a state
   file by path alone, exposing a fixed well-known pipe, sending argv before
@@ -205,27 +204,27 @@ or an unbounded argv payload.
 - `tests/desktopSecurityBoundary.test.ts` must assert the narrow renderer
   capability/CSP boundary, absence of portable Windows distribution claims,
   visual-baseline LFS policy, and pre-probe formal-release CLI guard.
-- `tests/releaseWorkflow.test.ts` currently asserts explicit release
+- `tests/releaseWorkflow.test.ts` asserts explicit release
   manifest selection and target-executable manifest/signing verification steps
   in the release workflow. Before treating this boundary as fully
   test-enforced, extend it to distinguish the post-bundle target-executable
   inspection from verification of the final MSI payload.
-  It must also bind the Linux cross-build export to the actual architecture
-  build environment, require `cargo:rustc-link-arg-tests` for the test manifest,
-  and reject all-target manifest arguments and `/MANIFEST:NO` cancellation.
+  It must also bind the native Release manifest selection to the actual build
+  and bundle environments, require `cargo:rustc-link-arg-tests` for the test
+  manifest, and reject all-target manifest arguments and `/MANIFEST:NO`
+  cancellation.
 - It must also assert the native helper build precedes bundling, architecture
   bridge variables and MSI Binary checks are present, UI/Execute Type 1 plus
   Type 19 paths are scheduled, protected HKLM maintenance restoration is
   present, the rendered INSTALLDIR closure is exact, and the retired
   script/WMI validator is absent.
-- The current Linux cross-build gate completes the requested MSI architecture
-  build plus Linux-side structure and checksum checks. It does not itself run
-  strict Windows-target Clippy with `FYAGENT_WINDOWS_MANIFEST=release` or link a
-  release-profile Windows library test harness with
-  `FYAGENT_WINDOWS_MANIFEST=test --no-run`. Those are required Windows
-  release validations to add to a named gate or run explicitly before release;
-  do not report them as passed merely because local workspace or cross-build
-  checks pass. None of these static checks replace native Windows validation.
+- The native x64 and ARM64 jobs must run the MSI verifier against the real
+  bundle and the helper built earlier in that same job. The verifier checks
+  ProductName, ProductVersion, ARPNOREPAIR, protocol/payload tables, summary
+  architecture, Linux/retired-host residue, and the extracted
+  `Binary.FyAgentInstallerActions` PE machine, length, and SHA-256. Static
+  workflow checks and non-Windows workspace checks do not replace that native
+  execution.
 - Run the declared safe checks through mise, including Rust format/clippy and
   the targeted/unit frontend suite. Native UAC, registry, MSI, PackageManager,
   signing, and live named-pipe validation are separate Windows release
@@ -233,10 +232,11 @@ or an unbounded argv payload.
   non-Windows host.
 - Native Windows acceptance additionally covers the default directory, a safe
   custom directory, an unsafe directory, /qn INSTALLDIR, repair, upgrade,
-  uninstall, verbose MSI logging, and ICE validation for x64 and ARM64. Linux
-  table checks are necessary structure evidence, not an equivalent lifecycle
-  result. It must also extract and inspect the embedded executable manifest
-  from the final signed MSI before treating that payload as release-validated.
+  uninstall, verbose MSI logging, and ICE validation for x64 and ARM64. The
+  native table and Binary-stream checks are necessary structure evidence, not
+  an equivalent lifecycle result. Acceptance must also extract and inspect the
+  embedded executable manifest from the final signed MSI before treating that
+  payload as release-validated.
 
 ## 7. Wrong vs Correct
 

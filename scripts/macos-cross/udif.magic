@@ -1,6 +1,0 @@
-# UDIF stores its identifying koly trailer exactly 512 bytes from EOF. Ubuntu's
-# default magic database otherwise reports libdmg's compressed first block as
-# generic zlib data and never reaches the authoritative trailer.
--512 string koly Apple Disk Image (UDIF)
-!:mime application/x-apple-diskimage
-!:ext dmg
