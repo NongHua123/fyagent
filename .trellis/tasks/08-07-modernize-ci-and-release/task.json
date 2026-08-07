@@ -3,7 +3,7 @@
   "name": "modernize-ci-and-release",
   "title": "Modernize CI and Release workflows",
   "description": "Make GitHub Actions the strict multi-platform merge and formal-release authority with pinned runners/actions, minimum permissions, reproducible toolchains, and a fail-closed ten-asset transaction.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "fyagent-modernization",
   "package": null,
@@ -35,7 +35,7 @@
     "releaseMode": "unsigned",
     "sourceProtection": "workflow-only",
     "integrationStrategy": "pull-request-merge-commit",
-    "releaseEvidenceState": "pending",
+    "releaseEvidenceState": "local-verified-remote-pending",
     "role": "child",
     "sequence": "4"
   }
