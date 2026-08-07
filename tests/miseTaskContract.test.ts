@@ -157,6 +157,13 @@ describe("canonical mise task API", () => {
     );
   });
 
+  it("forwards the task CLI help flag through the canonical wrapper", () => {
+    const result = mise("trellis:task", "--", "--help");
+    expect(result.status, output(result)).toBe(0);
+    expect(output(result)).toContain("usage: task.py");
+    expect(output(result)).toContain("{create,add-context,validate");
+  });
+
   it.each([
     ["split target", ["--", "--target", "aarch64-unknown-linux-gnu"]],
     ["equals target", ["--", "--target=aarch64-unknown-linux-gnu"]],
