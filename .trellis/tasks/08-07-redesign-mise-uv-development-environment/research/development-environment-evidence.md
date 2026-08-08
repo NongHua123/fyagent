@@ -131,7 +131,7 @@ flow waited synchronously for the whole run to complete and then read final
 results once; only the already-final failed PR run had failed-job logs
 retrieved.
 
-## Remaining evidence boundary
+## Closeout native evidence and remaining boundary
 
 The current host proves Linux x64 only, and no local non-host command was used.
 A lock entry is not native execution evidence. The integrated
@@ -139,10 +139,20 @@ A lock entry is not native execution evidence. The integrated
 Windows ARM64 Release job exercised Node/Rust compilation and MSI packaging;
 neither ran uv-managed Python or a Trellis wrapper.
 
-The closeout branch now extends both Windows x64 and ARM64 Required legs with a
-Node plus locked uv/Python setup, `uv sync --locked`, toolchain verification,
-and a Trellis task-list smoke before the MSI fixture. Its local static contracts
-pass, but no closeout PR run has occurred. The original acceptance criterion
-“uv-managed Python and Trellis work on Windows ARM64” therefore remains
-unchecked until that native Actions leg succeeds. This is the sole remaining
-Child 3 gate; the formal Release itself is verified and GO.
+PR #8 <https://github.com/NongHua123/fyagent/pull/8> extends both Windows x64
+and ARM64 Required legs with a Node plus locked uv/Python setup,
+`uv sync --locked`, toolchain verification, and a Trellis task-list smoke before
+the MSI fixture. Run `31264604075`, at head
+`623b6924e3b8682321b26aa69c15dc6f0b9f6f09`, failed closed after x64 job
+`93120609402` passed: ARM64 job `93120609411` failed because setup-uv's
+version-only request selected `win-amd64`, and Required job `93121912798`
+failed. Commit `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` switched to a full
+uv request with managed Python. Run `31265504901` then passed x64 job
+`93122857985`, ARM64 job `93122858012`, and Required job `93123992476`.
+
+The original acceptance criterion “uv-managed Python and Trellis work on
+Windows ARM64” is therefore complete. The formal Release is verified and GO,
+the final design-package manifest is rebuilt and verified, and this child
+remains active only until ordered archive. Archives, journal, final PR CI/merge,
+exact-main CI, and branch cleanup remain pending closeout stages; D114 remains
+N/A.

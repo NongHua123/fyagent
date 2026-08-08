@@ -16,14 +16,14 @@
   "base_branch": "main",
   "worktree_path": null,
   "commit": "bde1370bbaffd345c3d9875708615eaf96140591",
-  "pr_url": null,
+  "pr_url": "https://github.com/NongHua123/fyagent/pull/8",
   "subtasks": [],
   "children": [],
   "parent": "08-07-fyagent-upstream-toolchain-release-modernization",
   "relatedFiles": [],
-  "notes": "Automatic CI/Labeler and the fail-closed unsigned Release transaction are complete. PR #7 first failed closed in native MSI fixtures (31258303784), then passed after the deterministic cleanup correction (31258884239) and merged as bde1370bbaffd345c3d9875708615eaf96140591. Exact-main Required CI 31259389682, exact-main five-target preflight 31259905022, and formal tag run 31260931509 passed under D117 synchronous observation. Stable Release 367220197 contains exactly ten installers plus manifest, metadata, and attestation bundle; independent re-download and all 12 attestations passed. Release is GO. The closeout PR's expanded native Windows uv/Python/Trellis Required legs still must pass before task archival, and final closeout merge/branch cleanup are not claimed here.",
+  "notes": "Automatic CI/Labeler and the fail-closed unsigned Release transaction are complete. PR #7 first failed closed in native MSI fixtures (31258303784), then passed after the deterministic cleanup correction (31258884239) and merged as bde1370bbaffd345c3d9875708615eaf96140591. Exact-main Required CI 31259389682, exact-main five-target preflight 31259905022, and formal tag run 31260931509 passed under D117 synchronous observation. Stable Release 367220197 contains exactly ten installers plus manifest, metadata, and attestation bundle; independent re-download and all 12 attestations passed. Release is GO. PR #8 run 31264604075 at head 623b6924e3b8682321b26aa69c15dc6f0b9f6f09 failed closed: x64 job 93120609402 passed, ARM64 job 93120609411 failed because setup-uv's version-only request selected win-amd64, and Required job 93121912798 failed. Commit 4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd changed the workflow to a full uv request with managed Python. Run 31265504901 then passed x64 job 93122857985, ARM64 job 93122858012, and Required job 93123992476, completing the expanded native Windows gate. The final design-package manifest is rebuilt and verified. Ordered archives, journal, final PR CI/merge, exact-main CI, and branch cleanup remain pending.",
   "meta": {
-    "evidenceState": "formal-release-verified-closeout-native-gate-pending",
+    "evidenceState": "formal-release-and-closeout-native-evidence-complete-closeout-pending",
     "decisionRange": "D-001..D-118",
     "sourceBaseline": "55173d2b32c4acf182b6ec504d7ad326ade2bb9b",
     "productVersion": "0.3.0",
@@ -66,7 +66,14 @@
     "buildMetadataSha256": "7ae0631b77059d05a8866ec9602f8afc7f8493a092f6c32a3e4a161a3fc98079",
     "attestationBundleSha256": "4802f1e9b5eca3eb0cc2a03530b86057d79e9d5828a97615d8ea5e5430ce0576",
     "actionsObservationEvidence": "d117-synchronous-wait-and-single-final-read-verified-for-pr-main-preflight-formal",
-    "closeoutNativeGate": "windows-x64-arm64-locked-uv-python-trellis-smoke-added-static-passed-remote-pending",
-    "residualGovernanceRisk": "no-ruleset-branch-protection-or-release-environment-merge-group-na-by-d114"
+    "closeoutPrUrl": "https://github.com/NongHua123/fyagent/pull/8",
+    "closeoutInitialHead": "623b6924e3b8682321b26aa69c15dc6f0b9f6f09",
+    "closeoutInitialRunEvidence": "31264604075-failed-x64-93120609402-success-arm64-93120609411-failed-required-93121912798-failed-setup-uv-version-only-selected-win-amd64",
+    "closeoutNativeRemediation": "4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd-full-uv-request-managed-python",
+    "closeoutNativeEvidence": "31265504901-success-x64-93122857985-success-arm64-93122858012-success-required-93123992476-success",
+    "closeoutNativeGate": "complete",
+    "residualGovernanceRisk": "no-ruleset-branch-protection-or-release-environment-merge-group-na-by-d114",
+    "manifestEvidence": "final-design-package-134-files-sha256-verified-no-symlinks",
+    "archiveGate": "native-closeout-and-final-manifest-complete-ordered-archive-ready"
   }
 }

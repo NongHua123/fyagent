@@ -8,10 +8,10 @@ This record covers local documentation, long-lived specs, Trellis workflow and
 skills, the frozen overlay boundary, public release documentation, the five old
 superseded task archives, and the observed PR/main/Labeler/preflight/formal
 Release outcomes listed below. It now records the published digests,
-attestations, and independent download verification. It does not claim that the
-closeout PR's expanded native Windows uv/Python/Trellis gate, final design
-package `MANIFEST.sha256`, closeout CI/merge, remaining new-task archive,
-journal, or branch cleanup has completed.
+attestations, independent download verification, PR #8's expanded native
+Windows uv/Python/Trellis result, and the verified final design-package
+`MANIFEST.sha256`. It does not claim that the closeout archive/journal, final PR
+CI/merge, exact-main CI, or branch cleanup has completed.
 
 ## Work commits
 
@@ -97,6 +97,13 @@ archive.
   `367220197`) is non-draft, non-prerelease, latest, and contains exactly ten
   unsigned installers plus `download-manifest.json`, `build-metadata.json`, and
   `artifact-attestation.sigstore.json`.
+- PR #8 <https://github.com/NongHua123/fyagent/pull/8> run `31264604075`, at
+  head `623b6924e3b8682321b26aa69c15dc6f0b9f6f09`, failed closed after x64
+  job `93120609402` passed. ARM64 job `93120609411` failed because setup-uv's
+  version-only request selected `win-amd64`, so Required job `93121912798`
+  failed. Commit `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` switched to a full
+  uv request with managed Python. Run `31265504901` then passed x64 job
+  `93122857985`, ARM64 job `93122858012`, and Required job `93123992476`.
 
 Independent verification downloaded all 13 attachments and matched the exact
 allowlist, sizes, hashes, and URLs. It bound build metadata to source
@@ -121,14 +128,14 @@ result read. Failed-job logs were retrieved only after the first run's final
 failure. No background/asynchronous monitor, high-frequency polling, or
 progress-output loop was used.
 
-## Remaining closeout boundary
+## Closeout native evidence and remaining boundary
 
-Formal Release evidence is complete and the release gate is **GO**. The
-closeout branch adds a locked uv/Python plus Trellis task-list smoke to both
-native Windows Required legs. Local static contracts pass, but the closeout PR
-has not run, so the original Windows ARM64 native-smoke criterion remains open.
-The final design-package `MANIFEST.sha256` refresh, closeout CI/merge, remaining
-new-task archives, journal, and final branch cleanup also remain pending and are
-not claimed here. The accepted absence of rulesets, branch protection, and a
-Release environment remains the only governance residual; it does not waive
-any closeout gate.
+Formal Release evidence is complete and the release gate is **GO**. PR #8's
+corrected run `31265504901` passed the locked uv/Python plus Trellis task-list
+smoke on both native Windows Required legs and passed aggregate Required. The
+original Windows ARM64 native-smoke criterion is complete. The final
+design-package `MANIFEST.sha256` is rebuilt and verified. Ordered new-task
+archives, journal, final PR CI/merge, exact-main CI, and final branch cleanup
+remain pending and are not claimed here. The accepted absence of rulesets, branch protection, and
+a Release environment remains the only governance residual; D114 is N/A, not
+successful, and does not waive any closeout gate.

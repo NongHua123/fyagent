@@ -1,6 +1,6 @@
 # mise、uv 与开发任务环境设计
 
-> **交付状态**：Implemented and locally verified / 已实施并完成 Linux x64 本地验证；其他原生平台待远程验证
+> **交付状态**：Implemented and native-remote verified / 已实施并完成 Linux x64 本地验证及匹配 runner 的原生远程验证
 > **关联决策**：6–12、20–34、57–80、115–117
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
@@ -222,13 +222,18 @@ D116 收口时已停止为本地 Windows 诊断启动的 cargo/rustc 进程，�
 
 PR #7、exact-main Required CI `31259389682`、五 target preflight
 `31259905022`、annotated `v0.3.0` 和 formal Release run `31260931509`
-已经证明实现与原生打包合同，但它们没有执行 Windows ARM64 上的
-uv-managed Python/Trellis。closeout PR 已新增 Windows x64/ARM64 Required
-smoke：锁定 uv/Python、执行 `uv sync --locked`、校验 Python native platform，
-并通过 managed Python 调用 Trellis JSON task list。其静态合同已通过，真实
-Actions run 尚未发生；因此 Child 3 继续保持 `in_progress`，且不能用 lock
-平台条目、MSI fixture 或正式打包结果替代该原生证据。
+已经证明实现与原生打包合同。closeout [PR #8](https://github.com/NongHua123/fyagent/pull/8)
+补齐 Windows x64/ARM64 Required smoke：锁定 uv/Python、执行
+`uv sync --locked --managed-python`、校验 Python native platform，并通过
+managed Python 调用 Trellis JSON task list。首次 run `31264604075` 的 x64 job
+`93120609402` 成功，但 version-only `setup-uv` 在 Windows on ARM 选择
+`win-amd64`，ARM64 job `93120609411` 和 Required `93121912798` 因此失败。
+commit `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` 改用 uv 官方完整
+`implementation-version-os-arch-libc` request 并强制 managed Python；修复后的
+run `31265504901` 中 x64 `93122857985`、ARM64 `93122858012` 与 Required
+`93123992476` 均成功。因此 Child 3/D116 原生 smoke 已远程验证；task 仍因后续
+manifest/archive/journal 门禁保持 `in_progress`。
 
 ## 11. Actions 运行观察纪律
 
-D117 规定：仅在触发已单独获授权后，由发起主流程同步等待整次 Actions run 到 `completed`；不得启动后台/异步监控代理，也不得反复执行 run/job/check 状态查询。等待结束后只读取一次最终 run/job 结果；成功时不批量抓日志，失败时才获取一次失败 job 日志。PR #7、exact-main、preflight 与 formal Release 的观察均已按此执行；closeout PR 的新 native smoke 仍待同样的一次完整同步等待。该观察流程本身不扩张 rerun、cancel、tag 或 publish 权限。
+D117 规定：仅在触发已单独获授权后，由发起主流程同步等待整次 Actions run 到 `completed`；不得启动后台/异步监控代理，也不得反复执行 run/job/check 状态查询。等待结束后只读取一次最终 run/job 结果；成功时不批量抓日志，失败时才获取一次失败 job 日志。PR #7、exact-main、preflight、formal Release，以及 closeout PR 的首次失败 run `31264604075` 和修复成功 run `31265504901` 均按该纪律观察。该观察流程本身不扩张 rerun、cancel、tag 或 publish 权限。

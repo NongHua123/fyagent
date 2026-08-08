@@ -39,7 +39,12 @@ Make current human/agent documentation, Trellis specs/tasks, and generated task 
 Implementation was authorized on 2026-08-08. Current-contract migration, the
 five old superseded archives, and formal Release evidence are complete. The
 closeout branch records the real run, Release, digest, metadata, and attestation
-results. Its new native Windows uv/Python/Trellis gate and final design-package
-manifest refresh remain this child's archive prerequisites. The parent archive,
-journal, final closeout CI/merge, and branch cleanup are later ordered stages,
-not prerequisites for this child archive.
+results. PR #8 run `31264604075` failed closed when setup-uv's version-only
+request selected `win-amd64` for ARM64. Commit
+`4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` changed it to a full uv request
+with managed Python, and run `31265504901` passed x64 job `93122857985`, ARM64
+job `93122858012`, and Required job `93123992476`. Native evidence writeback is
+therefore complete. The final design-package manifest is rebuilt and verified;
+ordered archive remains this child's prerequisite. Parent archive, journal,
+final closeout CI/merge, exact-main CI, and branch cleanup are later ordered
+stages. D114 remains N/A, not successful.

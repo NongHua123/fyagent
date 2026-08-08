@@ -133,12 +133,16 @@ the development-hook behavior tests invoke the real Python harness.
   `tests/windowsInstallerQuery.integration.ps1`; it does not install
   pnpm, Rust, frontend, application, packaging, or signing dependencies. This
   is the required native evidence path for the Windows ARM64 environment
-  contract without making mise an Actions dependency. The implementation and
-  static contract are complete, but the Child 3 gate remains open until the
-  closeout PR's x64/ARM64 matrix succeeds. The query fixture creates a temporary
-  MSI from checked-in `.idt` source and exercises the production module on the
-  runner's actual Windows Installer Automation boundary. A job-level
-  `timeout-minutes: 15` bounds setup, Python/Trellis, COM, and fixture hangs
+  contract without making mise an Actions dependency. The implementation,
+  static contract, and Child 3 remote gate are complete: after a version-only
+  request selected `win-amd64` on Windows on ARM in closeout run `31264604075`,
+  commit `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` introduced the full request
+  above, and run `31265504901` passed the x64 (`93122857985`), ARM64
+  (`93122858012`), and aggregate Required (`93123992476`) jobs. The query fixture
+  creates a temporary MSI from checked-in `.idt` source and exercises the
+  production module on the runner's actual Windows Installer Automation
+  boundary. A job-level `timeout-minutes: 15` bounds setup, Python/Trellis, COM,
+  and fixture hangs
   instead of inheriting GitHub's six-hour default.
 - `windows-11-arm` is a native hosted runner. Scheduling or image
   unavailability is a retryable infrastructure failure, but it still fails

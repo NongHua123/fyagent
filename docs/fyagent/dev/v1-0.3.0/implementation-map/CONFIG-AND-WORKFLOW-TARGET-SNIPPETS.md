@@ -105,9 +105,12 @@ Node, Rust, pnpm, Python, and uv versions come from repository facts. The
 prepares locked uv/Python, proves the interpreter architecture, exercises the
 Trellis task protocol, and then runs the generated-MSI query fixture. The
 project owner accepted D113/D114 on 2026-08-08. PR/main/preflight/formal Release
-evidence for source `bde1370bbaffd345c3d9875708615eaf96140591` succeeded;
-the closeout PR still has to prove the newly added Windows Python/Trellis step
-before final task archival. D114 records a live `merge_group` run as N/A under
+evidence for source `bde1370bbaffd345c3d9875708615eaf96140591` succeeded.
+Closeout PR #8 also proved the Windows Python/Trellis step: after commit
+`4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` replaced the failing version-only
+request, run `31265504901` passed x64 job `93122857985`, ARM64 job
+`93122858012`, and Required job `93123992476`; final task archival remains a
+separate pending gate. D114 records a live `merge_group` run as N/A under
 the current personal-repository/no-protection governance, not as success. Its
 accepted substitute is the YAML trigger, fail-closed contract/static tests,
 and the real PR/main/manual runs.

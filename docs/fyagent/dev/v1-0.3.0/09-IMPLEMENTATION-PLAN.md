@@ -45,7 +45,7 @@ Phase 7  最终 CI、预演和 Release 验收
 10. `d0af898a` / `d8c26b70` — D118 原生查询/metadata 工程化与 empty cleanup accumulator 根因修复；
 11. [PR #7](https://github.com/NongHua123/fyagent/pull/7) 通过 [PR CI `31258884239`](https://github.com/NongHua123/fyagent/actions/runs/31258884239)，以 merge commit `bde1370bbaffd345c3d9875708615eaf96140591` 合入 `main`；
 12. [main CI `31259389682`](https://github.com/NongHua123/fyagent/actions/runs/31259389682) → [preflight `31259905022`](https://github.com/NongHua123/fyagent/actions/runs/31259905022) → annotated `v0.3.0` → [formal run `31260931509`](https://github.com/NongHua123/fyagent/actions/runs/31260931509) → [stable/latest Release](https://github.com/NongHua123/fyagent/releases/tag/v0.3.0) 已完成；
-13. closeout PR — 固化真实远程证据，通过 Windows x64/ARM64 locked uv/Python/Trellis + MSI fixture Required gate，刷新 manifest，再归档剩余新任务、记录 journal 并在合并后清理分支。
+13. [closeout PR #8](https://github.com/NongHua123/fyagent/pull/8) — 首次 run `31264604075` 暴露 Windows on ARM version-only Python 选择错误，commit `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` 修复后 run `31265504901` 已通过 Windows x64/ARM64 locked uv/Python/Trellis + MSI fixture Required gate；最终 manifest 已重建并复验，当前待归档剩余新任务、记录 journal，并在 final PR CI/merge 与 exact-main CI 后清理分支。
 
 实际可按审查大小拆分，但 merge commit 不得混入 2–9。
 
@@ -115,4 +115,4 @@ D117 不改变任何触发或发布授权。获得单次触发授权后，发起
 
 原计划中的“待合入 main 的同一 SHA preflight”与 GitHub merge commit 及标准 artifact attestation 的 `GITHUB_SHA` provenance 不兼容。已实施的安全顺序为：实现 PR merge → main 的 `CI / Required` 成功 → `source_sha == GITHUB_SHA == GITHUB_WORKFLOW_SHA` 的 manual preflight → tag → formal Release。The project owner accepted D113/D114 on 2026-08-08，其中 D113 明确接受该顺序；不得把 pre-merge candidate 标记为 trusted-main attestation provenance，也不得把决策接受写成 preflight 已运行。
 
-D113/D114 继续有效；D116/D117 只收紧执行与取证方式。PR/main/manual、preflight、formal Release、13 附件与独立复核已形成满足门禁的成功证据，v0.3.0 已 `Released / Verified`。当前 Pending 仅限 closeout：先提交新增 Windows native smoke 与证据并等待首轮 PR CI；成功后在同一 PR 写回 run、刷新 manifest、按 Child 3 → Child 4 → Child 6 → parent 归档并记录 journal；再等待最终 PR CI、merge、exact-main CI，最后清理非 main 分支。它们不改写已发布事实，但仍阻止提前宣称 parent closeout 已完成。
+D113/D114 继续有效；D116/D117 只收紧执行与取证方式。PR/main/manual、preflight、formal Release、13 附件与独立复核已形成满足门禁的成功证据，v0.3.0 已 `Released / Verified`。closeout Windows native smoke 也已由修复后 run `31265504901` 的 x64 job `93122857985`、ARM64 job `93122858012` 与 Required `93123992476` 远程验证，最终设计包 manifest 已按冻结字节重建并复验。当前 Pending 仅限按 Child 3 → Child 4 → Child 6 → parent 归档、journal、final PR CI/merge、exact-main CI 与非 main 分支清理。它们不改写已发布事实，但仍阻止提前宣称 parent closeout 已完成。

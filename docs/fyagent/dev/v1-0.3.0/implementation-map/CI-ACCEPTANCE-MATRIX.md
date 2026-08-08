@@ -1,6 +1,6 @@
 # GitHub Actions CI 验收矩阵
 
-> **交付状态**：Implemented and remotely verified for v0.3.0; closeout native smoke pending, merge_group live run N/A / v0.3.0 已实施并远程验证，closeout 原生 smoke 待验，merge_group live run 为 N/A
+> **交付状态**：Implemented and remotely verified for v0.3.0 and closeout native smoke; merge_group live run N/A / v0.3.0 与 closeout 原生 smoke 已远程验证，merge_group live run 为 N/A
 > **关联决策**：13–19、24、49、70、81–87、105–118
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
@@ -88,6 +88,6 @@ trigger -> initiating primary flow blocks on whole run -> completed
 - Tauri 安装包、Windows/macOS 无签名负向状态、Linux glibc 基线和精确 10 资产属于 Release preflight/formal workflow；签名与公证不是 v0.3.0 门禁；
 - 根据决策 49，不建立上游 merge 专用产品验收 workflow，但合并 PR 仍执行上述 Required CI 和冲突/许可审查。
 - 仓库不配置 ruleset/branch protection；`CI / Required` 是 workflow 输出，不是管理员强制的 merge policy。该残余风险已接受，不能宣称受保护。
-- v0.3.0 实现候选的 [PR CI `31258884239`](https://github.com/NongHua123/fyagent/actions/runs/31258884239) 与 [main CI `31259389682`](https://github.com/NongHua123/fyagent/actions/runs/31259389682) 已成功；当时 x64/ARM64 MSI query fixtures 已验证。closeout PR 对同一 matrix 新增的 locked uv/Python/Trellis smoke 仍必须由该 PR 的真实 Required CI 成功后才能归档。
+- v0.3.0 实现候选的 [PR CI `31258884239`](https://github.com/NongHua123/fyagent/actions/runs/31258884239) 与 [main CI `31259389682`](https://github.com/NongHua123/fyagent/actions/runs/31259389682) 已成功；当时 x64/ARM64 MSI query fixtures 已验证。[closeout PR #8](https://github.com/NongHua123/fyagent/pull/8) 首次 run `31264604075` 中 x64 job `93120609402` 成功，但 version-only `setup-uv` 在 Windows on ARM 选择 `win-amd64`，ARM64 `93120609411` 与 Required `93121912798` 正确失败关闭。commit `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` 改用官方完整 `implementation-version-os-arch-libc` request 并强制 managed Python；[run `31265504901`](https://github.com/NongHua123/fyagent/actions/runs/31265504901) 的 x64 `93122857985`、ARM64 `93122858012` 与 Required `93123992476` 均成功，closeout native smoke 已远程验证。
 - The project owner accepted D113/D114 on 2026-08-08。D114 确认 `merge_group` 因个人账户仓库且禁止保护规则而无法产生真实运行，在当前治理下记为 N/A 而非成功；接受的替代证据是 YAML trigger、失败关闭合同/静态测试及真实 PR/main/manual 运行，不以 manual dispatch 冒充 `merge_group`。
-- D116 清理后当前 Rust target 仅 `x86_64-unknown-linux-gnu`，`src-tauri/target/app` 与 `target/installer-actions` 已不存在；先前本地 Windows Light/MSI 仅是诊断。D117 已在 PR/main/preflight/formal 运行中以同步 whole-run 纪律实际使用，v0.3.0 Release 远程接受状态为 Verified；closeout PR native smoke 单独 Pending。
+- D116 清理后当前 Rust target 仅 `x86_64-unknown-linux-gnu`，`src-tauri/target/app` 与 `target/installer-actions` 已不存在；先前本地 Windows Light/MSI 仅是诊断。D117 已在 PR/main/preflight/formal 及 closeout 首败/修复运行中以同步 whole-run 纪律实际使用；v0.3.0 Release 与 closeout PR native smoke 的远程接受状态均为 Verified。

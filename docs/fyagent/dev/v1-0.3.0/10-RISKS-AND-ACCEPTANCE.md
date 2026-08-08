@@ -35,8 +35,8 @@
 ## 2. GO 条件
 
 - 真实 tag 完整 SHA、merge base 和远程边界已验证；
-- 当前判定范围内的所有 P0/NO-GO 风险有通过证据；整体 modernization
-  closeout 另受尚未完成的 Windows ARM64 uv/Python/Trellis 原生声明门禁约束；
+- 当前判定范围内的所有 P0/NO-GO 风险有通过证据；Windows ARM64
+  uv/Python/Trellis 原生声明已由 closeout PR 的匹配 runner 远程验证；
 - Required gate 可证明失败关闭；
 - 工具链在要求的平台实际解析到目标版本；
 - Native Fetch/MSW 与 deprecation 探针通过；
@@ -48,6 +48,7 @@
 ### v0.3.0 GO 处置
 
 - [PR #7](https://github.com/NongHua123/fyagent/pull/7)、[PR CI `31258884239`](https://github.com/NongHua123/fyagent/actions/runs/31258884239) 和 [same-SHA main CI `31259389682`](https://github.com/NongHua123/fyagent/actions/runs/31259389682) 通过，D118 Windows x64/ARM64 native MSI fixtures 已前移到 Required；
+- [PR #8](https://github.com/NongHua123/fyagent/pull/8) 首次 run `31264604075` 以 ARM64/Required 失败关闭暴露 version-only `setup-uv` 在 Windows on ARM 选择 `win-amd64` 的根因；commit `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` 使用完整 managed-Python request 修复后，[run `31265504901`](https://github.com/NongHua123/fyagent/actions/runs/31265504901) 的 x64 `93122857985`、ARM64 `93122858012` 与 Required `93123992476` 全部成功，D116 closeout smoke 已远程验证；
 - [exact-main preflight `31259905022`](https://github.com/NongHua123/fyagent/actions/runs/31259905022) 的五原生目标和 12-subject attestation 成功，publish 正确 skipped；
 - annotated `v0.3.0` 与 main source `bde1370bbaffd345c3d9875708615eaf96140591` 一致；[formal run `31260931509`](https://github.com/NongHua123/fyagent/actions/runs/31260931509) 发布 [stable/latest Release](https://github.com/NongHua123/fyagent/releases/tag/v0.3.0)，13 附件 exact allowlist、digest、metadata 和 attestation 已独立复核；
 - 因此 v0.3.0 的 P0/NO-GO 发布门禁已有通过证据，正式 Release 状态为 **GO / Released / Verified**。
@@ -86,4 +87,4 @@
 | Release 预演   | post-merge exact-main-SHA 的 unsigned 10 安装器、2 个 JSON evidence 与 mandatory attestation。      |
 | 正式 Release   | tag/main/CI/workflow 来源、精确 13 附件、摘要、attestation/manifest、Windows/macOS 无签名负向证据。 |
 
-The project owner accepted D113/D114 on 2026-08-08：D113 确认 post-merge exact-main/workflow-SHA preflight 顺序；D114 确认 live `merge_group` 在当前个人仓库/无保护治理下为 N/A 的验证例外，且不是成功运行。D116/D117 进一步固定宿主原生本地边界和同步 whole-run 取证纪律；D118 把反复暴露的低层原生接口前移到工程抽象、行为测试和 Required CI。本次真实 PR/main/manual、preflight、tag、Release、资产和 attestation 已完成，上述决策的发布门禁已被真实证据满足。无 ruleset/protection/environment 的已接受残余风险仍存在；closeout PR native smoke、evidence/manifest、merge 前 archive/journal、final CI/merge 与 main 后分支清理仍阻止 parent 收尾，但不把已发布 v0.3.0 回退为 NO-GO。
+The project owner accepted D113/D114 on 2026-08-08：D113 确认 post-merge exact-main/workflow-SHA preflight 顺序；D114 确认 live `merge_group` 在当前个人仓库/无保护治理下为 N/A 的验证例外，且不是成功运行。D116/D117 进一步固定宿主原生本地边界和同步 whole-run 取证纪律；D118 把反复暴露的低层原生接口前移到工程抽象、行为测试和 Required CI。本次真实 PR/main/manual、preflight、tag、Release、资产和 attestation 已完成，PR #8 的 D116 native smoke 也已远程验证，最终设计包 manifest 已按冻结字节重建并复验。无 ruleset/protection/environment 的已接受残余风险仍存在；merge 前 archive/journal、final PR CI/merge、exact-main CI 与 main 后分支清理仍阻止 parent 收尾，但不把已发布 v0.3.0 回退为 NO-GO。

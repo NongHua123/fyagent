@@ -1,21 +1,21 @@
 # FyAgent v0.3.0 实施验证报告
 
 > **状态**：Released and independently verified; repository closeout in progress / v0.3.0 已发布并独立复核，仓库收尾进行中
-> **更新日期**：2026-08-08
-> **证据边界**：只记录已发生的 Git、本地检查、Actions/Release 真实 URL 与独立下载复核；closeout PR 本身的 native smoke、合并、归档和分支清理未发生时仍明确标为 pending。
+> **更新日期**：2026-08-09
+> **证据边界**：只记录已发生的 Git、本地检查、Actions/Release 真实 URL 与独立下载复核；closeout PR native smoke 已远程验证，最终设计包 manifest 已重建并复验；归档、journal、final PR CI/merge、exact-main CI 和分支清理仍明确标为 pending。
 
 ## 1. 当前结论
 
-| 范围                                | 状态                                                          | 证据                                                                                                                           |
-| ----------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Child 1 上游 v3.19.2 merge          | Implemented + locally verified + archived                     | `f4462765`、`487995e0`、`20a4bc65`                                                                                             |
-| Child 2 本地 cross-build 退役       | Implemented + locally verified + archived                     | `e8954d97`、`b8e50c4a`、`5e0dc678`                                                                                             |
-| Child 3 mise/uv/task/version        | Implemented; release runners verified; final PR smoke pending | `3d534710`、`8bd54f6b`；Windows x64/ARM64 locked uv/Python/Trellis smoke 已加入 closeout Required matrix，待 PR CI             |
-| Child 4 CI/Labeler/unsigned Release | Implemented + remotely verified                               | PR/main/preflight/formal runs `31258884239` / `31259389682` / `31259905022` / `31260931509`；Release `367220197`               |
-| Child 5 DEP0040                     | Implemented + locally verified + archived                     | `4e407df4`、`e5c543f7`、`6be28965`                                                                                             |
-| Child 6 docs/Trellis                | Migration verified; closeout pending                          | `eb748f9c`、`58101230`、`1d3849e6`、`580c5efa`；本文档写集已记录 Release 证据，但 task 仍 `in_progress`                        |
-| v0.3.0 Release                      | **Released / Verified**                                       | [stable/latest Release](https://github.com/NongHua123/fyagent/releases/tag/v0.3.0)；exact 13 attachments；12 subjects verified |
-| Parent                              | Release complete; repository closeout pending                 | 仍需 initial PR CI → evidence/manifest → child/parent archive → journal → final PR CI/merge → main CI/branch cleanup           |
+| 范围                                | 状态                                                                         | 证据                                                                                                                           |
+| ----------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Child 1 上游 v3.19.2 merge          | Implemented + locally verified + archived                                    | `f4462765`、`487995e0`、`20a4bc65`                                                                                             |
+| Child 2 本地 cross-build 退役       | Implemented + locally verified + archived                                    | `e8954d97`、`b8e50c4a`、`5e0dc678`                                                                                             |
+| Child 3 mise/uv/task/version        | Implemented + native remotely verified                                       | `3d534710`、`8bd54f6b`、`4645668d`；closeout run `31265504901` 的 x64/ARM64/Required 全成功                                    |
+| Child 4 CI/Labeler/unsigned Release | Implemented + remotely verified                                              | PR/main/preflight/formal runs `31258884239` / `31259389682` / `31259905022` / `31260931509`；Release `367220197`               |
+| Child 5 DEP0040                     | Implemented + locally verified + archived                                    | `4e407df4`、`e5c543f7`、`6be28965`                                                                                             |
+| Child 6 docs/Trellis                | Migration verified; closeout pending                                         | `eb748f9c`、`58101230`、`1d3849e6`、`580c5efa`；本文档写集已记录 Release 证据，但 task 仍 `in_progress`                        |
+| v0.3.0 Release                      | **Released / Verified**                                                      | [stable/latest Release](https://github.com/NongHua123/fyagent/releases/tag/v0.3.0)；exact 13 attachments；12 subjects verified |
+| Parent                              | Release + native gate + final manifest complete; repository closeout pending | 仍需 child/parent archive → journal → final PR CI/merge → exact-main CI/branch cleanup                                         |
 
 ## 2. 已核实的实施事实
 
@@ -85,9 +85,9 @@
   `version:check --tag v0.3.0`、四个活动 task 的 Trellis validation、42-file
   whitespace diff、36 个变更 Markdown 的 21 个相对链接以及 D1–D118/
   traceability 连续唯一性；
-- **Pending Remote Verification**：本机没有独立 `actionlint` 可执行文件，
-  且本地不得替代 Windows 原生执行；workflow 语法、Windows 两腿与 aggregate
-  gate 必须由 closeout PR 的完整 Actions run 验收。
+- **REMOTE VERIFIED**：本机没有独立 `actionlint` 可执行文件，本地也未替代
+  Windows 原生执行；closeout PR 的完整 run `31265504901` 已由 GitHub 接受并使
+  Windows x64/ARM64 两腿与 aggregate Required 全部成功。
 
 ## 4. 远程 CI 与发布证据
 
@@ -102,7 +102,12 @@
 | formal Release                | Success  | [run `31260931509`](https://github.com/NongHua123/fyagent/actions/runs/31260931509)；eligibility、五 native targets、verify、attest、publish 全成功                   |
 | public Release                | Released | [v0.3.0](https://github.com/NongHua123/fyagent/releases/tag/v0.3.0)；Release ID `367220197`；`draft=false`、`prerelease=false`、latest；发布于 `2026-08-08T14:24:16Z` |
 
-上述已授权 run 均由发起主流程同步等待 whole run 到 `completed`，再一次读取最终 run/job 结果；没有后台/异步 monitor 或频繁轮询。首次 PR run `31258303784` 暴露 empty cleanup accumulator 的 PowerShell 参数绑定根因，修复后才以 `31258884239` 作为成功验收；没有以兼容分支或完整 preflight 重试隐藏该问题。
+Closeout [PR #8](https://github.com/NongHua123/fyagent/pull/8) 的原生证据链为：
+
+- 首次 [run `31264604075`](https://github.com/NongHua123/fyagent/actions/runs/31264604075)，head `623b6924e3b8682321b26aa69c15dc6f0b9f6f09`：[x64 `93120609402`](https://github.com/NongHua123/fyagent/actions/runs/31264604075/job/93120609402) 成功，[ARM64 `93120609411`](https://github.com/NongHua123/fyagent/actions/runs/31264604075/job/93120609411) 与 [Required `93121912798`](https://github.com/NongHua123/fyagent/actions/runs/31264604075/job/93121912798) 失败；
+- commit [`4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd`](https://github.com/NongHua123/fyagent/commit/4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd) 修复后，[run `31265504901`](https://github.com/NongHua123/fyagent/actions/runs/31265504901) 的 [x64 `93122857985`](https://github.com/NongHua123/fyagent/actions/runs/31265504901/job/93122857985)、[ARM64 `93122858012`](https://github.com/NongHua123/fyagent/actions/runs/31265504901/job/93122858012) 与 [Required `93123992476`](https://github.com/NongHua123/fyagent/actions/runs/31265504901/job/93123992476) 均成功。
+
+上述已授权 run 均由发起主流程同步等待 whole run 到 `completed`，再一次读取最终 run/job 结果；没有后台/异步 monitor 或频繁轮询。首次 PR run `31258303784` 暴露 empty cleanup accumulator 的 PowerShell 参数绑定根因，修复后才以 `31258884239` 作为成功验收。closeout 首次 run `31264604075` 则证明 version-only `setup-uv` 在 Windows on ARM 选择 `win-amd64`，因此 ARM64 native-platform 断言和 aggregate Required 正确失败关闭；commit `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` 改用 uv 官方完整 `implementation-version-os-arch-libc` request 并执行 `uv sync --locked --managed-python`，修复 run `31265504901` 才作为 Child 3/D116 成功验收。两次都没有以兼容分支或完整 preflight 重试隐藏问题。
 
 ## 5. 13 附件与独立复核
 
@@ -130,13 +135,13 @@
 
 - **Confirmed — D113 preflight order**：实际顺序已按 merge → main CI → exact-main-SHA preflight → tag → formal Release 完成；每个节点都有独立真实证据。
 - **Accepted verification exception — D114 merge_group**：个人账户仓库且不配置 branch protection/ruleset，GitHub Merge Queue 无法产生 live `merge_group`。该项仍为 N/A，不是成功；YAML trigger、失败关闭合同/静态测试和真实 PR/main/manual 替代证据已完整。
-- **Confirmed — D116 host-native-only local execution**：本地 canonical 入口仍只针对当前宿主；五个发布目标的非宿主证据全部来自匹配 native Actions jobs。
-- **Confirmed — D117 synchronous Actions observation**：PR/main/preflight/formal 均按同步 whole-run wait → 一次最终读取执行；未使用后台/异步 monitor 或频繁轮询。
+- **Verified — D116 host-native-only local execution**：本地 canonical 入口仍只针对当前宿主；五个发布目标的非宿主证据全部来自匹配 native Actions jobs，closeout x64/ARM64 locked uv/Python/Trellis smoke 也由 run `31265504901` 的匹配 runner 完成。
+- **Confirmed — D117 synchronous Actions observation**：PR/main/preflight/formal 及 closeout 首败/修复 run 均按同步 whole-run wait → 一次最终读取执行；未使用后台/异步 monitor 或频繁轮询。
 - **Verified — D118 shift-left engineering**：PR/main x64/ARM64 native MSI query fixtures 通过，exact-main preflight 和 formal 五目标紧随成功；未选择兼容分支隐藏未知根因。
 - **Residual risk**：main/tag 无 ruleset/branch protection，Release 无 environment；该 workflow-only 风险仍按 D109 接受，不宣称管理员保护。
 
-v0.3.0 发布门禁的结论是 **Released / Verified**。仓库级 closeout 仍有一个诚实的远程门禁：本 closeout PR 的 `Windows Native Contracts` x64/ARM64 matrix 必须使用 locked uv-managed Python 完成 Trellis task-list smoke 并重跑 MSI query fixture。首轮 PR CI 成功后，必须先写回 exact native run/job evidence、稳定全部设计包文档并重建 `MANIFEST.sha256`，再在同一 PR 按 Child 3 → Child 4 → Child 6 → parent 归档，随后记录 journal。该完整系列还必须通过 final PR CI 才能 merge；exact-main CI 复验成功后才清理除 `main` 外的本地/origin 分支。
+v0.3.0 发布门禁的结论是 **Released / Verified**。仓库级 closeout 的 `Windows Native Contracts` x64/ARM64 gate 也已由 run `31265504901` 远程验证；`MANIFEST.sha256` 已在设计包字节冻结后确定性重建并复验。当前在同一 PR 按 Child 3 → Child 4 → Child 6 → parent 归档，随后记录 journal。该完整系列还必须通过 final PR CI 才能 merge；exact-main CI 复验成功后才清理除 `main` 外的本地/origin 分支。
 
 ## 7. 原始设计包验证记录
 
-2026-08-07 的只读输入包曾通过 134 个非 manifest 文件/135 个含 manifest 文件、JSON/JSONL 语法、1 parent+6 child overlay、decision 1–104、无 symlink/secrets 等静态检查。该记录只证明原始文档包，不证明当前修订字节或任何工程实施。现有 `MANIFEST.sha256` 在当前 closeout 写集稳定前仍 stale，必须作为最终字节步骤重新生成和校验。
+2026-08-07 的只读输入包曾通过 134 个非 manifest 文件/135 个含 manifest 文件、JSON/JSONL 语法、1 parent+6 child overlay、decision 1–104、无 symlink/secrets 等静态检查。该记录只证明原始文档包，不证明当前修订字节或任何工程实施。closeout `MANIFEST.sha256` 已在最终文档字节稳定后重新生成，并以 134 个非 manifest 普通文件、路径全集一致、0 symlink 和逐项 `sha256sum -c` 通过重新建立当前完整性证据。

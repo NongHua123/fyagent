@@ -69,13 +69,21 @@ The only accepted governance residual remains D114: a live `merge_group` run is
 N/A in this personal repository while rulesets, branch protection, and a
 Release environment remain intentionally absent. This does not weaken any
 Required, preflight, asset, digest, metadata, attestation, or publication gate.
-Release evidence is complete and the release gate is **GO**. The closeout
-branch extends both Windows Required legs with locked uv/Python setup and a
-Trellis task-list smoke before their MSI fixture. Static contracts pass, but no
-closeout PR Actions run has occurred; the native Windows ARM64 result is the
-last Child 3 acceptance gate. After the initial aggregate CI succeeds, the same
-PR must write back exact native evidence, refresh the final design-package
-manifest, archive Child 3, Child 4, Child 6, then parent, and record the journal.
-Only after that completed series passes final PR CI may it merge; exact-main CI
-must then pass before the explicitly authorized final branch cleanup. Those
-later actions are not claimed here.
+Release evidence is complete and the release gate is **GO**. PR #8
+<https://github.com/NongHua123/fyagent/pull/8> extends both Windows Required
+legs with locked uv/Python setup and a Trellis task-list smoke before their MSI
+fixture. Its first run `31264604075`, at head
+`623b6924e3b8682321b26aa69c15dc6f0b9f6f09`, failed closed: x64 job
+`93120609402` passed, ARM64 job `93120609411` failed because setup-uv's
+version-only request selected `win-amd64`, and Required job `93121912798`
+failed. Commit `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` switched the
+workflow to a full uv request with managed Python. Run `31265504901` then passed
+x64 job `93122857985`, ARM64 job `93122858012`, and Required job
+`93123992476`. This completes the native closeout evidence and the Child 3
+Windows ARM64 acceptance gate.
+
+The same PR has rebuilt and verified the final design-package manifest and must
+now archive Child 3, Child 4, Child 6, then parent, and record the journal. Only
+after that series passes final PR CI may it merge; exact-main CI must then pass
+before the explicitly authorized final branch cleanup. Those later actions are
+not claimed here. D114 remains N/A, not successful.

@@ -144,6 +144,13 @@ The public repository label prerequisite was also verified out of band: all nine
   <https://github.com/NongHua123/fyagent/releases/tag/v0.3.0> (ID
   `367220197`). The Release is neither draft nor prerelease and is the latest
   Release.
+- PR #8 <https://github.com/NongHua123/fyagent/pull/8> run `31264604075`, at
+  head `623b6924e3b8682321b26aa69c15dc6f0b9f6f09`, failed closed after x64
+  job `93120609402` passed. ARM64 job `93120609411` failed because setup-uv's
+  version-only request selected `win-amd64`, so Required job `93121912798`
+  failed. Commit `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` switched to a full
+  uv request with managed Python. Run `31265504901` then passed x64 job
+  `93122857985`, ARM64 job `93122858012`, and Required job `93123992476`.
 
 The exact 13 published attachments are:
 
@@ -198,17 +205,17 @@ Failed-job logs were retrieved only after `31258303784` had a final failure.
 There was no background/asynchronous watcher, high-frequency status polling,
 or progress-output loop.
 
-## Remaining closeout gate
+## Closeout native evidence and remaining stages
 
 The release transaction and all Release acceptance evidence are complete; the
-release gate is **GO**. The closeout branch adds a native Windows x64/ARM64
-locked uv/Python setup and Trellis task-list smoke before the existing MSI
-fixture. Its static contracts pass locally, but no closeout PR Actions run has
-occurred. Both native legs and aggregate Required must succeed before exact
-evidence is written back and the final design-package manifest is rebuilt. The
-same PR must then archive Child 3, this Child 4, Child 6, and parent in order,
-record the journal, and pass final PR CI before merge. Exact-main CI and final
-branch cleanup follow the merge and are also not claimed by this record.
+release gate is **GO**. The PR #8 evidence above completes the native Windows
+x64/ARM64 locked uv/Python and Trellis gate: corrected run `31265504901` passed
+both native legs and aggregate Required. The same PR has rebuilt and verified
+the final design-package manifest and must now archive Child 3, this Child 4,
+Child 6, and parent in order, record the journal, and pass final PR CI before
+merge.
+Exact-main CI and final branch cleanup follow the merge and are also not claimed
+by this record.
 
 The originally requested pre-merge same-SHA preflight is structurally incompatible with a GitHub merge commit plus truthful standard attestation provenance. The implemented safe order is merge -> successful main CI -> exact-main-SHA unsigned preflight -> tag -> formal Release.
 
