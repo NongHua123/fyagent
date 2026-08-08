@@ -35,8 +35,9 @@ TAURI_FYAGENT_INSTALLER_ACTIONS_DLL = WiX/Tauri-visible form of that DLL path
 ```
 
 ```text
-cargo:rustc-link-arg-tests=/MANIFEST:EMBED
-cargo:rustc-link-arg-tests=/MANIFESTINPUT:<fyagent-test.manifest>
+cargo:rustc-link-arg=/MANIFEST:EMBED
+cargo:rustc-link-arg=/MANIFESTINPUT:<fyagent-test.manifest>
+cargo:rustc-link-arg-bins=/MANIFEST:NO
 ```
 
 ```rust
@@ -115,12 +116,21 @@ or an unbounded argv payload.
 - `mise run` does not auto-install missing tools or provision non-host Rust
   targets. Repository tasks, scripts, and hooks never change mise trust state.
   Release targets are installed explicitly by the matching native Actions job.
-- `fyagent-test.manifest` linker arguments use only
-  `cargo:rustc-link-arg-tests`. Do not use the all-target
-  `cargo:rustc-link-arg` form and do not try to cancel it for application
-  binaries with `/MANIFEST:NO`; either pattern leaks test-manifest linker state
-  into the formal binary and can disable or conflict with the resource emitted
-  by `tauri-build`.
+- `fyagent-test.manifest` uses the two generic `cargo:rustc-link-arg` forms
+  above so library unit-test and integration-test executables receive the
+  Common Controls v6 activation context. Cargo 1.97.1's internal
+  `LinkArgTarget::Test` selection checks `target.is_test()`; a library target's
+  unit-test harness is therefore not covered by `cargo:rustc-link-arg-tests`.
+  Narrowing these arguments to the tests-only form can leave Tauri/rfd's
+  statically imported `TaskDialogIndirect` unavailable and make the Windows
+  loader terminate the harness with `0xc0000139` before any test runs.
+- The generic test-manifest inputs are paired with
+  `cargo:rustc-link-arg-bins=/MANIFEST:NO`. This disables linker-generated
+  manifests for application binary targets, so the test input is not merged
+  into the application manifest. The application instead retains the selected
+  test or release resource emitted by `tauri-build`; formal Release jobs prove
+  the resulting executable with the Windows manifest verifier before and after
+  MSI bundling. Generic inputs without the bin-only cancellation are invalid.
 - The release manifest is `requireAdministrator`; the test manifest is
   `asInvoker`. The unsigned v0.3.0 workflow explicitly selects `release` and
   verifies the embedded application manifest in the target release executable
@@ -167,38 +177,39 @@ or an unbounded argv payload.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                                                                           | Required result                                                                                                                 |
-| ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `FYAGENT_WINDOWS_MANIFEST` is invalid                                                                                               | Build fails with the accepted values.                                                                                           |
-| Formal release uses release profile without an explicit manifest selection                                                          | Build fails; it never silently chooses elevated or test behavior.                                                               |
-| A native Windows Release build or bundle omits `FYAGENT_WINDOWS_MANIFEST=release`                                                   | `build.rs` fails before linking; do not weaken the fail-closed selection.                                                       |
-| Test manifest uses all-target linker arguments or the application binary receives `/MANIFEST:NO`                                    | Reject the change; test linker arguments must be test-target-only and the formal binary must retain the `tauri-build` resource. |
-| Formal release process is non-elevated, not a local administrator, lacks a privilege status, or does not match the interactive user | `early_windows_startup_gate` returns `Blocked` with the appropriate safe code before Tauri construction.                        |
-| Development/test process is non-elevated                                                                                            | It may continue under the `asInvoker` test manifest.                                                                            |
-| Runtime root/state/lease has unexpected owner, DACL, object type, path, or reparse point                                            | Treat it as unavailable/untrusted; do not read, delete, or use it for activation.                                               |
-| Descriptor references a running owner but pipe open/handshake/proof fails                                                           | Do not send argv; return the activation-forward failure outcome.                                                                |
-| Authentication HMAC, frame shape, client identity, or bounds check fails                                                            | Reject the connection without invoking the activation handler.                                                                  |
-| Formal release reaches a user CLI command                                                                                           | Return the elevated-boundary message before probing or running the CLI.                                                         |
-| Target executable manifest inspection or EXE/MSI `NotSigned` validation fails in release workflow                                   | Fail the workflow before publishing the artifact.                                                                               |
-| Fixed-key cabinet extraction, output containment, built-EXE SHA/size/Machine binding, or extracted unsigned check fails             | Fail the workflow; do not upload the MSI artifact.                                                                              |
-| Helper architecture, MSI Binary bytes, custom-action table, or INSTALLDIR component closure drifts                                  | Fail native release structure verification before candidate artifact upload.                                                    |
-| UI validator rejects a path                                                                                                         | Show the recoverable policy dialog; do not raise Error 1720.                                                                    |
-| Execute validator rejects a path or repair/upgrade lacks its HKLM anchor                                                            | Type 19 aborts before InstallValidate/InstallFiles.                                                                             |
+| Condition                                                                                                                           | Required result                                                                                                                          |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `FYAGENT_WINDOWS_MANIFEST` is invalid                                                                                               | Build fails with the accepted values.                                                                                                    |
+| Formal release uses release profile without an explicit manifest selection                                                          | Build fails; it never silently chooses elevated or test behavior.                                                                        |
+| A native Windows Release build or bundle omits `FYAGENT_WINDOWS_MANIFEST=release`                                                   | `build.rs` fails before linking; do not weaken the fail-closed selection.                                                                |
+| Test manifest uses only `cargo:rustc-link-arg-tests`, omits either generic manifest input, or omits bin-only `/MANIFEST:NO`         | Reject the change; unit/integration harnesses need the generic pair, while application bins must retain only the `tauri-build` resource. |
+| Formal release process is non-elevated, not a local administrator, lacks a privilege status, or does not match the interactive user | `early_windows_startup_gate` returns `Blocked` with the appropriate safe code before Tauri construction.                                 |
+| Development/test process is non-elevated                                                                                            | It may continue under the `asInvoker` test manifest.                                                                                     |
+| Runtime root/state/lease has unexpected owner, DACL, object type, path, or reparse point                                            | Treat it as unavailable/untrusted; do not read, delete, or use it for activation.                                                        |
+| Descriptor references a running owner but pipe open/handshake/proof fails                                                           | Do not send argv; return the activation-forward failure outcome.                                                                         |
+| Authentication HMAC, frame shape, client identity, or bounds check fails                                                            | Reject the connection without invoking the activation handler.                                                                           |
+| Formal release reaches a user CLI command                                                                                           | Return the elevated-boundary message before probing or running the CLI.                                                                  |
+| Target executable manifest inspection or EXE/MSI `NotSigned` validation fails in release workflow                                   | Fail the workflow before publishing the artifact.                                                                                        |
+| Fixed-key cabinet extraction, output containment, built-EXE SHA/size/Machine binding, or extracted unsigned check fails             | Fail the workflow; do not upload the MSI artifact.                                                                                       |
+| Helper architecture, MSI Binary bytes, custom-action table, or INSTALLDIR component closure drifts                                  | Fail native release structure verification before candidate artifact upload.                                                             |
+| UI validator rejects a path                                                                                                         | Show the recoverable policy dialog; do not raise Error 1720.                                                                             |
+| Execute validator rejects a path or repair/upgrade lacks its HKLM anchor                                                            | Type 19 aborts before InstallValidate/InstallFiles.                                                                                      |
 
 ## 5. Good / Base / Bad Cases
 
 - Good: Both native Windows Release jobs explicitly use
   `FYAGENT_WINDOWS_MANIFEST=release`, build an architecture-matched helper,
   extract its real MSI Binary stream, and prove PE/SHA-256 equality; test
-  targets alone receive the `asInvoker` linker input. Startup proves the
-  elevated process is the interactive local administrator, and a second
-  invocation proves the server endpoint before forwarding bounded deep-link
-  argv.
+  harnesses receive the generic `asInvoker`/Common Controls v6 linker input,
+  application bins receive `/MANIFEST:NO`, and `tauri-build` supplies the
+  selected application resource. Startup proves the elevated process is the
+  interactive local administrator, and a second invocation proves the server
+  endpoint before forwarding bounded deep-link argv.
 - Base: A normal developer build or test harness uses
   `FYAGENT_WINDOWS_MANIFEST=test` (or `dev`) and retains ordinary-user startup
   semantics with fake/platform-neutral tests.
-- Bad: Leaving the formal Release manifest unset, sending the test manifest to all
-  linker targets, cancelling application manifests with `/MANIFEST:NO`, tying
+- Bad: Leaving the formal Release manifest unset, narrowing the test manifest
+  to `cargo:rustc-link-arg-tests`, omitting the bin-only `/MANIFEST:NO`, tying
   `requireAdministrator` to every release-profile binary, accepting a state
   file by path alone, exposing a fixed well-known pipe, sending argv before
   endpoint proof, or allowing a formal elevated build to shell out to an
@@ -218,9 +229,9 @@ or an unbounded argv payload.
   verifiers, fixed-key cabinet extraction/built-EXE binding, and EXE/MSI
   `NotSigned` verification in the release workflow.
   It must also bind the native Release manifest selection to the actual build
-  and bundle environments, require `cargo:rustc-link-arg-tests` for the test
-  manifest, and reject all-target manifest arguments and `/MANIFEST:NO`
-  cancellation.
+  and bundle environments, require both generic test-manifest linker arguments
+  plus bin-only `/MANIFEST:NO`, and reject the tests-only linker form that
+  misses library unit-test harnesses.
 - It must also assert the native helper build precedes bundling, architecture
   bridge variables and MSI Binary checks are present, UI/Execute Type 1 plus
   Type 19 paths are scheduled, protected HKLM maintenance restoration is
@@ -287,19 +298,23 @@ authenticated request second.
 Wrong:
 
 ```rust
-println!("cargo:rustc-link-arg=/MANIFESTINPUT:fyagent-test.manifest");
-println!("cargo:rustc-link-arg-bins=/MANIFEST:NO");
-```
-
-This sends test-manifest state to application binaries and then tries to
-disable the application manifest globally.
-
-Correct:
-
-```rust
 println!("cargo:rustc-link-arg-tests=/MANIFEST:EMBED");
 println!("cargo:rustc-link-arg-tests=/MANIFESTINPUT:fyagent-test.manifest");
 ```
 
-Only test targets receive the ordinary-user manifest; the formal application
-binary keeps the manifest resource selected and emitted by `tauri-build`.
+This looks narrower, but Cargo 1.97.1 applies the tests-only selector only when
+the target itself is marked as a test. It misses the library unit-test harness,
+which can then fail in the Windows loader before test execution.
+
+Correct:
+
+```rust
+println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+println!("cargo:rustc-link-arg=/MANIFESTINPUT:fyagent-test.manifest");
+println!("cargo:rustc-link-arg-bins=/MANIFEST:NO");
+```
+
+The generic pair reaches unit and integration harnesses. The bin-only switch
+prevents the application linker from generating or merging that test manifest;
+the formal application binary keeps the release resource selected and emitted
+by `tauri-build`, and the Release workflow verifies the final embedded resource.

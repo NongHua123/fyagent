@@ -429,11 +429,10 @@ describe("FyAgent Windows elevation and installer boundary", () => {
     );
     expect(buildRs).toContain("cargo:rustc-cfg=fyagent_windows_release");
     expect(buildRs).toContain("WindowsManifest::Release");
-    expect(buildRs).toContain("cargo:rustc-link-arg-tests=/MANIFEST:EMBED");
-    expect(buildRs).toContain("cargo:rustc-link-arg-tests=/MANIFESTINPUT:{}");
-    expect(buildRs).not.toContain("cargo:rustc-link-arg=/MANIFEST:EMBED");
-    expect(buildRs).not.toContain("cargo:rustc-link-arg=/MANIFESTINPUT:");
-    expect(buildRs).not.toContain("cargo:rustc-link-arg-bins=/MANIFEST:NO");
+    expect(buildRs).toContain("cargo:rustc-link-arg=/MANIFEST:EMBED");
+    expect(buildRs).toContain("cargo:rustc-link-arg=/MANIFESTINPUT:{}");
+    expect(buildRs).toContain("cargo:rustc-link-arg-bins=/MANIFEST:NO");
+    expect(buildRs).not.toContain("cargo:rustc-link-arg-tests=");
     expect(buildRs).toContain("windows/fyagent-test.manifest");
     expect(buildRs).toContain('PROFILE").as_deref() == Ok("release")');
     expect(buildRs).toContain(
