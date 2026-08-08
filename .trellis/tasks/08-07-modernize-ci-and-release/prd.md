@@ -40,25 +40,30 @@ whole-run evidence chain.
 
 ## Acceptance Criteria
 
-- [ ] Required gate handles failure/cancel/skip correctly
-- [ ] all supported platform jobs prove pinned versions
-- [ ] unsigned full matrix passes
-- [ ] automatic Labeler never checks out or executes PR code and has only `pull-requests: write`
-- [ ] formal eligibility proves `v0.3.0`, product version, `origin/main` ancestry, same-SHA Required success, and repository/workflow identity
-- [ ] exact 10 assets, digests, build metadata, and attestations pass; no capability-gap downgrade is allowed for v0.3.0
-- [ ] final publish is stable/non-prerelease and only obtains `contents: write` after every gate succeeds
+- [x] Required gate handles failure/cancel/skip correctly
+- [x] all release platform jobs prove pinned versions
+- [x] unsigned full matrix passes
+- [x] automatic Labeler never checks out or executes PR code and has only `pull-requests: write`
+- [x] formal eligibility proves `v0.3.0`, product version, `origin/main` ancestry, same-SHA Required success, and repository/workflow identity
+- [x] exact 10 assets, digests, build metadata, and attestations pass; no capability-gap downgrade is allowed for v0.3.0
+- [x] final publish is stable/non-prerelease and only obtains `contents: write` after every gate succeeds
 - [x] standard local entrypoints reject or omit non-host targets and the current
       Linux x64 environment retains only `x86_64-unknown-linux-gnu`
 - [x] local Windows diagnostic processes/output were cleaned and prior local
       Light/MSI results are classified as diagnostic-only, never acceptance
-- [ ] each authorized Actions run is observed by the initiating main flow with
+- [x] each authorized implementation/release Actions run is observed by the initiating main flow with
       one synchronous wait through `completed`, one final run/job result read,
       and failed-job logs only after failure
+- [ ] the closeout PR's expanded Windows x64/ARM64 locked uv/Python/Trellis
+      smoke passes natively before task archival
 
 ## Evidence Boundary
 
-This task begins in `planning`. Its implementation can be committed before remote runs, but it remains open until the implementation PR, main CI, unsigned preflight, formal Release, and independent post-publication verification produce real evidence.
-
-Local cleanup and contract checks cannot satisfy a remote gate. PR/main/manual
-CI, preflight, formal Release, and post-publication evidence remain pending and
-keep the task and parent at NO-GO until they occur.
+PR #7, exact-main Required CI, unsigned preflight, formal Release, and
+independent post-publication verification now provide real evidence and make
+the release gate GO. The closeout branch extends both native Windows Required
+legs with the Child 3 locked uv/Python/Trellis smoke; local static checks cannot
+satisfy that new native gate, so this task remains active until closeout PR
+Actions passes. Evidence/manifest writeback, ordered Child 3 → Child 4 → Child 6
+→ parent archive, journal, final PR CI/merge, exact-main CI, and branch cleanup
+are not claimed by this record.

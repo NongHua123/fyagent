@@ -264,6 +264,10 @@ the standard version file and `mise.lock` captured before the attempt.
   out-of-bound/symlink/wrong-signature cases without building a foreign target.
 - Run `developmentEnvironment.test.ts`, `miseTaskContract.test.ts`,
   `taskDocs.test.ts`, `systemCheck.test.ts`, and `localBuildBoundary.test.ts`.
+- In Required CI, run the locked uv/Python preparation and Trellis task-list
+  protocol on both `windows-2022` x64 and `windows-11-arm` ARM64. Require
+  Python `sysconfig.get_platform()` to match `win-amd64`/`win-arm64`; version
+  equality alone does not prove a native interpreter.
 - Scan active local task/package entrypoints for cross-target flags, retired
   cross-build scripts, foreign build tools, subsystem bridges, and emulators;
   exclude GitHub workflow definitions from that negative scan because they own

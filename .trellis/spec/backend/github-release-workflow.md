@@ -34,12 +34,13 @@ on:
 The post-merge exact-main-SHA sequence above is implemented in the workflow
 and locally verified. The project owner accepted D113/D114 on 2026-08-08;
 [D113](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md)
-confirms this ordering. That decision is not evidence that a preflight ran or
-that a tag, Release, asset, or attestation exists.
+confirms this ordering. A decision or local test is not remote evidence; the
+v0.3.0 conformance record in Section 10 separately identifies the completed
+preflight, tag, formal run, Release, assets, and attestation verification.
 
 Local implementation and static tests do not authorize dispatch, tag creation,
-or publication. Remote preflight, formal Release, and post-publication evidence
-remain required before the owning Trellis task can close.
+or publication. Every future release must still satisfy the remote gates in
+this contract even though v0.3.0 has one completed conformance record.
 
 When a release run is explicitly authorized, the initiating main flow waits
 synchronously for that entire run to reach `completed`. It does not delegate
@@ -109,8 +110,10 @@ workflow or custom predicate and is outside this release.
 This is the implemented and accepted D113 sequence. The 2026-08-08 project
 decision clears only the ordering question in the
 [decision register](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md);
-remote preflight, exact tag creation, formal publication, asset checks,
-attestations, and closeout remain separate pending evidence.
+remote preflight, exact tag creation, formal publication, asset checks, and
+attestations remain separate evidence categories and were verified for v0.3.0
+by the Section 10 record. Repository task archival remains a separate closeout
+concern.
 
 This workflow-only admission is intentionally weaker than administrator-backed
 branch/tag rulesets or a protected environment. FyAgent 0.3.0 accepts that
@@ -410,9 +413,45 @@ non-host architecture check run only in their matching native GitHub Actions
 jobs. No local cross-OS or cross-architecture result counts toward acceptance.
 
 A green local suite proves the implementation contract, not publication.
-Closure requires the exact source's main `CI / Required`, one successful
-post-merge same-SHA full-matrix unsigned preflight, the tag-triggered formal run, the public stable
-Release, independent re-download/digest/unsigned-state checks, attestation evidence,
-and audited Trellis closeout records. D113 has explicit project acceptance,
-but local contract success and that decision alone cannot satisfy any of these
-remote Release gates.
+Release closure requires the exact source's main `CI / Required`, one
+successful post-merge same-SHA full-matrix unsigned preflight, the tag-triggered
+formal run, the public stable Release, independent re-download/digest checks,
+and attestation evidence. D113 acceptance alone cannot satisfy these gates.
+Trellis archival, journal, and branch cleanup are repository closeout gates,
+not substitutes for or retroactive changes to Release evidence.
+
+## 10. v0.3.0 Conformance Record
+
+This section records one verified instance; Sections 1–9 remain the reusable,
+fail-closed implementation contract.
+
+- [PR #7](https://github.com/NongHua123/fyagent/pull/7) delivered the D118
+  engineering revision. [PR CI `31258884239`](https://github.com/NongHua123/fyagent/actions/runs/31258884239)
+  and [main CI `31259389682`](https://github.com/NongHua123/fyagent/actions/runs/31259389682)
+  succeeded for source `bde1370bbaffd345c3d9875708615eaf96140591`, including
+  native Windows x64/ARM64 MSI query fixtures.
+- [preflight `31259905022`](https://github.com/NongHua123/fyagent/actions/runs/31259905022)
+  succeeded for all five native target groups, exact asset/evidence verification,
+  and attestation; publish was skipped as required.
+- annotated tag object `e6706d4bdc33a184cf641204574df1fc2962ca4c`
+  peels to the exact source. [formal run `31260931509`](https://github.com/NongHua123/fyagent/actions/runs/31260931509)
+  completed eligibility, all native builds, verification, attestation, and
+  publication of [stable/latest v0.3.0](https://github.com/NongHua123/fyagent/releases/tag/v0.3.0)
+  (Release ID `367220197`) with exactly 13 attachments.
+- independent re-download matched the exact-13 allowlist and all ten installer
+  names, sizes, SHA-256 values, and URLs in `download-manifest.json`.
+  `build-metadata.json` binds the formal source to main Required run
+  `31259389682`, attempt 1. An official-checksum-verified GitHub CLI 2.97.0
+  verified all 12 subjects from the local Sigstore bundle with exact repository,
+  signer workflow, source digest/ref, and self-hosted-runner denial.
+- D114 remains an accepted live-`merge_group` N/A exception, not a successful
+  run. The substitute YAML/fail-closed static contract and real PR/main/manual
+  evidence are complete. The repository still has no ruleset, branch/tag
+  protection, or Release environment; that accepted workflow-only residual risk
+  remains explicit.
+
+The closeout PR extends `Windows Native Contracts` with locked uv-managed
+Python/Trellis task-list smoke on x64 and ARM64 before its MSI fixture. That PR
+gate and repository archive/journal/branch cleanup must complete before the
+overall modernization task closes, but they do not change the truthful
+Released/Verified state of v0.3.0.

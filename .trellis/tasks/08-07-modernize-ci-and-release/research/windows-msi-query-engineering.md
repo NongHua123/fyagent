@@ -667,3 +667,17 @@ not a claim about the version installed in the failed runner.
   fixture demonstrates broader Automation instability.
 - The same preflight also recorded separate Linux metadata failures. They are
   outside this Windows MSI query research and do not change the Windows design.
+
+## Outcome / Closure
+
+The historical caveats above describe the state when this research was
+written. The adopted schema-driven query module and generated native fixture
+later passed both `windows-2022` x64 and `windows-11-arm` ARM64 in corrected PR
+run `31258884239`, followed by exact-main run `31259389682`. Full preflight
+`31259905022` then passed both real Windows packaging legs, and formal run
+`31260931509` published the two expected unsigned MSI assets in stable Release
+ID `367220197`.
+
+These outcomes validate the engineering contract and prevention layer; they do
+not retroactively claim an exact COM binder cause for the original
+`FieldCount=0` observation. That cause remains intentionally unasserted.

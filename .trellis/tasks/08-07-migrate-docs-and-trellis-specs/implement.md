@@ -6,8 +6,19 @@
 4. [done] remove upstream release-note bodies, record provenance/CHANGELOG, and add multilingual v0.3.0 Release Notes with safe unsigned guidance
 5. [done] update the complete design package and archive exactly five old active tasks as `superseded`
 6. [done] generate task docs and run strict local drift/contract scans
-7. [pending] after Release, land closeout evidence, refresh the final checksum manifest, archive completed new children then parent, and record the journal in the required commit order
+7. [in progress] after Release, land closeout evidence and pass the initial
+   closeout PR's final native Windows uv/Python/Trellis gate; then refresh the
+   final checksum manifest and archive this child inside that PR. The parent is
+   archived after all children, the journal is recorded after the archive
+   commit, and only after final PR/main CI and merge are writable non-main
+   branches removed.
 
 ## Completion Evidence
 
-Attach exact commands, relevant logs/artifacts, changed-file list, platform scope, unresolved limitations, and the owning spec updates. This child remains open through closeout. No parent NO-GO condition may be downgraded; the accepted workflow-only protection risk does not waive any documentation, evidence, checksum, or archive gate.
+Attach exact commands, relevant logs/artifacts, changed-file list, platform
+scope, unresolved limitations, and the owning spec updates. Formal Release
+evidence is complete and GO, but this child remains open through closeout. The
+accepted workflow-only protection risk does not waive the pending native
+closeout smoke, documentation, checksum, or this child's archive gate. Journal,
+final CI/merge, and branch cleanup remain later parent-level closeout stages and
+are not circular prerequisites for archiving this child.

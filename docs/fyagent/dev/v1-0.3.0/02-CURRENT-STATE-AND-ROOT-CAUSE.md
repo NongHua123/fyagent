@@ -1,7 +1,7 @@
 # 当前状态与根因分析
 
 > **交付状态**：Observed historical baseline + implemented current state / 历史基线与当前实施状态均已核实
-> **关联决策**：1–34、39–42、81–96、105–115
+> **关联决策**：1–34、39–42、81–96、105–118
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
 ## 1. 2026-08-07 输入快照（历史）
@@ -40,7 +40,7 @@
 
 根因不是“mise 与 Actions 安装方式不同”，而是**版本事实源重复且滚动值进入发布路径**。相同提交在不同时点可能解析到不同 Rust stable 或不同 runner OS。
 
-[Observed / 已核实] commit `3d534710307d538e570c137231b1d80a64ac8ab7` 已将事实源收敛为 Node `24.19.0`、pnpm `10.12.3`、Rust `1.97.1`、Python `3.14.7` 和 lock 解析的 uv `0.12.2`；Linux x64 本地验证完成，其余原生平台证据仍待 Actions。
+[Observed / 已核实] commit `3d534710307d538e570c137231b1d80a64ac8ab7` 已将事实源收敛为 Node `24.19.0`、pnpm `10.12.3`、Rust `1.97.1`、Python `3.14.7` 和 lock 解析的 uv `0.12.2`；Linux x64 宿主验证以及 Windows x64/ARM64、Linux x64/ARM64、macOS Universal 发布原生 runner 证据已完成。Child 3 原验收字面还要求 Windows ARM64 上的 locked uv-managed Python/Trellis smoke；该轻量 smoke 已加入 closeout PR 的 Required x64/ARM64 fixture matrix，但本分支上的远程 PR CI 尚未发生。
 
 ## 4. mise.lock 结构问题
 
@@ -68,7 +68,7 @@
 
 根因是发布矩阵已形成，但治理仍是“各 job 构建成功即发布”的流水线，而不是明确的来源资格、资产集合和最小权限事务。
 
-[Observed / 已核实] commits `038675b3` 与 `94ff9ee9` 已实现自动 CI、安全 Labeler、稳定 `CI / Required`、五个原生目标、无签名 10 安装器/13 附件、强制 attestation 和私有 draft 到 stable 的失败关闭发布事务；本地合同已通过。真实 PR/main/原生 runner/preflight/tag/Release 证据仍待远程执行。`merge_group` 配置存在，但个人账户仓库且禁止规则保护使 Merge Queue 无法启用，因此真实运行不可能发生，也不能记为成功。The project owner accepted D113/D114 on 2026-08-08：D113 确认 post-merge exact-main/workflow-SHA preflight，D114 将 live `merge_group` 记为当前治理下的 N/A 验证例外，并要求以 YAML/失败关闭静态合同及真实 PR/main/manual 运行替代。
+[Observed / 已核实] commits `038675b3` 与 `94ff9ee9` 已实现自动 CI、安全 Labeler、稳定 `CI / Required`、五个原生目标、无签名 10 安装器/13 附件、强制 attestation 和私有 draft 到 stable 的失败关闭发布事务。D118 工程化修订通过 [PR #7](https://github.com/NongHua123/fyagent/pull/7) 合入 exact main commit `bde1370bbaffd345c3d9875708615eaf96140591`；[PR CI](https://github.com/NongHua123/fyagent/actions/runs/31258884239) 和 [main CI](https://github.com/NongHua123/fyagent/actions/runs/31259389682) 成功，包括 Windows x64/ARM64 MSI query native fixtures。[preflight](https://github.com/NongHua123/fyagent/actions/runs/31259905022) 和 [formal run](https://github.com/NongHua123/fyagent/actions/runs/31260931509) 的五原生目标、verify、attest 均成功，后者已发布 [stable/latest v0.3.0](https://github.com/NongHua123/fyagent/releases/tag/v0.3.0)。`merge_group` 依旧因个人账户与无保护治理而无法产生真实事件；D114 保持 live run=N/A，其 YAML/失败关闭静态合同及真实 PR/main/manual 替代证据已完整。
 
 ## 6. DEP0040 根因
 
@@ -98,7 +98,7 @@ cross-fetch@4.1.0
 
 根因是命令入口、环境管理、长期规范和任务过程材料没有统一的生命周期边界。
 
-[Observed / 已核实] hooks 与 80 个 canonical tasks 已实施；活动文档、长期 spec、workflow/skills 和设计包状态迁移属于当前 Child 6，仍为 **In progress**。
+[Observed / 已核实] hooks 与 80 个 canonical tasks 已实施；活动文档、长期 spec、workflow/skills 与设计包已迁移。Child 6 当前只剩 closeout PR 证据、最终 manifest、archive/journal 和分支清理，状态仍为 **In progress**。
 
 ## 8. 上游关系
 
@@ -115,4 +115,4 @@ upstream farion1231/cc-switch        fetch only; push DISABLED
 
 四个问题相互依赖：
 
-依赖顺序已按设计执行：上游 merge → 交叉构建删除 → 开发环境 → CI/Release → DEP0040。当前位于文档/Trellis 迁移阶段；之后仍需实现 PR/main/manual 远程证据、post-merge exact-main-SHA preflight、正式 tag/Release、closeout PR 和最终归档。任何真实 pending 项都不能被描述为 Released；D114 的 N/A 例外也不是 `merge_group` 成功运行证据。
+依赖顺序已按设计执行：上游 merge → 交叉构建删除 → 开发环境 → CI/Release → DEP0040 → 文档/Trellis。实现 PR/main/manual、post-merge exact-main-SHA preflight、annotated tag、formal run、13 附件 stable Release 和独立 attestation 复核已完成，v0.3.0 可如实标记为 **Released / Verified**。当前未完成的是 closeout PR 自身的 Windows x64/ARM64 locked uv/Python/Trellis smoke；首轮 PR CI 通过后还需 evidence/manifest、task archive、journal、final PR CI/merge、exact-main CI 和分支清理。D114 的 N/A 例外仍不是 `merge_group` 成功运行证据。

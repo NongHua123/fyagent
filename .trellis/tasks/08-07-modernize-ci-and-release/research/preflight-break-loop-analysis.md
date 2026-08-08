@@ -273,3 +273,22 @@ workflow, production query/writer modules, and executable tests.
   separate reviewed supply-chain update.
 - Formal tag, Release, assets, attestation, independent downloads, closeout,
   task archival, and final branch cleanup remain pending and **NO-GO**.
+
+## Outcome / Closure
+
+The statements above preserve the evidence boundary at research time. The
+recommended shift-left design was subsequently implemented and validated:
+
+- corrected PR Required CI `31258884239` passed the native Windows x64/ARM64
+  MSI query fixtures;
+- exact-main Required CI `31259389682` passed;
+- the next full five-target preflight `31259905022` completed successfully;
+- formal run `31260931509` published stable Release ID `367220197` with exactly
+  10 installers, 3 evidence attachments, and 12 attestation subjects;
+- independent downloads, manifest/metadata comparison, and all 12 attestation
+  verifications passed.
+
+This closes the Release NO-GO without changing the original root-cause
+discipline: the unproved `FieldCount=0` mechanism is still not asserted. The
+remaining work is Trellis closeout, including the separate Windows ARM64
+uv/Python/Trellis native smoke introduced after Release.

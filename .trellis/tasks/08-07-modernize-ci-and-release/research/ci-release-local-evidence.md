@@ -17,6 +17,15 @@ Branch: `codex/fyagent-v0.3.0-preflight-engineering`
   #6 after its PR and exact-main Required CI passed. The third unsigned
   preflight then failed closed at the Windows Installer query adapter and
   Linux runner/container metadata boundary, before aggregation or publication.
+- `d0af898a` — replace those low-level boundaries with the schema-owned Windows
+  Installer query module, native x64/ARM64 fixture, and documented
+  runner/container metadata contract submitted in PR #7.
+- `d8c26b70` — permit the cleanup helpers' typed accumulator to begin empty
+  while preserving deterministic COM release and aggregated cleanup failures;
+  corrected PR #7 Required CI then passed.
+- `bde1370bbaffd345c3d9875708615eaf96140591` — merge PR #7 to `main`; this is
+  the exact source later used by main CI, preflight, annotated tag, and formal
+  Release.
 
 The public repository label prerequisite was also verified out of band: all nine labels referenced by `.github/labeler.yml` exist in `NongHua123/fyagent`; the previously missing `i18n` label was created with color `ededed` and description `Internationalization and localization`. The workflow retains only `pull-requests: write` and does not receive `issues: write`.
 
@@ -58,8 +67,9 @@ The public repository label prerequisite was also verified out of band: all nine
 - A separate read-only security review of the final D118 worktree found no new
   high-confidence finding in SQL parameterization, COM ownership, bounded
   stream handling, MSI business gates, Required topology, metadata allowlists,
-  or Release permission separation. It did not substitute for the pending
-  native Windows x64/ARM64 fixture evidence.
+  or Release permission separation. At review time it did not substitute for
+  native Windows x64/ARM64 fixture evidence; those fixtures later passed in PR
+  and exact-main Required CI as recorded below.
 - `mise run typecheck`, targeted Prettier, task metadata/docs validation, and
   explicit parent/Child 4/Child 6 Trellis validation passed for the D118
   candidate. `actionlint` 1.7.12 also passed both changed workflows; the retained
@@ -76,7 +86,7 @@ The public repository label prerequisite was also verified out of band: all nine
 - Windows validation binds the built executable and the MSI-contained executable by size, SHA-256, PE Machine, and `NotSigned` state, in addition to the installer-actions and MSI structural contracts.
 - Publication stages a private draft, verifies the exact 13 remotely downloaded attachments, and performs one final PATCH to stable/latest. Failure never deletes or retries the tag/Release; an ambiguous PATCH result is only read back and reported.
 
-## Remote evidence so far
+## Remote implementation and release evidence
 
 - PR #4 head `4d3c32c1c60cb8be239aca7c3743abbe2aebacbf` passed CI run
   `31237734427`; merge commit
@@ -113,26 +123,92 @@ The public repository label prerequisite was also verified out of band: all nine
   explicitly permits an empty cleanup accumulator on the three production
   cleanup helpers and the fixture owner; it does not ignore cleanup failures or
   add a compatibility fallback. No Release preflight was triggered.
-- All three preflights failed before asset aggregation, attestation, or
-  publication; none created the immutable tag or public Release. D118 therefore
-  blocks another full preflight until the query and metadata interfaces have
-  engineering abstractions, behavior-level tests, and native Required evidence.
-  D117 still requires the initiating flow to wait synchronously for each whole
-  run to complete, then read the final state once; failed job logs may be
-  fetched only after a final failure.
+- Corrected PR #7 head
+  `d8c26b70c83fa6e4286d02549c0c383db4f5a318` passed run `31258884239`,
+  including both native Windows Installer query fixtures and the fail-closed
+  `CI / Required` aggregate. PR #7 merged as
+  `bde1370bbaffd345c3d9875708615eaf96140591`.
+- Exact-main run `31259389682` passed for that merge source, including native
+  Windows x64/ARM64 query fixtures and `CI / Required`.
+- Exact-main manual preflight `31259905022` passed eligibility, Windows x64,
+  Windows ARM64, Linux x64, Linux ARM64, macOS Universal, exact installer and
+  evidence aggregation, and attestation. Publish was correctly skipped in
+  preflight mode.
+- Annotated `v0.3.0` object
+  `e6706d4bdc33a184cf641204574df1fc2962ca4c` peels to
+  `bde1370bbaffd345c3d9875708615eaf96140591`.
+- Formal tag run `31260931509` bound exact-main Required run `31259389682`,
+  passed all five native build groups, verified the exact ten installers plus
+  two generated evidence JSON files, attested all 12 subjects, and published
+  the stable Release
+  <https://github.com/NongHua123/fyagent/releases/tag/v0.3.0> (ID
+  `367220197`). The Release is neither draft nor prerelease and is the latest
+  Release.
 
-## Evidence still required before task completion
+The exact 13 published attachments are:
 
-The child remains `in_progress`. The following are not satisfied by local/static evidence:
+```text
+FyAgent-0.3.0-macOS.dmg
+FyAgent-0.3.0-macOS.zip
+FyAgent-0.3.0-Windows.msi
+FyAgent-0.3.0-Windows-arm64.msi
+FyAgent-0.3.0-Linux-x86_64.AppImage
+FyAgent-0.3.0-Linux-x86_64.deb
+FyAgent-0.3.0-Linux-x86_64.rpm
+FyAgent-0.3.0-Linux-arm64.AppImage
+FyAgent-0.3.0-Linux-arm64.deb
+FyAgent-0.3.0-Linux-arm64.rpm
+download-manifest.json
+build-metadata.json
+artifact-attestation.sigstore.json
+```
 
-- a successful D118 engineering-remediation PR and exact-main `CI / Required`
-  run, including the native Windows Installer query fixture on x64 and ARM64;
-- a successful unsigned full-matrix preflight for the exact final main SHA;
-- Windows x64/ARM64, Linux x64/ARM64, and macOS Universal native runner/package evidence;
-- mandatory GitHub artifact attestations and Sigstore bundle verification;
-- the exact stable `v0.3.0` GitHub Release and independent post-download validation;
-- a successful manual preflight result required by the D114 substitute
-  acceptance contract; PR/main and automatic Labeler evidence already exist.
+Independent verification downloaded all 13 attachments, enforced the exact
+allowlist, and matched the ten installer names, byte sizes, SHA-256 values, and
+URLs to `download-manifest.json`. Metadata matched the repository, workflow,
+source/tag, formal run, and exact same-SHA Required run/job. Evidence SHA-256
+values are:
+
+```text
+download-manifest.json                 d1d81b973aea506d369e21b385ee60b993b88121b946cf68dc254e825b4abea1
+build-metadata.json                    7ae0631b77059d05a8866ec9602f8afc7f8493a092f6c32a3e4a161a3fc98079
+artifact-attestation.sigstore.json     4802f1e9b5eca3eb0cc2a03530b86057d79e9d5828a97615d8ea5e5430ce0576
+```
+
+GitHub CLI `2.97.0` was independently downloaded and matched against its
+official checksum. It verified all 12 attestation subjects with repository
+`NongHua123/fyagent`, signer workflow
+`NongHua123/fyagent/.github/workflows/release.yml`, source digest
+`bde1370bbaffd345c3d9875708615eaf96140591`, source ref
+`refs/tags/v0.3.0`, and the hosted-runner requirement bound. The temporary
+installer and CLI downloads were removed after verification.
+
+## D117 observation evidence
+
+The initiating main flow synchronously waited for each whole run to reach
+`completed` before one final result/job read:
+
+- PR #7 first failure `31258303784`;
+- corrected PR #7 success `31258884239`;
+- exact-main Required success `31259389682`;
+- exact-main preflight success `31259905022`;
+- formal tag Release success `31260931509`.
+
+Failed-job logs were retrieved only after `31258303784` had a final failure.
+There was no background/asynchronous watcher, high-frequency status polling,
+or progress-output loop.
+
+## Remaining closeout gate
+
+The release transaction and all Release acceptance evidence are complete; the
+release gate is **GO**. The closeout branch adds a native Windows x64/ARM64
+locked uv/Python setup and Trellis task-list smoke before the existing MSI
+fixture. Its static contracts pass locally, but no closeout PR Actions run has
+occurred. Both native legs and aggregate Required must succeed before exact
+evidence is written back and the final design-package manifest is rebuilt. The
+same PR must then archive Child 3, this Child 4, Child 6, and parent in order,
+record the journal, and pass final PR CI before merge. Exact-main CI and final
+branch cleanup follow the merge and are also not claimed by this record.
 
 The originally requested pre-merge same-SHA preflight is structurally incompatible with a GitHub merge commit plus truthful standard attestation provenance. The implemented safe order is merge -> successful main CI -> exact-main-SHA unsigned preflight -> tag -> formal Release.
 
@@ -141,9 +217,7 @@ D114 confirms a governance verification exception: the personal-account
 repository and no-protection decision cannot enable GitHub Merge Queue, so a
 real `merge_group` run remains impossible and is N/A, not successful. Its
 accepted substitute is the YAML trigger, fail-closed contract/static tests,
-and real PR/main/manual runs. This acceptance does not satisfy any pending
-preflight, tag, Release, asset, attestation, or closeout evidence.
-
-Formal Release remains **NO-GO** until the current local remediation is merged,
-its exact main SHA passes Required CI and the complete five-target unsigned
-preflight, and all downstream eligibility gates succeed.
+and real PR/main/manual runs. The substitute is now complete. The absence of
+rulesets, branch protection, and a Release environment remains an explicitly
+accepted governance residual and does not weaken the completed Required,
+preflight, tag, asset, metadata, attestation, or publish evidence.

@@ -35,11 +35,15 @@ Deliver FyAgent `0.3.0` as six ordered implementation workstreams while preservi
 
 ## Acceptance
 
-- all six child tasks complete in dependency order;
-- current specs and docs match implemented task/workflow behavior;
-- automatic PR and post-merge `CI / Required` pass without claiming the branch is administrator-protected;
-- unsigned full-matrix preflight proves the full ten-asset, manifest, metadata, and attestation contract;
-- `v0.3.0` is published from the exact passing `main` SHA as a stable, non-prerelease GitHub Release and independently reverified;
-- closeout evidence is merged and all six children and this parent are archived in dependency order;
-- risk register has no unresolved NO-GO item;
-- source, decision, and file traceability are complete.
+- [ ] all six child tasks complete in dependency order; Child 3 awaits the
+      closeout PR's native Windows ARM64 uv/Python/Trellis smoke;
+- [x] current specs and docs match implemented task/workflow behavior;
+- [x] automatic PR and post-merge `CI / Required` pass without claiming the branch is administrator-protected;
+- [x] unsigned full-matrix preflight proves the full ten-asset, manifest, metadata, and attestation contract;
+- [x] `v0.3.0` is published from the exact passing `main` SHA as a stable, non-prerelease GitHub Release and independently reverified;
+- [ ] the closeout branch's native gate and aggregate CI pass, after which all
+      six children and this parent are archived in dependency order inside the
+      same PR before its final CI and merge;
+- [ ] risk register has no unresolved NO-GO item; the Child 3 native smoke must
+      pass before the Windows ARM64 development-platform claim is closed;
+- [x] source, decision, and file traceability are complete for implementation and Release; this branch adds the final closeout record.

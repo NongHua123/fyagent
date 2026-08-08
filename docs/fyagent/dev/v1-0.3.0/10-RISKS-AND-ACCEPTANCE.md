@@ -1,7 +1,7 @@
 # 风险登记与验收门槛
 
-> **交付状态**：Active risk register / 活动风险登记；正式发布当前 NO-GO
-> **关联决策**：19、24、31、39–49、81–87、97–117
+> **交付状态**：Release GO satisfied and v0.3.0 released; closeout active / 发布 GO 已满足并发布 v0.3.0，仓库收尾进行中
+> **关联决策**：19、24、31、39–49、81–87、97–118
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
 ## 1. 风险评分
@@ -27,15 +27,16 @@
 | R-15 | 产品运行时 mise 被误删或变硬依赖                                        |   2 |   4 | upstream-first、无 mise 启动测试、可选路径测试                                                                | revert runtime change                     | Child 1/6      | NO-GO                                                |
 | R-16 | `merge_group` 真实事件无法产生                                          |   5 |   4 | 明确个人账户与 Merge Queue 前提，不以静态合同冒充事件证据                                                     | 若要 live run，迁移组织仓库并允许保护规则 | Parent         | Accepted D114 verification exception; live run N/A   |
 | R-17 | 无 ruleset/branch protection/tag protection，仅 workflow 验证来源       |   3 |   5 | exact repo/workflow/tag/main ancestry/CI SHA 检查、一次性发布、记录残余风险                                   | 停止 tag；后续独立治理任务                | Parent/Child 4 | Accepted residual risk, not administrator protection |
-| R-18 | 原 pre-merge preflight 与 merge-commit/标准 attestation provenance 冲突 |   5 |   4 | 使用 merge→main CI→exact-main-SHA preflight→tag 顺序                                                          | 偏离已接受顺序则不发布                    | Parent/Child 4 | Accepted D113; remote execution pending              |
+| R-18 | 原 pre-merge preflight 与 merge-commit/标准 attestation provenance 冲突 |   5 |   4 | 使用 merge→main CI→exact-main-SHA preflight→tag 顺序                                                          | 偏离已接受顺序则不发布                    | Parent/Child 4 | Accepted D113; v0.3.0 sequence verified              |
 | R-19 | 本地跨 OS/架构诊断被误当成原生验收                                      |   4 |   5 | host-native-only entrypoint/target 负向扫描；非宿主只接受 native Actions                                      | 停止进程、清理明确输出、门禁退回 Pending  | Parent/Child 3 | NO-GO for affected platform claim                    |
 | R-20 | 后台监控或频繁轮询造成 run/job/log 证据碎片化                           |   3 |   4 | 发起主流程同步 whole-run wait；完成后一次读结果；失败后才取日志                                               | 停止 detached monitor，重新建立单一证据链 | Parent/Child 4 | NO-GO for remote evidence acceptance                 |
-| R-21 | 完整五平台 preflight 被反复当作低层接口调试器，兼容补丁掩盖未知根因     |   4 |   5 | D118 break-loop；MSI 查询 native fixture 进入 Required；metadata 直接行为测试；PR/main 全绿后才允许 preflight | 停止远程重试，回到最小权威接口层研究/修复 | Parent/Child 4 | NO-GO until shifted-left gates pass                  |
+| R-21 | 完整五平台 preflight 被反复当作低层接口调试器，兼容补丁掩盖未知根因     |   4 |   5 | D118 break-loop；MSI 查询 native fixture 进入 Required；metadata 直接行为测试；PR/main 全绿后才允许 preflight | 停止远程重试，回到最小权威接口层研究/修复 | Parent/Child 4 | v0.3.0 shifted-left and release gates verified       |
 
 ## 2. GO 条件
 
 - 真实 tag 完整 SHA、merge base 和远程边界已验证；
-- 所有 P0/NO-GO 风险有通过证据；
+- 当前判定范围内的所有 P0/NO-GO 风险有通过证据；整体 modernization
+  closeout 另受尚未完成的 Windows ARM64 uv/Python/Trellis 原生声明门禁约束；
 - Required gate 可证明失败关闭；
 - 工具链在要求的平台实际解析到目标版本；
 - Native Fetch/MSW 与 deprecation 探针通过；
@@ -43,6 +44,13 @@
 - 文档/任务合同扫描通过。
 - 本地所有标准命令保持当前宿主 OS/架构，非宿主原生门禁具有匹配的 Actions runner 证据；
 - 每次授权 Actions run 由发起主流程同步等待至 `completed`，只记录一次最终结果，失败时才附失败 job 日志。
+
+### v0.3.0 GO 处置
+
+- [PR #7](https://github.com/NongHua123/fyagent/pull/7)、[PR CI `31258884239`](https://github.com/NongHua123/fyagent/actions/runs/31258884239) 和 [same-SHA main CI `31259389682`](https://github.com/NongHua123/fyagent/actions/runs/31259389682) 通过，D118 Windows x64/ARM64 native MSI fixtures 已前移到 Required；
+- [exact-main preflight `31259905022`](https://github.com/NongHua123/fyagent/actions/runs/31259905022) 的五原生目标和 12-subject attestation 成功，publish 正确 skipped；
+- annotated `v0.3.0` 与 main source `bde1370bbaffd345c3d9875708615eaf96140591` 一致；[formal run `31260931509`](https://github.com/NongHua123/fyagent/actions/runs/31260931509) 发布 [stable/latest Release](https://github.com/NongHua123/fyagent/releases/tag/v0.3.0)，13 附件 exact allowlist、digest、metadata 和 attestation 已独立复核；
+- 因此 v0.3.0 的 P0/NO-GO 发布门禁已有通过证据，正式 Release 状态为 **GO / Released / Verified**。
 
 ## 3. GO WITH CONDITIONS
 
@@ -78,4 +86,4 @@
 | Release 预演   | post-merge exact-main-SHA 的 unsigned 10 安装器、2 个 JSON evidence 与 mandatory attestation。      |
 | 正式 Release   | tag/main/CI/workflow 来源、精确 13 附件、摘要、attestation/manifest、Windows/macOS 无签名负向证据。 |
 
-The project owner accepted D113/D114 on 2026-08-08：D113 确认 post-merge exact-main/workflow-SHA preflight 顺序；D114 确认 live `merge_group` 在当前个人仓库/无保护治理下为 N/A 的验证例外，且不是成功运行。D116/D117 进一步固定宿主原生本地边界和同步 whole-run 取证纪律；D118 把反复暴露的低层原生接口前移到工程抽象、行为测试和 Required CI。上述决策都不替代远程 Actions 或正式 Release 证据；真实 PR/main/manual、preflight、tag、Release、资产、attestation 与 closeout 等 pending 项完成前，正式发布与 parent 归档仍保持 NO-GO。
+The project owner accepted D113/D114 on 2026-08-08：D113 确认 post-merge exact-main/workflow-SHA preflight 顺序；D114 确认 live `merge_group` 在当前个人仓库/无保护治理下为 N/A 的验证例外，且不是成功运行。D116/D117 进一步固定宿主原生本地边界和同步 whole-run 取证纪律；D118 把反复暴露的低层原生接口前移到工程抽象、行为测试和 Required CI。本次真实 PR/main/manual、preflight、tag、Release、资产和 attestation 已完成，上述决策的发布门禁已被真实证据满足。无 ruleset/protection/environment 的已接受残余风险仍存在；closeout PR native smoke、evidence/manifest、merge 前 archive/journal、final CI/merge 与 main 后分支清理仍阻止 parent 收尾，但不把已发布 v0.3.0 回退为 NO-GO。

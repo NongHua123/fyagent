@@ -1,7 +1,7 @@
 # 文档与 Trellis 迁移设计
 
-> **交付状态**：In progress / 实施中；远程 closeout 后才能完成
-> **关联决策**：50、52–56、88–115
+> **交付状态**：Migration verified; repository closeout in progress / 迁移已验证，仓库收尾进行中
+> **关联决策**：50、52–56、88–118
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
 ## 1. 目标
@@ -103,4 +103,13 @@ overlay 已于 2026-08-07 冻结，共 111 个文件：108 个冻结 payload 和
 
 ## 9. 完成边界
 
-本 child 可在本地完成活动文档、spec、workflow/skill、旧任务 superseded archive 和合同验证；但保持 `in_progress`，直到正式 Release 后写入真实 run/Release URL、13 附件摘要、digest、attestation 与独立下载检查，刷新 `MANIFEST.sha256`，再归档尚等待远程证据的 child 与 parent 并记录 journal。任何 pending/blocked 项都不得用占位 URL 或“Released”替代。
+正式 Release 已于 [formal run `31260931509`](https://github.com/NongHua123/fyagent/actions/runs/31260931509) 完成；[stable/latest v0.3.0](https://github.com/NongHua123/fyagent/releases/tag/v0.3.0) 的 13 附件、manifest/metadata/bundle digest、独立重下载与 12-subject attestation 复核已写入本设计包，因此 Release 可标记为 `Released / Verified`。
+
+Child 6 仍保持 `in_progress`，因为本 closeout PR 首轮 Required CI（包括
+Windows x64/ARM64 locked uv-managed Python/Trellis smoke）、真实证据写回与
+最终 `MANIFEST.sha256` 尚未完成。首轮 CI 成功后，先写回真实证据并刷新
+manifest，再在同一 PR 内按 Child 3 → Child 4 → Child 6 归档，最后归档
+parent。随后才记录 journal、运行最终 PR CI、merge、验证 exact-main CI，
+并清理非 main 分支。后四项是 parent-level 后续阶段，不是 Child 6 的循环
+archive 前置条件。每个阶段都必须使用真实结果，不得用占位 URL、预期成功
+或提前 archive 替代。

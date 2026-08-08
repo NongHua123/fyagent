@@ -28,18 +28,26 @@ Provide a stable `mise run` repository API with standard version sources, uv-own
 
 ## Acceptance Criteria
 
-- [ ] supported platforms resolve exact toolchain
+- [x] supported platforms resolve exact toolchain
 - [ ] uv-managed Python and Trellis work on Windows ARM64
 - [x] task DAG/metadata/docs checks pass
 - [x] all current local docs use canonical tasks
 - [x] Codex hooks are offline/no-sync and degrade visibly
-- [ ] Cargo workspace, both local lock packages, package metadata, version checks, and eventual tag agree on `0.3.0`
+- [x] Cargo workspace, both local lock packages, package metadata, version checks, and formal tag agree on `0.3.0`
 
 ## Evidence Boundary
 
 Implementation commit `3d534710307d538e570c137231b1d80a64ac8ab7`
 and the Linux x64/local-static evidence are recorded in
 `research/development-environment-evidence.md`. The Child 6 active-document
-migration is complete in `58101230e634e2280ef24937fad1942ed3d3d75f`. Native
-Windows, macOS, and Linux ARM64 evidence and the eventual formal `v0.3.0` tag
-remain pending; this child therefore remains in progress.
+migration is complete in `58101230e634e2280ef24937fad1942ed3d3d75f`. PR #7,
+exact-main Required CI, the five-target native preflight, the annotated
+`v0.3.0` tag, and the formal stable Release are now verified. The original
+Windows ARM64 uv-managed Python and Trellis native-smoke criterion has not yet
+run. At the released main SHA, the `windows-11-arm` Required fixture exercised
+only the Windows Installer query boundary and the Release job exercised native
+application/MSI packaging. The closeout working tree now extends the Required
+x64/ARM64 matrix with locked uv/Python setup, native platform verification, and
+the Trellis task-list protocol; its local static contract passes, but the native
+Actions run has not occurred. That remote result is the sole remaining child
+gate and must pass before archive.

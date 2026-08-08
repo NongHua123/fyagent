@@ -32,11 +32,14 @@ Make current human/agent documentation, Trellis specs/tasks, and generated task 
 - [x] source/provenance and FyAgent CHANGELOG records remain
 - [x] documentation contract checks pass
 - [x] Release Notes and download guidance explain unsigned macOS Privacy & Security → Open Anyway and Windows SmartScreen behavior safely
-- [ ] real CI/preflight/Release/asset/digest/attestation evidence is recorded before final new-task archival
+- [x] real CI/preflight/Release/asset/digest/attestation evidence is recorded before final new-task archival
 
 ## Evidence Boundary
 
-Implementation was authorized on 2026-08-08. Current-contract migration and the
-five old superseded archives are locally complete; formal Release closeout,
-new-task archive, final manifest, and journal evidence remain pending until each
-stage is real.
+Implementation was authorized on 2026-08-08. Current-contract migration, the
+five old superseded archives, and formal Release evidence are complete. The
+closeout branch records the real run, Release, digest, metadata, and attestation
+results. Its new native Windows uv/Python/Trellis gate and final design-package
+manifest refresh remain this child's archive prerequisites. The parent archive,
+journal, final closeout CI/merge, and branch cleanup are later ordered stages,
+not prerequisites for this child archive.

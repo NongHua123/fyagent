@@ -18,18 +18,27 @@
 10. only after the shifted-left gates pass in both PR and exact-main CI, run
     unsigned full-matrix preflight; publish only immutable `v0.3.0` from the
     exact passing main SHA and independently reverify it
+11. in the closeout PR, extend the native Windows x64/ARM64 Required jobs with
+    the locked uv/Python setup and Trellis task-list smoke, then archive only
+    after both native legs and the aggregate Required gate succeed
 
 ## Completion Evidence
 
-Attach exact commands, relevant logs/artifacts, changed-file list, platform scope, unresolved limitations, and the owning spec updates. This child remains open until real PR/main/preflight/Release evidence exists. The accepted workflow-only protection risk is documented but does not waive any Required, asset, manifest, metadata, attestation, or publish gate.
+Attach exact commands, relevant logs/artifacts, changed-file list, platform
+scope, unresolved limitations, and the owning spec updates. Real
+PR/main/preflight/formal Release and independent post-download evidence now
+exist, and the release gate is GO. This child stays open only through the
+closeout PR's new native Windows uv/Python/Trellis gate and closeout operations.
+The accepted workflow-only protection risk is documented but does not waive
+any Required, asset, manifest, metadata, attestation, or publish gate.
 
 Local validation includes Prettier, focused contract tests, active-only negative
 scans, link checks, decision-number uniqueness, Trellis task validation, and
 diff checks. It must also record cleanup of any diagnostic non-host processes,
 temporary directories, and build outputs. Local Windows Light/MSI diagnostics
-are never acceptance. Do not trigger or monitor Actions as part of this local
-implementation pass; all remote evidence remains Pending/NO-GO until separately
-authorized and completed under the synchronous observation contract.
+are never acceptance. Do not treat the locally passing static contract for the
+expanded Windows smoke as native evidence. The closeout PR run must be handled
+under the same synchronous observation contract before archival.
 The full five-target preflight is not a low-level debugging loop: an unknown COM
 projection result or undocumented hosted-image variable must return to its
 smallest authoritative production/test boundary, not gain a compatibility

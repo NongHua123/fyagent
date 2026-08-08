@@ -1,10 +1,10 @@
 # GitHub Actions CI 与无签名正式 Release 设计
 
-> **交付状态**：本地实现并通过静态/行为验证；远端 PR/main/preflight/tag/Release 证据待完成
+> **交付状态**：Implemented and remotely verified; v0.3.0 released / 已实施、完成远程验证并发布
 >
 > **目标版本**：FyAgent `0.3.0` / tag `v0.3.0`
 >
-> **关联决策**：13–19、43、49、70、80、105–117
+> **关联决策**：13–19、43、49、70、80、105–118
 > **证据等级**：本文区分 `[Implemented / 已实施]`、`[Verified Locally / 本地已验证]`、`[Pending Remote Verification / 远端待验证]`、`[Accepted Governance Exception / 已接受治理例外]`。
 
 ## 1. 已实施的边界
@@ -28,7 +28,8 @@ Frontend Checks (ubuntu-24.04) ───────────┤
 Desktop Acceptance Contract (ubuntu-24.04)├─> CI / Required
 Backend Checks Linux (ubuntu-24.04) ───────┤    ubuntu-24.04, if: always()
 Backend Checks Windows (windows-2022) ─────┤
-Backend Checks macOS (macos-15) ───────────┘
+Windows Native Contracts (windows-2022/windows-11-arm) ─┤
+Backend Checks macOS (macos-15) ──────────────────────┘
 ```
 
 触发合同：
@@ -44,7 +45,7 @@ on:
   workflow_dispatch:
 ```
 
-`CI / Required` 读取显式 `needs` 结果，只接受完整且全为 `success` 的依赖集合；`failure`、`cancelled`、缺失依赖和未经合同允许的 `skipped` 均失败。workflow 不使用顶层 path filter 隐藏 Required context。
+`CI / Required` 读取显式 `needs` 结果，依赖集合精确为上述七个 job；只接受完整且全为 `success`。`failure`、`cancelled`、缺失依赖和未经合同允许的 `skipped` 均失败。`Windows Native Contracts` 在 `windows-2022`/`windows-11-arm` 上形成 x64/ARM64 matrix，使用 lock 解析的 uv-managed Python 运行 Trellis task-list smoke，然后执行 native temporary-MSI query fixture。workflow 不使用顶层 path filter 隐藏 Required context。
 
 标准工具链事实为 Node 24.19.0、pnpm 10.12.3、Rust 1.97.1、Python 3.14.7 和 `mise.lock` 中锁定的 uv。CI 使用标准文件与锁文件解析这些值，在 job 内验证实际运行时版本，而不是把镜像预装版本当作证据。
 
@@ -57,7 +58,7 @@ on:
 - `workflow_dispatch` 保留带明确 PR 编号的维护者补跑入口；
 - 自动标签只引用仓库已存在 label，不能借 PR 输入创建任意标签。
 
-远端自动 Labeler 只有在新 workflow 已进入默认分支后才能产生真实 `pull_request_target` 证据；feature branch 的静态测试不能替代该证据。
+远端自动 Labeler 只有在新 workflow 已进入默认分支后才能产生真实 `pull_request_target` 证据；feature branch 的静态测试不能替代该证据。v0.3.0 时间线已以 Labeler run `31240006243` 完成该远程闭环。
 
 ## 4. Release 触发与来源资格
 
@@ -88,8 +89,7 @@ on:
 新建 trusted reusable workflow 或 custom predicate 任务。
 
 [Decision / 已决策] The project owner accepted D113/D114 on 2026-08-08。
-D113 确认上述 post-merge exact-main/workflow-SHA preflight 顺序；该接受只
-解除顺序决策门禁，不代表 preflight、tag 或 Release 已实际发生。
+D113 确认上述 post-merge exact-main/workflow-SHA preflight 顺序。v0.3.0 已按该顺序完成：implementation PR merge → same-SHA main CI → exact-main preflight → annotated tag → formal Release；决策本身与实际 run 证据仍分开记录。
 
 ### 4.2 正式发布
 
@@ -216,12 +216,13 @@ GitHub 对该 unsafe PATCH 不提供通用条件请求，管理员仍可能在�
 
 [Decision / 已决策] D117 要求授权触发后由发起主流程执行一次同步 whole-run wait，直到 run 为 `completed`；随后只读取一次最终 run/job 结果。不得派后台/异步 monitor，也不得反复轮询 run/job/check 状态；仅最终失败才获取失败 job 日志。观察授权不等于 rerun、cancel、tag 或 publish 授权。
 
-## 12. 当前验证状态与治理例外
+## 12. v0.3.0 验证实例与治理例外
 
-- `[Verified Locally]` 当前 metadata revision 的 writer/aggregate/静态 workflow 定向 Vitest、Prettier、typecheck 与 version contract 已通过；`actionlint` 当前未安装，较早 revision 的 actionlint 1.7.12 结果不能替代本次 workflow diff，仍需在后续本地/CI gate 补验；
-- `[Pending Remote Verification]` Windows ARM64、Linux ARM64、macOS Universal、full-matrix preflight、正式 tag 和公开资产尚须真实 Actions 证据；
-- `[Pending Remote Verification]` 自动 Labeler 需 workflow 进入 default branch 后通过真实 PR 验证；
-- `[Accepted Governance Exception]` D114 确认：当前仓库属于个人账户且明确不启用 ruleset/branch protection，GitHub Merge Queue 无法启用，因而真实 `merge_group` 运行在当前治理下为 N/A，而不是成功。接受的替代证据为 YAML trigger、失败关闭合同/静态测试和真实 PR/main/manual 运行；这些远程运行仍待验证。
-- `[Verified Local Cleanup]` 当前只安装 `x86_64-unknown-linux-gnu` Rust target，两个诊断 build 目录已不存在；该状态不证明 Windows/macOS/ARM64 原生门禁。
+- `[Verified]` D118 生产抽象由 [PR #7](https://github.com/NongHua123/fyagent/pull/7) 交付；[PR CI `31258884239`](https://github.com/NongHua123/fyagent/actions/runs/31258884239) 与 [main CI `31259389682`](https://github.com/NongHua123/fyagent/actions/runs/31259389682) 均成功，Windows Installer Query x64/ARM64 native fixtures 和 `CI / Required` 通过；
+- `[Verified]` merge commit/source 为 `bde1370bbaffd345c3d9875708615eaf96140591`；[preflight `31259905022`](https://github.com/NongHua123/fyagent/actions/runs/31259905022) 的五个 native target group、exact assets、metadata 与 attestation 成功，publish 按合同 skipped；
+- `[Released]` annotated tag object `e6706d4bdc33a184cf641204574df1fc2962ca4c` peeled 到上述 source；[formal run `31260931509`](https://github.com/NongHua123/fyagent/actions/runs/31260931509) 成功发布 [stable/latest Release `v0.3.0`](https://github.com/NongHua123/fyagent/releases/tag/v0.3.0)（Release ID `367220197`）及 exact 13 attachments；
+- `[Independently Verified]` 重下载 exact-13 后，10-installer manifest 尺寸、SHA-256 和 URL 与实际 bytes 一致，formal metadata 绑定 same-SHA main Required run `31259389682` attempt 1；官方 checksum 核验的 GitHub CLI 2.97.0 使用本地 Sigstore bundle、repository/signer workflow/source digest/source ref 和 `--deny-self-hosted-runners` 验证全部 12 subjects；
+- `[Accepted Governance Exception]` D114 保持不变：个人账户与无 ruleset/branch protection 使 live `merge_group` 为 N/A，不是 success。YAML trigger、失败关闭静态合同与真实 PR/main/manual 替代证据已完整；
+- `[Residual Risk]` main/tag 仍无 ruleset/branch protection，Release 仍无 environment；这是 v0.3.0 已接受的 workflow-only 治理风险，本次成功不把它升级为管理员保护。
 
-本地通过与 D116/D117 文档落地不等于发布完成。Child4 在 main CI、unsigned preflight、tag-triggered workflow、公开 Release、独立下载复核和 attestation URL 全部取得真实证据前保持 `in_progress`；本轮未触发、监控或轮询 Actions。
+v0.3.0 的 Release 合同已完成远程验收。本文的长期失败关闭合同继续适用于后续维护；上述实例只是当前版本的审计证据，不把规范改写成一次性历史流程。closeout PR 的 Windows x64/ARM64 locked uv/Python/Trellis smoke、最终 archive/journal 和分支清理仍是仓库收尾门禁，不影响已发布 Release 的真实状态。

@@ -6,10 +6,12 @@ Date: `2026-08-08`
 
 This record covers local documentation, long-lived specs, Trellis workflow and
 skills, the frozen overlay boundary, public release documentation, the five old
-superseded task archives, and the observed PR/main/Labeler/preflight outcomes
-listed below. It does not claim a successful five-target preflight, tag, GitHub
-Release, published digest, attestation, independent download verification,
-final `MANIFEST.sha256`, remaining new-task archive, or journal result.
+superseded task archives, and the observed PR/main/Labeler/preflight/formal
+Release outcomes listed below. It now records the published digests,
+attestations, and independent download verification. It does not claim that the
+closeout PR's expanded native Windows uv/Python/Trellis gate, final design
+package `MANIFEST.sha256`, closeout CI/merge, remaining new-task archive,
+journal, or branch cleanup has completed.
 
 ## Work commits
 
@@ -65,40 +67,68 @@ The active task remained
 `.trellis/tasks/08-07-migrate-docs-and-trellis-specs` throughout the old-task
 archive.
 
-## Accepted decisions and remaining remote evidence
+## Accepted decisions and completed remote evidence
 
-- The project owner accepted D113/D114 on 2026-08-08.
-- D113 confirms the implemented post-merge exact-main/workflow-SHA preflight
-  order; successful remote preflight evidence for the current remediation
-  remains pending.
-- D114 accepts a governance verification exception: a real `merge_group` event
-  is impossible for the personal-account repository while branch
-  protection/rulesets remain forbidden, so the live run is N/A rather than
-  successful. Its substitute is the YAML trigger, fail-closed contract/static
-  tests, and real PR/main/manual runs. PR/main evidence exists; a successful
-  manual preflight remains pending.
+- The project owner accepted D113/D114 on 2026-08-08. D113's post-merge
+  exact-main/workflow-SHA order was executed. D114 remains a governance
+  exception: a live `merge_group` event is impossible for the personal-account
+  repository while protection/rulesets remain intentionally absent, so the
+  live run is N/A rather than successful. Its YAML/static plus real
+  PR/main/manual substitute is complete.
 - D116 requires canonical local development, build, test, package, and
   verification entrypoints to execute only the current host OS/architecture;
-  non-host evidence must come from matching native Actions runners. D117
-  requires synchronous whole-run waiting followed by one final result read,
-  with failed logs fetched only after final failure.
-- D118 has moved the low-level Windows Installer and runner/container metadata
-  contracts behind engineering abstractions, behavior tests, and a native
-  x64/ARM64 Required CI fixture. Local contracts are verified; the native
-  Required CI evidence remains pending before another full preflight.
-- PR #4/#5/#6 Required CI, their main CI runs, and automatic Labeler run
-  `31240006243` succeeded. Exact-main preflights `31238817378`,
-  `31241064177`, and `31251654600` failed closed before aggregation,
-  attestation, or publication; they created no tag or Release.
-- A successful D118 remediation PR/main cycle, all five native release groups, a
-  successful exact-main unsigned preflight, immutable `v0.3.0`, the stable
-  13-attachment Release,
-  digest/attestation verification, Windows `NotSigned`, macOS Developer ID and
-  notarization absence, independent re-download, final manifest, closeout task
-  archives, and journal remain pending.
+  non-host evidence comes from matching native Actions runners. No local
+  Windows, macOS, ARM64, foreign-target, or cross-OS acceptance command was
+  used.
+- D118 moved the low-level Windows Installer and runner/container metadata
+  contracts behind engineering abstractions, behavior tests, and native
+  x64/ARM64 Required CI fixtures. PR #7 run `31258303784` failed closed on an
+  empty typed cleanup accumulator. The corrected run `31258884239` passed both
+  fixtures and Required without ignoring cleanup failures or adding a fallback.
+- PR #7 merged as `bde1370bbaffd345c3d9875708615eaf96140591`.
+  Exact-main Required run `31259389682` passed. Exact-main preflight
+  `31259905022` passed all five native release groups, aggregation, and
+  attestation without publishing.
+- Annotated tag object `e6706d4bdc33a184cf641204574df1fc2962ca4c`
+  peels to that exact main source. Formal run `31260931509` passed eligibility,
+  all builds, exact verification, attestation, and final publish.
+- Stable Release
+  <https://github.com/NongHua123/fyagent/releases/tag/v0.3.0> (ID
+  `367220197`) is non-draft, non-prerelease, latest, and contains exactly ten
+  unsigned installers plus `download-manifest.json`, `build-metadata.json`, and
+  `artifact-attestation.sigstore.json`.
 
-Child 6 and the parent must remain active until the remaining remote gates are
-resolved and the real closeout evidence is committed.
+Independent verification downloaded all 13 attachments and matched the exact
+allowlist, sizes, hashes, and URLs. It bound build metadata to source
+`bde1370bbaffd345c3d9875708615eaf96140591`, main Required run
+`31259389682`, and formal run `31260931509`. GitHub CLI `2.97.0`, checked
+against its official checksum, verified all 12 bundle subjects with exact
+repository, signer workflow, source digest, tag ref, and hosted-runner
+restrictions. Evidence attachment SHA-256 values are:
 
-Formal Release remains **NO-GO** until the current remediation is merged and a
-complete exact-main five-target unsigned preflight succeeds.
+```text
+download-manifest.json                 d1d81b973aea506d369e21b385ee60b993b88121b946cf68dc254e825b4abea1
+build-metadata.json                    7ae0631b77059d05a8866ec9602f8afc7f8493a092f6c32a3e4a161a3fc98079
+artifact-attestation.sigstore.json     4802f1e9b5eca3eb0cc2a03530b86057d79e9d5828a97615d8ea5e5430ce0576
+```
+
+## D117 observation evidence
+
+Runs `31258303784`, `31258884239`, `31259389682`, `31259905022`, and
+`31260931509` were each handled by the initiating main flow with one
+synchronous whole-run wait through `completed`, followed by one final run/job
+result read. Failed-job logs were retrieved only after the first run's final
+failure. No background/asynchronous monitor, high-frequency polling, or
+progress-output loop was used.
+
+## Remaining closeout boundary
+
+Formal Release evidence is complete and the release gate is **GO**. The
+closeout branch adds a locked uv/Python plus Trellis task-list smoke to both
+native Windows Required legs. Local static contracts pass, but the closeout PR
+has not run, so the original Windows ARM64 native-smoke criterion remains open.
+The final design-package `MANIFEST.sha256` refresh, closeout CI/merge, remaining
+new-task archives, journal, and final branch cleanup also remain pending and are
+not claimed here. The accepted absence of rulesets, branch protection, and a
+Release environment remains the only governance residual; it does not waive
+any closeout gate.

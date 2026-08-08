@@ -98,7 +98,19 @@ permissions:
   contents: read
 ```
 
-The current workflow uses reviewed full immutable Action SHAs, explicit runners, and a final `CI / Required` job that inspects the exact six dependency results. Node/Rust/pnpm versions are read from standard files. The project owner accepted D113/D114 on 2026-08-08. Real PR/main/manual evidence remains pending; D114 records a live `merge_group` run as N/A under the current personal-repository/no-protection governance, not as success. Its accepted substitute is the YAML trigger, fail-closed contract/static tests, and those real PR/main/manual runs.
+The current workflow uses reviewed full immutable Action SHAs, explicit runners,
+and a final `CI / Required` job that inspects exactly seven dependency results.
+Node, Rust, pnpm, Python, and uv versions come from repository facts. The
+`windows-msi-query` dependency is a native x64/ARM64 contract matrix: it
+prepares locked uv/Python, proves the interpreter architecture, exercises the
+Trellis task protocol, and then runs the generated-MSI query fixture. The
+project owner accepted D113/D114 on 2026-08-08. PR/main/preflight/formal Release
+evidence for source `bde1370bbaffd345c3d9875708615eaf96140591` succeeded;
+the closeout PR still has to prove the newly added Windows Python/Trellis step
+before final task archival. D114 records a live `merge_group` run as N/A under
+the current personal-repository/no-protection governance, not as success. Its
+accepted substitute is the YAML trigger, fail-closed contract/static tests,
+and the real PR/main/manual runs.
 
 ## Linux Release job shape
 

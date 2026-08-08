@@ -143,9 +143,10 @@ describe("automatic CI workflow", () => {
     expect(source).not.toContain("10.12.3");
     expect(source).not.toContain("1.97.1");
     expect(source).not.toContain("0.12.2");
+    expect(source).not.toContain("3.14.7");
 
     const nodeSteps = actionSteps("actions/setup-node");
-    expect(nodeSteps).toHaveLength(6);
+    expect(nodeSteps).toHaveLength(7);
     for (const step of nodeSteps) {
       expect(step).toContain("node-version-file: .node-version");
       expect(step).not.toMatch(/^\s+node-version:/m);
@@ -167,7 +168,7 @@ describe("automatic CI workflow", () => {
     }
 
     const uvSteps = actionSteps("astral-sh/setup-uv");
-    expect(uvSteps).toHaveLength(2);
+    expect(uvSteps).toHaveLength(3);
     for (const step of uvSteps) {
       expect(step).toContain(
         "version: ${{ steps.toolchain-facts.outputs.uv-version }}",
@@ -251,25 +252,60 @@ describe("automatic CI workflow", () => {
     );
   });
 
-  it("runs the lightweight query fixture on native Windows x64 and ARM64", () => {
+  it("runs managed Python, Trellis, and the query fixture on native Windows x64 and ARM64", () => {
     const block = jobBlock("windows-msi-query");
+    expect(block).toContain(
+      "name: Windows Native Contracts (${{ matrix.architecture }})",
+    );
     expect(block).toContain("timeout-minutes: 15");
     expect(block).toContain("fail-fast: false");
-    expect(block).toContain(
-      "runner: windows-2022\n            architecture: X64",
-    );
-    expect(block).toContain(
-      "runner: windows-11-arm\n            architecture: Arm64",
-    );
+    expect(block).toContain(`matrix:
+        include:
+          - runner: windows-2022
+            architecture: X64
+          - runner: windows-11-arm
+            architecture: Arm64
+    runs-on: \${{ matrix.runner }}`);
     expect(block).toContain("shell: pwsh");
+    expect(block).toContain("node-version-file: .node-version");
+    expect(block).toContain(
+      "run: node scripts/ci/verify-toolchain.mjs --emit-github-output",
+    );
+    expect(block).toContain(
+      "version: ${{ steps.toolchain-facts.outputs.uv-version }}",
+    );
+    expect(block).toContain(
+      "python-version: ${{ steps.toolchain-facts.outputs.python-version }}",
+    );
+    expect(block).toContain("enable-cache: false");
+    expect(block).toContain("run: uv sync --locked");
+    expect(block).toContain(
+      "run: node scripts/ci/verify-toolchain.mjs --tools node,uv,python",
+    );
+    expect(block).toContain(
+      "uv run --locked --no-sync python .trellis/scripts/task.py list --json",
+    );
+    expect(block).toContain("'X64' { 'win-amd64' }");
+    expect(block).toContain("'Arm64' { 'win-arm64' }");
+    expect(block).toContain(
+      'python -c "import sysconfig; print(sysconfig.get_platform())"',
+    );
+    expect(block).toContain("$pythonPlatform -ne $expectedPythonPlatform");
+    expect(block).toContain(
+      "-not ($parsed.PSObject.Properties.Name -contains 'tasks')",
+    );
+    expect(block).toContain("-not ($parsed.tasks -is [System.Array])");
+    expect(block).toContain(
+      'throw "Trellis task listing did not return a tasks array"',
+    );
     expect(block).toContain("./tests/windowsInstallerQuery.integration.ps1");
     expect(block).toContain(
       "-ExpectedArchitecture '${{ matrix.architecture }}'",
     );
-    expect(block.match(/^      - name:/gm)).toHaveLength(2);
-    expect(block.match(/^        uses:/gm)).toHaveLength(1);
+    expect(block.match(/^      - name:/gm)).toHaveLength(8);
+    expect(block.match(/^        uses:/gm)).toHaveLength(3);
     expect(block).not.toMatch(
-      /setup-(?:node|rust)|\b(?:node|npm|npx|pnpm|yarn|bun|cargo|rustc)\b|tauri|src-tauri|frontend|package|bundle/i,
+      /setup-rust|\b(?:npm|npx|pnpm|yarn|bun|cargo|rustc)\b|tauri|src-tauri|frontend|package|bundle/i,
     );
   });
 

@@ -216,12 +216,19 @@ flags；后续 Rust wrapper 仍独立核验绝对 rustc/rustdoc 身份并固定 
 
 ## 10. 实施证据与剩余门禁
 
-基础实现 commit 为 `3d534710307d538e570c137231b1d80a64ac8ab7`；`mise run bootstrap`、`mise run check`、80-task 合同、lock 二次生成稳定性、hooks 模拟、version `0.3.0` 和 Linux x64 managed-toolchain 检查已通过。D116 runtime hardening 又补充了共享 host planner、package/mise wrapper 路由、caller env/argv 拒绝和真实 wrapper smoke；当前变更仍未提交，不虚构 commit。`mise.lock` SHA-256 为 `5f0d9df527ec1fdaf5532726ba30d330c74872786ad0380783064a36ceeefd9d`，解析 uv `0.12.2`。
+基础实现 commit 为 `3d534710307d538e570c137231b1d80a64ac8ab7`；`mise run bootstrap`、`mise run check`、80-task 合同、lock 二次生成稳定性、hooks 模拟、version `0.3.0` 和 Linux x64 managed-toolchain 检查已通过。D116 runtime hardening 由 `a1c1238c4f7ec8f80238edfb2618823bcedf49f5` 补充共享 host planner、package/mise wrapper 路由、caller env/argv 拒绝和真实 wrapper smoke。`mise.lock` SHA-256 为 `5f0d9df527ec1fdaf5532726ba30d330c74872786ad0380783064a36ceeefd9d`，解析 uv `0.12.2`。
 
 D116 收口时已停止为本地 Windows 诊断启动的 cargo/rustc 进程，删除显式诊断临时目录，并清理 `src-tauri/target/app`（清理前 4.1 GiB）与 `target/installer-actions`（清理前 57.4 MiB）。当前复核确认两个目录均不存在，`rustup target list --installed` 只有 `x86_64-unknown-linux-gnu`。此前本地 Windows Light/MSI 输出仅是诊断信息，不是 Windows 原生验收。
 
-Windows x64/ARM64、Linux ARM64 和 macOS 的 native setup/env/hooks/task 证据仍待 Actions；实际 `v0.3.0` tag 与正式 Release 也未发生。因此 Child 3 保持 `in_progress`，不能从 lock 平台条目推断远程执行成功。
+PR #7、exact-main Required CI `31259389682`、五 target preflight
+`31259905022`、annotated `v0.3.0` 和 formal Release run `31260931509`
+已经证明实现与原生打包合同，但它们没有执行 Windows ARM64 上的
+uv-managed Python/Trellis。closeout PR 已新增 Windows x64/ARM64 Required
+smoke：锁定 uv/Python、执行 `uv sync --locked`、校验 Python native platform，
+并通过 managed Python 调用 Trellis JSON task list。其静态合同已通过，真实
+Actions run 尚未发生；因此 Child 3 继续保持 `in_progress`，且不能用 lock
+平台条目、MSI fixture 或正式打包结果替代该原生证据。
 
 ## 11. Actions 运行观察纪律
 
-D117 规定：仅在触发已单独获授权后，由发起主流程同步等待整次 Actions run 到 `completed`；不得启动后台/异步监控代理，也不得反复执行 run/job/check 状态查询。等待结束后只读取一次最终 run/job 结果；成功时不批量抓日志，失败时才获取一次失败 job 日志。该观察流程不授权 rerun、cancel、tag 或 publish，且本轮没有触发或监控任何 Actions run。
+D117 规定：仅在触发已单独获授权后，由发起主流程同步等待整次 Actions run 到 `completed`；不得启动后台/异步监控代理，也不得反复执行 run/job/check 状态查询。等待结束后只读取一次最终 run/job 结果；成功时不批量抓日志，失败时才获取一次失败 job 日志。PR #7、exact-main、preflight 与 formal Release 的观察均已按此执行；closeout PR 的新 native smoke 仍待同样的一次完整同步等待。该观察流程本身不扩张 rerun、cancel、tag 或 publish 权限。
