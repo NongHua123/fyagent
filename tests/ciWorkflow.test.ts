@@ -173,11 +173,20 @@ describe("automatic CI workflow", () => {
       expect(step).toContain(
         "version: ${{ steps.toolchain-facts.outputs.uv-version }}",
       );
-      expect(step).toContain(
-        "python-version: ${{ steps.toolchain-facts.outputs.python-version }}",
-      );
       expect(step).toContain("enable-cache: false");
     }
+    expect(
+      uvSteps.filter((step) =>
+        step.includes(
+          "python-version: ${{ steps.toolchain-facts.outputs.python-version }}",
+        ),
+      ),
+    ).toHaveLength(2);
+    expect(uvSteps).toContainEqual(
+      expect.stringContaining(
+        "python-version: cpython-${{ steps.toolchain-facts.outputs.python-version }}-windows-${{ matrix.python_architecture }}-none",
+      ),
+    );
   });
 
   it("prepares the locked Python environment before the full unit suite", () => {
@@ -263,9 +272,14 @@ describe("automatic CI workflow", () => {
         include:
           - runner: windows-2022
             architecture: X64
+            python_architecture: x86_64
+            python_platform: win-amd64
           - runner: windows-11-arm
             architecture: Arm64
+            python_architecture: aarch64
+            python_platform: win-arm64
     runs-on: \${{ matrix.runner }}`);
+    expect(block).toContain('UV_MANAGED_PYTHON: "true"');
     expect(block).toContain("shell: pwsh");
     expect(block).toContain("node-version-file: .node-version");
     expect(block).toContain(
@@ -275,22 +289,22 @@ describe("automatic CI workflow", () => {
       "version: ${{ steps.toolchain-facts.outputs.uv-version }}",
     );
     expect(block).toContain(
-      "python-version: ${{ steps.toolchain-facts.outputs.python-version }}",
+      "python-version: cpython-${{ steps.toolchain-facts.outputs.python-version }}-windows-${{ matrix.python_architecture }}-none",
     );
     expect(block).toContain("enable-cache: false");
-    expect(block).toContain("run: uv sync --locked");
+    expect(block).toContain("run: uv sync --locked --managed-python");
     expect(block).toContain(
       "run: node scripts/ci/verify-toolchain.mjs --tools node,uv,python",
     );
     expect(block).toContain(
       "uv run --locked --no-sync python .trellis/scripts/task.py list --json",
     );
-    expect(block).toContain("'X64' { 'win-amd64' }");
-    expect(block).toContain("'Arm64' { 'win-arm64' }");
     expect(block).toContain(
       'python -c "import sysconfig; print(sysconfig.get_platform())"',
     );
-    expect(block).toContain("$pythonPlatform -ne $expectedPythonPlatform");
+    expect(block).toContain(
+      "$pythonPlatform -ne '${{ matrix.python_platform }}'",
+    );
     expect(block).toContain(
       "-not ($parsed.PSObject.Properties.Name -contains 'tasks')",
     );

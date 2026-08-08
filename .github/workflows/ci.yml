@@ -273,14 +273,20 @@ jobs:
   windows-msi-query:
     name: Windows Native Contracts (${{ matrix.architecture }})
     timeout-minutes: 15
+    env:
+      UV_MANAGED_PYTHON: "true"
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: windows-2022
             architecture: X64
+            python_architecture: x86_64
+            python_platform: win-amd64
           - runner: windows-11-arm
             architecture: Arm64
+            python_architecture: aarch64
+            python_platform: win-arm64
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -301,11 +307,11 @@ jobs:
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: ${{ steps.toolchain-facts.outputs.uv-version }}
-          python-version: ${{ steps.toolchain-facts.outputs.python-version }}
+          python-version: cpython-${{ steps.toolchain-facts.outputs.python-version }}-windows-${{ matrix.python_architecture }}-none
           enable-cache: false
 
       - name: Synchronize locked Python environment
-        run: uv sync --locked
+        run: uv sync --locked --managed-python
 
       - name: Verify managed Windows toolchains
         run: node scripts/ci/verify-toolchain.mjs --tools node,uv,python
@@ -313,14 +319,9 @@ jobs:
       - name: Exercise Trellis through managed Python
         shell: pwsh
         run: |
-          $expectedPythonPlatform = switch ('${{ matrix.architecture }}') {
-            'X64' { 'win-amd64' }
-            'Arm64' { 'win-arm64' }
-            default { throw "Unsupported Windows architecture: ${{ matrix.architecture }}" }
-          }
           $pythonPlatform = uv run --locked --no-sync python -c "import sysconfig; print(sysconfig.get_platform())"
-          if ($LASTEXITCODE -ne 0 -or $pythonPlatform -ne $expectedPythonPlatform) {
-            throw "Managed Python platform mismatch: expected $expectedPythonPlatform, got $pythonPlatform"
+          if ($LASTEXITCODE -ne 0 -or $pythonPlatform -ne '${{ matrix.python_platform }}') {
+            throw "Managed Python platform mismatch: expected ${{ matrix.python_platform }}, got $pythonPlatform"
           }
           $report = uv run --locked --no-sync python .trellis/scripts/task.py list --json
           if ($LASTEXITCODE -ne 0) {
