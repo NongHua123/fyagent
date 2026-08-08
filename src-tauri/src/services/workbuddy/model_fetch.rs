@@ -272,7 +272,10 @@ mod tests {
 
     use reqwest::{redirect::Policy, Client};
 
-    const TEST_SERVER_ACCEPT_TIMEOUT: Duration = Duration::from_secs(2);
+    // Heavily parallel native CI can schedule the server thread well before
+    // the Tokio client future. Keep the shared fixture bounded while allowing
+    // for that scheduling skew; product transport timeouts remain independent.
+    const TEST_SERVER_ACCEPT_TIMEOUT: Duration = Duration::from_secs(10);
 
     struct LocalHttpServer {
         base_url: String,
@@ -362,7 +365,8 @@ mod tests {
             match listener.accept() {
                 Ok((stream, _)) => return Some(stream),
                 Err(error)
-                    if error.kind() == ErrorKind::WouldBlock && Instant::now() < deadline =>
+                    if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::Interrupted)
+                        && Instant::now() < deadline =>
                 {
                     thread::sleep(Duration::from_millis(5));
                 }

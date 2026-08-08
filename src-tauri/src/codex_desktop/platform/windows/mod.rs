@@ -49,7 +49,10 @@ use crate::codex_desktop::{
 };
 
 #[cfg(target_os = "windows")]
-pub use deployment::{SystemWindowsDiskSpaceProbe, SystemWindowsPackageManager};
+#[cfg_attr(test, allow(unused_imports))]
+pub use deployment::SystemWindowsDiskSpaceProbe;
+#[cfg(target_os = "windows")]
+pub use deployment::SystemWindowsPackageManager;
 
 /// Exact Publisher allowlist from read-only local Windows evidence collected on
 /// 2026-07-29. The current-user Microsoft Store package was
