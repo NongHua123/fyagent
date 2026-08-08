@@ -180,10 +180,10 @@ FYAGENT_INSTALLDIR_CHECK_ID
   and attestations with `requiredCi: null`, but never publishes. The same-SHA
   Required CI gate is formal-tag-only; only the exact qualifying tag push can
   enter publish.
-- That post-merge exact-main-SHA sequence is implemented and locally verified,
-  but [D113](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md)
-  remains **Pending acceptance / Release NO-GO**. Do not create the tag or
-  dispatch the preflight merely because the executable contract exists.
+- That post-merge exact-main-SHA sequence is implemented and locally verified.
+  The project owner accepted D113/D114 on 2026-08-08; D113 confirms this
+  sequence. The decision is not evidence that the preflight ran and does not
+  by itself create or validate the tag, Release, assets, or attestations.
 - Release assets use the unprefixed application version, for example:
 
   ```text

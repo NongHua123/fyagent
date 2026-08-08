@@ -1,6 +1,6 @@
 # 分阶段实施计划
 
-> **交付状态**：Phases 0–5 implemented; Phase 6 in progress; Phase 7 pending/blocked / 阶段 0–5 已实施，阶段 6 进行中，阶段 7 待远程验收并含阻塞项
+> **交付状态**：Phases 0–5 implemented; Phase 6 in progress; Phase 7 remote evidence pending / 阶段 0–5 已实施，阶段 6 进行中，阶段 7 待远程验收
 > **关联决策**：1–115
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
@@ -72,7 +72,7 @@ Phase 7  最终 CI、预演和 Release 验收
 
 ### CI/Release
 
-PR、main、manual 事件；聚合 gate 失败/取消/跳过模拟；post-merge exact-main-SHA unsigned 全矩阵预演；10 安装器/13 附件和 attestation 验证。`merge_group` 静态合同已实现，但真实事件因个人账户且禁止 ruleset/branch protection 而 **Blocked**。
+PR、main、manual 事件；聚合 gate 失败/取消/跳过模拟；post-merge exact-main-SHA unsigned 全矩阵预演；10 安装器/13 附件和 attestation 验证。`merge_group` 静态合同已实现，但真实事件因个人账户且禁止 ruleset/branch protection 而无法产生。D114 已接受其为当前治理下 N/A 的验证例外；不得记为成功，替代验收仍需真实 PR/main/manual 运行。
 
 ### DEP0040
 
@@ -100,8 +100,8 @@ PR、main、manual 事件；聚合 gate 失败/取消/跳过模拟；post-merge 
 - unsigned 全矩阵预演成功；
 - 正式无签名流程成功产生精确 10 安装器/13 附件、provenance 与 manifest；
 - 活动文档与 task 元数据一致；
-- 风险登记达到 GO；任何 NO-GO（含尚未解决的 `merge_group` 验收矛盾）都会阻止发布与 parent 归档。
+- 风险登记达到 GO；任何尚未解决的 NO-GO 或真实远程证据缺口都会阻止发布与 parent 归档。D114 的已接受 N/A 例外本身不再要求 live `merge_group` 运行。
 
 ### Preflight 顺序覆盖
 
-原计划中的“待合入 main 的同一 SHA preflight”与 GitHub merge commit 及标准 artifact attestation 的 `GITHUB_SHA` provenance 不兼容。已实施的安全顺序为：实现 PR merge → main 的 `CI / Required` 成功 → `source_sha == GITHUB_SHA == GITHUB_WORKFLOW_SHA` 的 manual preflight → tag → formal Release。该偏差必须在远程执行前由项目方接受；不得把 pre-merge candidate 标记为 trusted-main attestation provenance。
+原计划中的“待合入 main 的同一 SHA preflight”与 GitHub merge commit 及标准 artifact attestation 的 `GITHUB_SHA` provenance 不兼容。已实施的安全顺序为：实现 PR merge → main 的 `CI / Required` 成功 → `source_sha == GITHUB_SHA == GITHUB_WORKFLOW_SHA` 的 manual preflight → tag → formal Release。The project owner accepted D113/D114 on 2026-08-08，其中 D113 明确接受该顺序；不得把 pre-merge candidate 标记为 trusted-main attestation provenance，也不得把决策接受写成 preflight 已运行。

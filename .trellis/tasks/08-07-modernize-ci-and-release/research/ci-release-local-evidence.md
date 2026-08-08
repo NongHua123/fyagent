@@ -40,6 +40,14 @@ The child remains `in_progress`. The following are not satisfied by local/static
 - Windows x64/ARM64, Linux x64/ARM64, and macOS Universal native runner/package evidence;
 - mandatory GitHub artifact attestations and Sigstore bundle verification;
 - the exact stable `v0.3.0` GitHub Release and independent post-download validation;
-- real `merge_group` evidence. The repository is owned by a personal account and the approved plan forbids branch protection/rulesets, so GitHub Merge Queue cannot currently be enabled and this remains a structural NO-GO rather than a simulated success.
+- real PR/main/manual evidence required by the D114 substitute acceptance contract.
 
-The originally requested pre-merge same-SHA preflight is also structurally incompatible with a GitHub merge commit plus truthful standard attestation provenance. The implemented safe order is merge -> successful main CI -> exact-main-SHA unsigned preflight -> tag -> formal Release. This deviation must remain visible in final traceability and requires acceptance before the remote release phase.
+The originally requested pre-merge same-SHA preflight is structurally incompatible with a GitHub merge commit plus truthful standard attestation provenance. The implemented safe order is merge -> successful main CI -> exact-main-SHA unsigned preflight -> tag -> formal Release.
+
+The project owner accepted D113/D114 on 2026-08-08. D113 confirms that order.
+D114 confirms a governance verification exception: the personal-account
+repository and no-protection decision cannot enable GitHub Merge Queue, so a
+real `merge_group` run remains impossible and is N/A, not successful. Its
+accepted substitute is the YAML trigger, fail-closed contract/static tests,
+and real PR/main/manual runs. This acceptance does not satisfy any pending
+preflight, tag, Release, asset, attestation, or closeout evidence.

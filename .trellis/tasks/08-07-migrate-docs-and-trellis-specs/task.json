@@ -21,7 +21,7 @@
   "children": [],
   "parent": "08-07-fyagent-upstream-toolchain-release-modernization",
   "relatedFiles": [],
-  "notes": "Local documentation/spec migration and the five old superseded archives are complete. Keep this child open for the formal Release closeout, final MANIFEST, remaining new-task archives, and journal evidence.",
+  "notes": "Local documentation/spec migration and the five old superseded archives are complete. The project owner accepted D113/D114 on 2026-08-08, without creating remote or release evidence. Keep this child open for the formal Release closeout, final MANIFEST, remaining new-task archives, and journal evidence.",
   "meta": {
     "evidenceState": "implemented-and-locally-verified-remote-closeout-pending",
     "decisionRange": "D-001..D-115",
@@ -46,7 +46,8 @@
     "oldTasksArchiveEvidence": "complete-five-superseded",
     "manifestEvidence": "pending-formal-release-closeout",
     "remoteCloseoutEvidence": "pending",
-    "preflightDecision": "D-113-pending-acceptance",
-    "mergeGroupEvidence": "D-114-blocked-current-governance"
+    "decisionAcceptanceSource": "project owner accepted D113/D114 on 2026-08-08",
+    "preflightDecision": "D-113-confirmed-post-merge-exact-main-workflow-sha",
+    "mergeGroupEvidence": "D-114-accepted-governance-exception-live-run-na-not-success"
   }
 }

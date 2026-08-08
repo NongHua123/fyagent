@@ -68,7 +68,7 @@
 
 根因是发布矩阵已形成，但治理仍是“各 job 构建成功即发布”的流水线，而不是明确的来源资格、资产集合和最小权限事务。
 
-[Observed / 已核实] commits `038675b3` 与 `94ff9ee9` 已实现自动 CI、安全 Labeler、稳定 `CI / Required`、五个原生目标、无签名 10 安装器/13 附件、强制 attestation 和私有 draft 到 stable 的失败关闭发布事务；本地合同已通过。真实 PR/main/原生 runner/preflight/tag/Release 证据仍待远程执行。`merge_group` 配置存在，但个人账户仓库且禁止规则保护使 Merge Queue 无法启用，真实事件证据为 **Blocked**。
+[Observed / 已核实] commits `038675b3` 与 `94ff9ee9` 已实现自动 CI、安全 Labeler、稳定 `CI / Required`、五个原生目标、无签名 10 安装器/13 附件、强制 attestation 和私有 draft 到 stable 的失败关闭发布事务；本地合同已通过。真实 PR/main/原生 runner/preflight/tag/Release 证据仍待远程执行。`merge_group` 配置存在，但个人账户仓库且禁止规则保护使 Merge Queue 无法启用，因此真实运行不可能发生，也不能记为成功。The project owner accepted D113/D114 on 2026-08-08：D113 确认 post-merge exact-main/workflow-SHA preflight，D114 将 live `merge_group` 记为当前治理下的 N/A 验证例外，并要求以 YAML/失败关闭静态合同及真实 PR/main/manual 运行替代。
 
 ## 6. DEP0040 根因
 
@@ -115,4 +115,4 @@ upstream farion1231/cc-switch        fetch only; push DISABLED
 
 四个问题相互依赖：
 
-依赖顺序已按设计执行：上游 merge → 交叉构建删除 → 开发环境 → CI/Release → DEP0040。当前位于文档/Trellis 迁移阶段；之后仍需实现 PR/main 远程证据、post-merge exact-main-SHA preflight、正式 tag/Release、closeout PR 和最终归档。任何 pending/blocked 项都不能被描述为 Released。
+依赖顺序已按设计执行：上游 merge → 交叉构建删除 → 开发环境 → CI/Release → DEP0040。当前位于文档/Trellis 迁移阶段；之后仍需实现 PR/main/manual 远程证据、post-merge exact-main-SHA preflight、正式 tag/Release、closeout PR 和最终归档。任何真实 pending 项都不能被描述为 Released；D114 的 N/A 例外也不是 `merge_group` 成功运行证据。

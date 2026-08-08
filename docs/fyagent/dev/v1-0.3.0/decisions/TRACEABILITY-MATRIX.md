@@ -2,7 +2,7 @@
 
 > **交付状态**：Implementation traceability / 实施追踪；远程 closeout 待完成
 > **关联决策**：历史 1–104 + 2026-08-08 覆盖/发现 105–115
-> **用途**：1–104 保留原设计追踪；105–112 在冲突时覆盖旧行，113–114 显式记录发布 NO-GO，115 记录非发布门禁的已实施覆盖。`35–38` 为已废止编号。
+> **用途**：1–104 保留原设计追踪；105–112 在冲突时覆盖旧行，113–114 记录 2026-08-08 已接受的顺序决策与治理验证例外，115 记录非发布门禁的已实施覆盖。`35–38` 为已废止编号。
 
 |  决策 | 状态      | 决策摘要                                                                                                 | 需求/合同                               | 所有者                                            | 目标文件/系统                                                                        | 未来验收证据                                                                                          |
 | ----: | --------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
@@ -113,18 +113,18 @@
 
 ## 2026-08-08 覆盖决策与当前证据
 
-|  决策 | 状态                         | 当前合同                                                                  | 所有者         | 已有证据                                                 | 待补证据                                         |
-| ----: | ---------------------------- | ------------------------------------------------------------------------- | -------------- | -------------------------------------------------------- | ------------------------------------------------ |
-| D-105 | Implemented + local verified | 产品 `0.3.0` / tag `v0.3.0`，覆盖旧 `0.2.x` 活动约束                      | Child 3/Parent | `3d534710`、version tests                                | actual tag/formal Release                        |
-| D-106 | Implemented                  | 文档-only 授权被真实实施授权覆盖                                          | Parent         | execution authority + commits                            | 完整验收与归档                                   |
-| D-107 | Implemented + local verified | 公开仓库自动 CI/Labeler                                                   | Child 4        | `038675b3`、21 个合同测试、9 个 label 存在               | PR/main/automatic Labeler runs                   |
-| D-108 | Implemented + local verified | stable unsigned，10 installers / 13 attachments，mandatory attestation    | Child 4        | `94ff9ee9`、Release contract/security review             | preflight/tag/Release/download evidence          |
-| D-109 | Accepted residual risk       | 无 ruleset/protection/environment；workflow-only eligibility              | Parent/Child 4 | settings 核验、eligibility tests                         | 每次 formal run 的 identity/ancestry/CI evidence |
-| D-110 | Pending remote               | GitHub PR merge commit 合入 main 并保留上游两父 ancestry                  | Parent         | 本地 ancestry `f4462765`                                 | PR URL、merge SHA、main graph                    |
-| D-111 | In progress                  | parent + 6 children；旧任务 superseded；新任务按证据归档                  | Child 6/Parent | task tree；Child1/2/5 archive；旧五任务 `1d3849e6`       | 新剩余 children、parent、journal                 |
-| D-112 | Implemented + local verified | v0.3.0 无签名/公证/staple/secrets/environment                             | Child 4        | negative workflow/static/native verifier contracts       | Windows/macOS actual candidate state             |
-| D-113 | Pending acceptance / NO-GO   | post-merge exact-main-SHA preflight 保证标准 attestation provenance       | Parent/Child 4 | workflow + local contract                                | 项目方接受偏差、remote preflight                 |
-| D-114 | Blocked / NO-GO              | `merge_group` 真实事件在当前账户/治理组合下不可产生                       | Parent         | owner/settings/queue prerequisite 核验                   | 修改验收，或组织仓库+允许保护规则                |
-| D-115 | Implemented override         | `task.run_auto_install=false`；显式 bootstrap 是唯一高级工具/依赖准备入口 | Child 3        | `mise.toml`、bootstrap smoke、task side-effect contracts | 本地合同已验证；无 Release 待补证据              |
+|  决策 | 状态                         | 当前合同                                                                  | 所有者         | 已有证据                                                 | 待补证据                                             |
+| ----: | ---------------------------- | ------------------------------------------------------------------------- | -------------- | -------------------------------------------------------- | ---------------------------------------------------- |
+| D-105 | Implemented + local verified | 产品 `0.3.0` / tag `v0.3.0`，覆盖旧 `0.2.x` 活动约束                      | Child 3/Parent | `3d534710`、version tests                                | actual tag/formal Release                            |
+| D-106 | Implemented                  | 文档-only 授权被真实实施授权覆盖                                          | Parent         | execution authority + commits                            | 完整验收与归档                                       |
+| D-107 | Implemented + local verified | 公开仓库自动 CI/Labeler                                                   | Child 4        | `038675b3`、21 个合同测试、9 个 label 存在               | PR/main/automatic Labeler runs                       |
+| D-108 | Implemented + local verified | stable unsigned，10 installers / 13 attachments，mandatory attestation    | Child 4        | `94ff9ee9`、Release contract/security review             | preflight/tag/Release/download evidence              |
+| D-109 | Accepted residual risk       | 无 ruleset/protection/environment；workflow-only eligibility              | Parent/Child 4 | settings 核验、eligibility tests                         | 每次 formal run 的 identity/ancestry/CI evidence     |
+| D-110 | Pending remote               | GitHub PR merge commit 合入 main 并保留上游两父 ancestry                  | Parent         | 本地 ancestry `f4462765`                                 | PR URL、merge SHA、main graph                        |
+| D-111 | In progress                  | parent + 6 children；旧任务 superseded；新任务按证据归档                  | Child 6/Parent | task tree；Child1/2/5 archive；旧五任务 `1d3849e6`       | 新剩余 children、parent、journal                     |
+| D-112 | Implemented + local verified | v0.3.0 无签名/公证/staple/secrets/environment                             | Child 4        | negative workflow/static/native verifier contracts       | Windows/macOS actual candidate state                 |
+| D-113 | Confirmed / accepted         | post-merge exact-main-SHA preflight 保证标准 attestation provenance       | Parent/Child 4 | workflow + local contract + 2026-08-08 项目方接受记录    | remote preflight                                     |
+| D-114 | Accepted exception / N/A     | `merge_group` 真实事件在当前账户/治理组合下不可产生；N/A 不是成功运行     | Parent         | owner/settings 核验 + 2026-08-08 项目方接受记录          | YAML/静态合同 + 真实 PR/main/manual；live run 不要求 |
+| D-115 | Implemented override         | `task.run_auto_install=false`；显式 bootstrap 是唯一高级工具/依赖准备入口 | Child 3        | `mise.toml`、bootstrap smoke、task side-effect contracts | 本地合同已验证；无 Release 待补证据                  |
 
-其余旧行中的 `signed`、ruleset/environment、documentation-only、`0.2.x`、D23 的 task auto-install 和“未来实施”文字是 2026-08-07 历史设计追踪，不能覆盖上表。没有真实 URL、digest 或 attestation 的项目保持 Pending/Blocked；不得标记 Released。
+The project owner accepted D113/D114 on 2026-08-08。其余旧行中的 `signed`、ruleset/environment、documentation-only、`0.2.x`、D23 的 task auto-install 和“未来实施”文字是 2026-08-07 历史设计追踪，不能覆盖上表。除 D114 明确接受的 live `merge_group` N/A 例外外，没有真实 URL、digest 或 attestation 的项目保持 Pending；不得标记 Released。

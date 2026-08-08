@@ -32,10 +32,10 @@ on:
   partial platform mode, or local publish path exists.
 
 The post-merge exact-main-SHA sequence above is implemented in the workflow
-and locally verified, but governance decision
+and locally verified. The project owner accepted D113/D114 on 2026-08-08;
 [D113](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md)
-remains **Pending acceptance / Release NO-GO**. Its presence in code is not
-approval to dispatch, tag, or publish.
+confirms this ordering. That decision is not evidence that a preflight ran or
+that a tag, Release, asset, or attestation exists.
 
 Local implementation and static tests do not authorize dispatch, tag creation,
 or publication. Remote preflight, formal Release, and post-publication evidence
@@ -99,11 +99,11 @@ v0.3.0 therefore runs its first preflight after merge on the exact `main` SHA.
 A future unmerged-candidate design requires a separate trusted reusable
 workflow or custom predicate and is outside this release.
 
-This is the implemented D113 deviation, not a completed release decision. The
-project must resolve the **Pending acceptance** entry in the
-[decision register](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md)
-before remote preflight or tag creation; until then formal Release remains
-NO-GO without changing the workflow semantics described here.
+This is the implemented and accepted D113 sequence. The 2026-08-08 project
+decision clears only the ordering question in the
+[decision register](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md);
+remote preflight, exact tag creation, formal publication, asset checks,
+attestations, and closeout remain separate pending evidence.
 
 This workflow-only admission is intentionally weaker than administrator-backed
 branch/tag rulesets or a protected environment. FyAgent 0.3.0 accepts that
@@ -298,6 +298,6 @@ A green local suite proves the implementation contract, not publication.
 Closure requires the exact source's main `CI / Required`, one successful
 post-merge same-SHA full-matrix unsigned preflight, the tag-triggered formal run, the public stable
 Release, independent re-download/digest/unsigned-state checks, attestation evidence,
-and audited Trellis closeout records. Before that sequence begins, D113 must
-also move from Pending acceptance through an explicit project decision; local
-contract success alone cannot clear this Release NO-GO.
+and audited Trellis closeout records. D113 has explicit project acceptance,
+but local contract success and that decision alone cannot satisfy any of these
+remote Release gates.

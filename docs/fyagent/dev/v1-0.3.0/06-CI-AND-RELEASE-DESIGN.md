@@ -5,7 +5,7 @@
 > **目标版本**：FyAgent `0.3.0` / tag `v0.3.0`
 >
 > **关联决策**：13–19、43、49、70、80，以及本轮公开仓库、无签名发布、workflow-only 来源资格的新决策
-> **证据等级**：本文区分 `[Implemented / 已实施]`、`[Verified Locally / 本地已验证]`、`[Pending Remote Verification / 远端待验证]`、`[Blocked / 受限]`。
+> **证据等级**：本文区分 `[Implemented / 已实施]`、`[Verified Locally / 本地已验证]`、`[Pending Remote Verification / 远端待验证]`、`[Accepted Governance Exception / 已接受治理例外]`。
 
 ## 1. 已实施的边界
 
@@ -84,6 +84,10 @@ on:
 不能把未合并 candidate 的 bytes 冒充为 main provenance：首次安全预演在
 实现 PR 合并后对精确 main SHA 执行。若未来要支持未合并 candidate，必须
 新建 trusted reusable workflow 或 custom predicate 任务。
+
+[Decision / 已决策] The project owner accepted D113/D114 on 2026-08-08。
+D113 确认上述 post-merge exact-main/workflow-SHA preflight 顺序；该接受只
+解除顺序决策门禁，不代表 preflight、tag 或 Release 已实际发生。
 
 ### 4.2 正式发布
 
@@ -197,11 +201,11 @@ GitHub 对该 unsafe PATCH 不提供通用条件请求，管理员仍可能在�
 
 [Decision / 已决策] 本版本不配置 branch/tag ruleset、branch protection 或 Release environment。workflow 内的 repo ID、workflow ref、main ancestry、same-SHA CI/check-run 和 exact asset/attestation 验证显著降低误发布风险，但管理员仍可能改写未受保护的 main/tag/workflow。这一残余风险必须出现在验证报告和 Release 决策记录中，不能写成“main/tag 已受保护”。
 
-## 11. 当前验证状态与阻塞
+## 11. 当前验证状态与治理例外
 
 - `[Verified Locally]` Release 定向 Vitest、Prettier、version contract 与 actionlint 已通过；
 - `[Pending Remote Verification]` Windows ARM64、Linux ARM64、macOS Universal、full-matrix preflight、正式 tag 和公开资产尚须真实 Actions 证据；
 - `[Pending Remote Verification]` 自动 Labeler 需 workflow 进入 default branch 后通过真实 PR 验证；
-- `[Blocked]` 当前仓库属于个人账户且明确不启用 ruleset/branch protection。GitHub merge queue 仅在受支持的组织仓库并通过 branch protection/ruleset 启用后才会产生真实 `merge_group` 事件，因此当前只能证明 trigger/static contract，不能伪造 live merge-group run。验收若仍要求真实该事件，必须先变更仓库/保护策略，或由产品决策明确修订这一条验收口径。
+- `[Accepted Governance Exception]` D114 确认：当前仓库属于个人账户且明确不启用 ruleset/branch protection，GitHub Merge Queue 无法启用，因而真实 `merge_group` 运行在当前治理下为 N/A，而不是成功。接受的替代证据为 YAML trigger、失败关闭合同/静态测试和真实 PR/main/manual 运行；这些远程运行仍待验证。
 
 本地通过不等于发布完成。Child4 在 main CI、unsigned preflight、tag-triggered workflow、公开 Release、独立下载复核和 attestation URL 全部取得真实证据前保持 `in_progress`。

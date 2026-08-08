@@ -1,7 +1,7 @@
 # FyAgent 上游同步、工具链与发布现代化设计包
 
 > **交付状态**：Implementation in progress / 实施中
-> **关联决策**：1–115（含历史、执行覆盖、待接受项与结构性阻塞）
+> **关联决策**：1–115（含历史、执行覆盖与已接受治理例外）
 > **证据边界**：Child 1、2、5 已实施、本地验证并归档；Child 3、4 已实施且本地验证，远程证据待补；Child 6 实施中；parent 与正式 Release closeout 待完成。
 
 ## 1. 目的
@@ -16,8 +16,9 @@
 - 产品版本已更新为 `0.3.0`，正式 tag 固定为 `v0.3.0`，但 tag 与 GitHub Release 尚未创建；
 - v0.3.0 明确不签名、不公证、不 staple，不使用签名 secrets 或 Release environment；
 - 仓库公开，但不配置 branch/tag ruleset、branch protection 或 Release environment；来源资格仅由 workflow 失败关闭检查约束，该残余风险已接受；
+- The project owner accepted D113/D114 on 2026-08-08：D113 确认 post-merge exact-main/workflow-SHA preflight 顺序；D114 确认当前个人仓库/无保护治理下真实 `merge_group` 运行不适用（N/A）的验证例外；
 - 真实 PR/main/full-matrix/preflight/13 附件/attestation/Release URL 证据仍待远程执行，不得从本地测试推断；
-- `merge_group` YAML 合同已实现，但个人账户仓库且禁止保护规则使 Merge Queue 无法启用，因此真实事件证据为 **Blocked**。
+- `merge_group` YAML trigger 与失败关闭合同已实现；个人账户仓库且禁止保护规则使 Merge Queue 无法启用，因此不会有真实事件成功证据。D114 接受以该静态合同加后续真实 PR/main/manual 运行作为替代证据，不得把 N/A 写成成功运行。
 
 ## 3. 证据标签
 

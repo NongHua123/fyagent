@@ -62,17 +62,21 @@ The active task remained
 `.trellis/tasks/08-07-migrate-docs-and-trellis-specs` throughout the old-task
 archive.
 
-## Remaining NO-GO and remote evidence
+## Accepted decisions and remaining remote evidence
 
-- D113: post-merge exact-main-SHA preflight is implemented but still requires
-  project acceptance.
-- D114: a real `merge_group` event is unavailable for the personal-account
-  repository while branch protection/rulesets remain forbidden.
+- The project owner accepted D113/D114 on 2026-08-08.
+- D113 confirms the implemented post-merge exact-main/workflow-SHA preflight
+  order; the remote preflight itself remains pending.
+- D114 accepts a governance verification exception: a real `merge_group` event
+  is impossible for the personal-account repository while branch
+  protection/rulesets remain forbidden, so the live run is N/A rather than
+  successful. Its substitute is the YAML trigger, fail-closed contract/static
+  tests, and real PR/main/manual runs; the remote-run portion remains pending.
 - PR/main CI, automatic Labeler, the five native release groups, exact-main
   unsigned preflight, immutable `v0.3.0`, the stable 13-attachment Release,
   digest/attestation verification, Windows `NotSigned`, macOS Developer ID and
   notarization absence, independent re-download, final manifest, closeout task
   archives, and journal remain pending.
 
-Child 6 and the parent must remain active until these gates are resolved and the
-real closeout evidence is committed.
+Child 6 and the parent must remain active until the remaining remote gates are
+resolved and the real closeout evidence is committed.

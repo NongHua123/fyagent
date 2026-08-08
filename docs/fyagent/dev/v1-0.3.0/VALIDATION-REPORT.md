@@ -2,7 +2,7 @@
 
 > **状态**：Interim / 中间报告；正式发布当前 NO-GO
 > **更新日期**：2026-08-08
-> **证据边界**：只记录已发生的 Git、本地检查和明确的远程 pending/blocked 状态，不以静态 workflow 代替 Actions 或 Release 证据。
+> **证据边界**：只记录已发生的 Git、本地检查、明确的远程 pending 状态与已接受治理例外，不以静态 workflow 代替 Actions 或 Release 证据。
 
 ## 1. 当前结论
 
@@ -14,7 +14,7 @@
 | Child 4 CI/Labeler/unsigned Release | Implemented + locally verified; remote evidence pending    | `038675b3`、`94ff9ee9`、`2526588a`；task 保持 `in_progress`             |
 | Child 5 DEP0040                     | Implemented + locally verified + archived                  | `4e407df4`、`e5c543f7`、`6be28965`                                      |
 | Child 6 docs/Trellis                | Local migration verified; remote closeout pending          | `eb748f9c`、`58101230`、`1d3849e6`、`580c5efa`；task 保持 `in_progress` |
-| Parent                              | Pending / NO-GO                                            | remote gates、两个决策门禁和最终归档未完成                              |
+| Parent                              | Pending / NO-GO                                            | remote gates 与最终归档未完成；D113/D114 决策门禁已解除                 |
 
 ## 2. 已核实的实施事实
 
@@ -60,12 +60,13 @@
 - 独立重下载、digest、架构、包结构、Windows `NotSigned`、macOS 无 Developer ID/notary 与 attestation 校验；
 - closeout PR、最终 `MANIFEST.sha256`、剩余 child/parent archive 与 journal。
 
-## 5. 结构性阻塞与待决策偏差
+## 5. 已接受的治理决策
 
-- **Blocked — merge_group**：仓库由个人账户拥有，且批准计划禁止 branch protection/ruleset。GitHub Merge Queue 无法在此组合下启用，因此不能产生真实 `merge_group` 事件证据。workflow 的静态 trigger 合同不是远程事件成功。
-- **Pending acceptance — preflight order**：原“待合入 main 的同一 SHA preflight”与 GitHub merge commit 及标准 artifact attestation 的 `GITHUB_SHA` provenance 不兼容。已实现的安全顺序为 merge → main CI → exact-main-SHA preflight → tag → formal Release。
+- The project owner accepted D113/D114 on 2026-08-08。
+- **Confirmed — D113 preflight order**：原“待合入 main 的同一 SHA preflight”与 GitHub merge commit 及标准 artifact attestation 的 `GITHUB_SHA` provenance 不兼容。接受并保持的安全顺序为 merge → main CI → exact-main-SHA preflight → tag → formal Release；preflight 本身仍未运行。
+- **Accepted verification exception — D114 merge_group**：仓库由个人账户拥有，且批准计划禁止 branch protection/ruleset。GitHub Merge Queue 无法在此组合下启用，因此不能产生真实 `merge_group` 事件证据。该项在当前治理下记为 N/A，而不是成功；接受的替代证据为 YAML trigger、失败关闭合同/静态测试和真实 PR/main/manual 运行，远程运行部分仍 Pending。
 
-任一项未处置都阻止正式 Release 与 parent 归档。
+两项决策已处置，但不替代 `4` 中的任何真实远程证据。PR/main/manual、原生矩阵、unsigned preflight、tag、Release、13 附件、attestation、独立复核与 closeout 未完成前，正式 Release 与 parent 归档仍为 NO-GO。
 
 ## 6. 原始设计包验证记录
 

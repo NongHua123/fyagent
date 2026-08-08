@@ -1,6 +1,6 @@
 # GitHub Actions CI 验收矩阵
 
-> **交付状态**：Implemented and locally verified; remote runs pending/blocked / 已实施并完成本地验证，远程运行待验且 merge_group 阻塞
+> **交付状态**：Implemented and locally verified; remote runs pending, merge_group live run N/A by accepted exception / 已实施并完成本地验证，远程运行待验，merge_group live run 按已接受例外为 N/A
 > **关联决策**：13–19、24、49、70、81–87、105–115
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
@@ -60,14 +60,14 @@ rustfmt/clippy  == rust-toolchain.toml 对应组件
 
 至少为聚合逻辑增加以下单元/合同案例：
 
-| 依赖结果                                          | 预期                                                |
-| ------------------------------------------------- | --------------------------------------------------- |
-| 全部 `success`                                    | success                                             |
-| 任一 `failure`                                    | failure                                             |
-| 任一 `cancelled`                                  | failure                                             |
-| 任一非合同允许的 `skipped`                        | failure                                             |
-| workflow/job 名重构但 exact dependency set 未同步 | contract failure                                    |
-| merge queue `merge_group` 事件                    | 静态 trigger 已覆盖；当前治理下真实事件 **Blocked** |
+| 依赖结果                                          | 预期                                                            |
+| ------------------------------------------------- | --------------------------------------------------------------- |
+| 全部 `success`                                    | success                                                         |
+| 任一 `failure`                                    | failure                                                         |
+| 任一 `cancelled`                                  | failure                                                         |
+| 任一非合同允许的 `skipped`                        | failure                                                         |
+| workflow/job 名重构但 exact dependency set 未同步 | contract failure                                                |
+| merge queue `merge_group` 事件                    | 静态 trigger 已覆盖；D114 接受当前治理下 live run=N/A，不是成功 |
 
 ## 5. 非 CI 证据
 
@@ -75,5 +75,5 @@ rustfmt/clippy  == rust-toolchain.toml 对应组件
 - Tauri 安装包、Windows/macOS 无签名负向状态、Linux glibc 基线和精确 10 资产属于 Release preflight/formal workflow；签名与公证不是 v0.3.0 门禁；
 - 根据决策 49，不建立上游 merge 专用产品验收 workflow，但合并 PR 仍执行上述 Required CI 和冲突/许可审查。
 - 仓库不配置 ruleset/branch protection；`CI / Required` 是 workflow 输出，不是管理员强制的 merge policy。该残余风险已接受，不能宣称受保护。
-- 本地 21 个 CI/Labeler 合同测试、CI-safe 42 个 contract/898 个 app tests、全量 137 files/936 tests 和 actionlint 已通过；真实 PR/main/Labeler run 仍 Pending。
-- `merge_group` 因个人账户仓库且禁止保护规则无法产生真实运行，状态为 Blocked，不以 manual dispatch 替代。
+- 本地 21 个 CI/Labeler 合同测试、CI-safe 42 个 contract/898 个 app tests、全量 137 files/936 tests 和 actionlint 已通过；真实 PR/main/manual/Labeler run 仍 Pending。
+- The project owner accepted D113/D114 on 2026-08-08。D114 确认 `merge_group` 因个人账户仓库且禁止保护规则而无法产生真实运行，在当前治理下记为 N/A 而非成功；接受的替代证据是 YAML trigger、失败关闭合同/静态测试及真实 PR/main/manual 运行，不以 manual dispatch 冒充 `merge_group`。

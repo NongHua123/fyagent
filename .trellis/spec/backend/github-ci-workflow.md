@@ -191,10 +191,11 @@ or tags.
 
 The current personal-account repository plus the no-protection/no-ruleset
 decision cannot enable a real merge queue. The `merge_group(checks_requested)`
-trigger and static contract are implemented, but no genuine merge-group run is
-available to verify. Treat any claim that all four remote event classes passed
-as **NO-GO** until GitHub can produce that event under a separately approved
-repository-governance decision. Do not remove the trigger or substitute a
+trigger and static contract are implemented, but no genuine merge-group run can
+occur. The project owner accepted D113/D114 on 2026-08-08; D114 records that
+live event as N/A under the current governance, not as a successful run. Its
+accepted substitute evidence is the YAML trigger, fail-closed contract/static
+tests, and real PR/main/manual runs. Do not remove the trigger or describe a
 manual run as merge-group evidence.
 
 The first pull request that introduces or changes a `pull_request_target`
@@ -205,18 +206,18 @@ automatic event.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                                    | Required result                                                                               |
-| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Any required dependency is missing, extra, malformed, failed, cancelled, skipped, or unknown | `CI / Required` fails and prints a machine-readable summary.                                  |
-| A dependency job is conditional or a workflow-level path filter hides the workflow           | Static contract fails; do not merge the workflow change.                                      |
-| A Required runner uses `*-latest` or an unapproved label                                     | Static contract fails before remote execution.                                                |
-| A third-party Action is not a reviewed full SHA with a version note                          | Static contract fails.                                                                        |
-| Node, pnpm, Rust, uv, or Python differs from its repository fact                             | The affected job fails before its tests.                                                      |
-| `mise.lock` has no unique uv entry or setup-uv receives an independent literal               | Toolchain resolution fails; do not fall back to `latest`.                                     |
-| Full unit tests run without `uv sync --locked` and the managed `.venv`                       | Frontend CI fails; do not weaken the real hook harness.                                       |
-| Labeler checks out or executes PR code, reads secrets, or gains another write permission     | Reject the workflow as unsafe.                                                                |
-| A configured label does not exist                                                            | Labeler fails without `issues: write`; create the reviewed label out of band, then rerun.     |
-| No real merge-group event can be produced under current repository governance                | Keep remote merge-group acceptance NO-GO; static trigger coverage is not equivalent evidence. |
+| Condition                                                                                    | Required result                                                                                                                   |
+| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Any required dependency is missing, extra, malformed, failed, cancelled, skipped, or unknown | `CI / Required` fails and prints a machine-readable summary.                                                                      |
+| A dependency job is conditional or a workflow-level path filter hides the workflow           | Static contract fails; do not merge the workflow change.                                                                          |
+| A Required runner uses `*-latest` or an unapproved label                                     | Static contract fails before remote execution.                                                                                    |
+| A third-party Action is not a reviewed full SHA with a version note                          | Static contract fails.                                                                                                            |
+| Node, pnpm, Rust, uv, or Python differs from its repository fact                             | The affected job fails before its tests.                                                                                          |
+| `mise.lock` has no unique uv entry or setup-uv receives an independent literal               | Toolchain resolution fails; do not fall back to `latest`.                                                                         |
+| Full unit tests run without `uv sync --locked` and the managed `.venv`                       | Frontend CI fails; do not weaken the real hook harness.                                                                           |
+| Labeler checks out or executes PR code, reads secrets, or gains another write permission     | Reject the workflow as unsafe.                                                                                                    |
+| A configured label does not exist                                                            | Labeler fails without `issues: write`; create the reviewed label out of band, then rerun.                                         |
+| No real merge-group event can be produced under current repository governance                | Record the accepted D114 live-run N/A exception; require YAML/static plus real PR/main/manual evidence, and never report success. |
 
 ## 5. Good / Base / Bad Cases
 
@@ -253,11 +254,13 @@ workflows, helpers, tests, and this spec. Run actionlint when it is installed;
 if it is unavailable, report that gap instead of claiming actionlint
 validation.
 
-Remote acceptance remains separate. Record the exact pull-request, main,
-manual, and—if governance later permits it—merge-group run URLs and source
-SHAs. A local test, YAML parse, or manual dispatch cannot stand in for the
-missing event class. Likewise, CI does not prove native Release installers,
-asset attestations, publication, or branch protection.
+Remote acceptance remains separate. Record the exact pull-request, main, and
+manual run URLs and source SHAs. Under D114, the unavailable live merge-group
+class is N/A only while the approved governance remains unchanged; local
+trigger/static evidence plus those real runs form the accepted substitute, but
+none may be described as a live merge-group success. Likewise, CI does not
+prove native Release installers, asset attestations, publication, or branch
+protection.
 
 ## 7. Wrong vs Correct
 
