@@ -135,6 +135,14 @@ or an unbounded argv payload.
   `asInvoker`. The unsigned v0.3.0 workflow explicitly selects `release` and
   verifies the embedded application manifest in the target release executable
   before and after MSI bundling, including exact x64/ARM64 PE Machine.
+- The manifest verifier never depends on `mt.exe` being present on `PATH`.
+  It enumerates version directories only below the standard Windows SDK
+  `Windows Kits\10\bin` roots, selects the newest architecture-matched `x64`
+  or `arm64` tool by parsed SDK version, and invokes that resolved absolute
+  path. A missing architecture-matched SDK tool is a release failure; PATH
+  fallback, opposite-architecture fallback, or downloading a verifier is
+  forbidden. The tool reads `RT_MANIFEST` resource ID 1 and never executes the
+  application.
 - Final MSI payload admission is read-only: the verifier resolves the unique
   File key `Path`, reads its embedded cabinet through `_Streams`, asks system
   `expand.exe` to extract only that fixed key into a fresh temporary root, and

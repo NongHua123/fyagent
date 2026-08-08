@@ -104,6 +104,27 @@ const CI_WORKFLOW = path.resolve(
   "ci.yml",
 );
 
+function workflowJobBlock(source: string, job: string, nextJob: string) {
+  const start = source.indexOf(`\n  ${job}:\n`);
+  const end = source.indexOf(`\n  ${nextJob}:\n`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  return source.slice(start, end);
+}
+
+function namedStepBlock(source: string, name: string) {
+  const start = source.indexOf(`\n      - name: ${name}\n`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = source.indexOf("\n      - name:", start + 1);
+  return source.slice(start, end < 0 ? source.length : end);
+}
+
+function expectExactLine(source: string, line: string) {
+  expect(
+    source.split(/\r?\n/).filter((candidate) => candidate === line),
+  ).toEqual([line]);
+}
+
 describe("FyAgent release workflow", () => {
   const source = fs.readFileSync(RELEASE_WORKFLOW, "utf8");
   const windowsMsiVerifier = fs.readFileSync(WINDOWS_MSI_VERIFIER, "utf8");
@@ -155,11 +176,80 @@ describe("FyAgent release workflow", () => {
       expect(source).toContain(runner);
     }
     expect(source).not.toMatch(/runs-on:\s*[^\n]*-latest/);
-    expect(source).not.toContain("cache:");
     expect(source).not.toContain("actions/cache");
+    expect(source).not.toContain("cache: true");
+    expect(source).not.toContain("cache: pnpm");
     expect(source.match(/uses: actions\/checkout@/g)).toHaveLength(
       source.match(/persist-credentials: false/g)?.length ?? 0,
     );
+  });
+
+  it("bootstraps native jobs without implicit tools, broad Git trust, or caches", () => {
+    const nativeJobs = [
+      {
+        block: workflowJobBlock(source, "build-windows", "build-linux"),
+        rustStep: "Setup Rust",
+      },
+      {
+        block: workflowJobBlock(source, "build-linux", "build-macos"),
+        rustStep: "Setup Rust",
+      },
+      {
+        block: workflowJobBlock(source, "build-macos", "verify-assets"),
+        rustStep: "Setup Rust with both universal targets",
+      },
+    ];
+
+    for (const { block, rustStep } of nativeJobs) {
+      const nodeIndex = block.indexOf("- name: Setup Node.js");
+      const pnpmIndex = block.indexOf("- name: Setup pnpm");
+      expect(nodeIndex).toBeGreaterThanOrEqual(0);
+      expect(pnpmIndex).toBeGreaterThan(nodeIndex);
+      const nodeStep = namedStepBlock(block, "Setup Node.js");
+      const pnpmStep = namedStepBlock(block, "Setup pnpm");
+      const rustSetupStep = namedStepBlock(block, rustStep);
+      expect(nodeStep).toContain("uses: actions/setup-node@");
+      expect(nodeStep).toContain("          node-version-file: .node-version");
+      expect(pnpmStep).toContain("uses: pnpm/action-setup@");
+      expectExactLine(pnpmStep, "          run_install: false");
+      expectExactLine(pnpmStep, "          cache: false");
+      expect(rustSetupStep).toContain(
+        "uses: actions-rust-lang/setup-rust-toolchain@",
+      );
+      expectExactLine(rustSetupStep, "          cache: false");
+    }
+
+    const linux = nativeJobs[1].block;
+    const checkoutIndex = linux.indexOf("- name: Checkout immutable source");
+    const trustIndex = linux.indexOf(
+      "- name: Trust exact checked-out workspace for container Git",
+    );
+    const nodeIndex = linux.indexOf("- name: Setup Node.js");
+    expect(checkoutIndex).toBeGreaterThanOrEqual(0);
+    expect(trustIndex).toBeGreaterThan(checkoutIndex);
+    expect(nodeIndex).toBeGreaterThan(trustIndex);
+    const trustStep = namedStepBlock(
+      linux,
+      "Trust exact checked-out workspace for container Git",
+    );
+    expectExactLine(
+      trustStep,
+      "          git config --global --unset-all safe.directory 2>/dev/null || true",
+    );
+    expectExactLine(
+      trustStep,
+      '          git config --global --add safe.directory "$GITHUB_WORKSPACE"',
+    );
+    expectExactLine(
+      trustStep,
+      '          [ "$(git config --get-all safe.directory)" = "$GITHUB_WORKSPACE" ] || {',
+    );
+    expectExactLine(
+      trustStep,
+      '          [ "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" = "$SOURCE_SHA" ]',
+    );
+    expect(trustStep.match(/safe\.directory/g)).toHaveLength(3);
+    expect(source).not.toMatch(/safe\.directory\s+["']?\*["']?/);
   });
 
   it("uses read-only defaults and isolates attestation and publish writes", () => {
@@ -247,7 +337,29 @@ describe("FyAgent release workflow", () => {
     expect(source).not.toContain("${{ secrets.");
     expect(source).not.toContain("signtool.exe sign");
 
-    expect(windowsManifestVerifier).toContain("mt.exe");
+    expect(windowsManifestVerifier).toContain("Resolve-WindowsSdkManifestTool");
+    expect(windowsManifestVerifier).toContain("ProgramFiles(x86)");
+    expect(windowsManifestVerifier).toContain("Windows Kits\\10\\bin");
+    expect(windowsManifestVerifier).toContain("[Version]::TryParse");
+    expect(windowsManifestVerifier).toContain(
+      "$sdkArchitecture = if ($TargetArchitecture -eq 'arm64') { 'arm64' } else { 'x64' }",
+    );
+    expect(windowsManifestVerifier).toContain('"$sdkArchitecture\\mt.exe"');
+    expect(windowsManifestVerifier).toContain(
+      "Sort-Object -Property @{ Expression = 'Version'; Descending = $true }",
+    );
+    expect(windowsManifestVerifier).toContain("Select-Object -First 1");
+    expect(windowsManifestVerifier).toContain(
+      'throw "Architecture-matched Windows SDK mt.exe was not found for $TargetArchitecture"',
+    );
+    expect(windowsManifestVerifier).toContain(
+      "$mtPath = Resolve-WindowsSdkManifestTool -TargetArchitecture $Architecture",
+    );
+    expect(windowsManifestVerifier).toContain(
+      '& $mtPath "-inputresource:$resolvedExe;#1" "-out:$manifestPath" -nologo',
+    );
+    expect(windowsManifestVerifier).not.toContain("Get-Command mt.exe");
+    expect(windowsManifestVerifier).not.toContain("& mt.exe");
     expect(windowsManifestVerifier).toContain("RT_MANIFEST");
     expect(windowsManifestVerifier).toContain("requireAdministrator");
     expect(windowsManifestVerifier).toContain("0xAA64");

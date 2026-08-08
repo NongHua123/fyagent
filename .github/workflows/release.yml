@@ -365,21 +365,23 @@ jobs:
           persist-credentials: false
           ref: ${{ needs.eligibility.outputs.source_sha }}
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          run_install: false
-
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          run_install: false
+          cache: false
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           toolchain: 1.97.1
           target: ${{ matrix.rust_target }}
+          cache: false
 
       - name: Verify native runner and frozen toolchain
         shell: pwsh
@@ -625,20 +627,38 @@ jobs:
           persist-credentials: false
           ref: ${{ needs.eligibility.outputs.source_sha }}
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          run_install: false
+      - name: Trust exact checked-out workspace for container Git
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "$PWD" = "$GITHUB_WORKSPACE" ] || {
+            echo "Linux container workspace drift: $PWD != $GITHUB_WORKSPACE" >&2
+            exit 1
+          }
+          git config --global --unset-all safe.directory 2>/dev/null || true
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          [ "$(git config --get-all safe.directory)" = "$GITHUB_WORKSPACE" ] || {
+            echo 'Linux container Git trust is not limited to the exact workspace' >&2
+            exit 1
+          }
+          [ "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" = "$SOURCE_SHA" ]
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          run_install: false
+          cache: false
+
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           toolchain: 1.97.1
+          cache: false
 
       - name: Verify native source and frozen toolchain
         shell: bash
@@ -747,21 +767,23 @@ jobs:
           persist-credentials: false
           ref: ${{ needs.eligibility.outputs.source_sha }}
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          run_install: false
-
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          run_install: false
+          cache: false
 
       - name: Setup Rust with both universal targets
         uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           toolchain: 1.97.1
           target: aarch64-apple-darwin,x86_64-apple-darwin
+          cache: false
 
       - name: Verify frozen source and toolchain
         shell: bash

@@ -15,6 +15,53 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Resolve-WindowsSdkManifestTool {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('x64', 'arm64')]
+    [string]$TargetArchitecture
+  )
+
+  $sdkArchitecture = if ($TargetArchitecture -eq 'arm64') { 'arm64' } else { 'x64' }
+  $programRoots = @(
+    [Environment]::GetEnvironmentVariable('ProgramFiles(x86)'),
+    [Environment]::GetEnvironmentVariable('ProgramFiles')
+  ) |
+    Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+    Sort-Object -Unique
+
+  $candidates = @(
+    foreach ($programRoot in $programRoots) {
+      $sdkBinRoot = Join-Path $programRoot 'Windows Kits\10\bin'
+      if (-not (Test-Path -LiteralPath $sdkBinRoot -PathType Container)) {
+        continue
+      }
+
+      foreach ($versionDirectory in Get-ChildItem -LiteralPath $sdkBinRoot -Directory) {
+        $sdkVersion = $null
+        if (-not [Version]::TryParse($versionDirectory.Name, [ref]$sdkVersion)) {
+          continue
+        }
+        $toolPath = Join-Path $versionDirectory.FullName "$sdkArchitecture\mt.exe"
+        if (Test-Path -LiteralPath $toolPath -PathType Leaf) {
+          [PSCustomObject]@{
+            Version = $sdkVersion
+            Path = (Resolve-Path -LiteralPath $toolPath).Path
+          }
+        }
+      }
+    }
+  )
+
+  $selected = $candidates |
+    Sort-Object -Property @{ Expression = 'Version'; Descending = $true }, @{ Expression = 'Path'; Descending = $false } |
+    Select-Object -First 1
+  if ($null -eq $selected) {
+    throw "Architecture-matched Windows SDK mt.exe was not found for $TargetArchitecture"
+  }
+  return [string]$selected.Path
+}
+
 $resolvedExe = (Resolve-Path -LiteralPath $ExePath).Path
 $bytes = [IO.File]::ReadAllBytes($resolvedExe)
 if ($bytes.Length -lt 0x40 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {
@@ -47,10 +94,11 @@ if (
 $safePhase = $Phase -replace '[^A-Za-z0-9_.-]', '-'
 $manifestPath = Join-Path $env:RUNNER_TEMP "fyagent-release-${safePhase}.manifest"
 Remove-Item -LiteralPath $manifestPath -Force -ErrorAction SilentlyContinue
-Get-Command mt.exe -ErrorAction Stop | Out-Null
+$mtPath = Resolve-WindowsSdkManifestTool -TargetArchitecture $Architecture
+Write-Host "Using Windows SDK Manifest Tool: $mtPath"
 
 # mt.exe only reads the PE RT_MANIFEST resource; this verifier never executes fyagent.exe.
-& mt.exe "-inputresource:$resolvedExe;#1" "-out:$manifestPath" -nologo
+& $mtPath "-inputresource:$resolvedExe;#1" "-out:$manifestPath" -nologo
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
   throw "mt.exe did not extract RT_MANIFEST from ${resolvedExe} during ${Phase}"
 }

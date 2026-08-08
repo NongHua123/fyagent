@@ -116,6 +116,12 @@ Direct third-party Actions use reviewed full 40-character commit SHAs. Required
 Release jobs do not use `*-latest` runners. Actions do not install or execute
 mise. Release jobs do not restore or save dependency caches; candidate build
 code cannot populate a trusted-main cache later consumed by formal release.
+The native build jobs establish the repository-declared Node version before
+running non-standalone `pnpm/action-setup`, whose installer requires `npm` on
+`PATH`; relying on a runner image's incidental npm installation is invalid.
+Both pnpm setup and `setup-rust-toolchain` declare `cache: false` explicitly.
+The Rust action enables `Swatinem/rust-cache` by default when that input is
+omitted, so absence of the field is not evidence that Release caching is off.
 
 | Target group      | Runner             | Build user space                       | Required output                    |
 | ----------------- | ------------------ | -------------------------------------- | ---------------------------------- |
@@ -137,6 +143,14 @@ building, so a wrong host plus binfmt cannot impersonate a native target. There
 is no QEMU or opposite-architecture fallback. ARM runner unavailability is a
 retryable infrastructure failure, not authorization to cross-build or publish
 a reduced asset set.
+
+GitHub job containers restore their ordinary `HOME` after checkout has written
+its temporary global Git configuration. Each Linux build therefore clears any
+inherited global `safe.directory` values, adds only the exact
+`$GITHUB_WORKSPACE` path, proves that it is the sole value visible across the
+effective configuration scopes, and immediately proves its HEAD equals the
+frozen source SHA. Wildcard or additional safe-directory trust, recursive
+ownership changes, or disabling Git's ownership check are forbidden.
 
 Each target proves Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1 at runtime. Its
 metadata records the actual runner image variables and tool versions; an absent
@@ -271,21 +285,22 @@ rulesets and is not described as atomic administrator protection.
 
 ## 8. Failure Matrix
 
-| Condition                                                                                                     | Required result                                                              |
-| ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Dispatch SHA is not full/lowercase or differs from trusted main workflow/event provenance                     | Fail eligibility before any platform build.                                  |
-| Formal ref, workflow ref, tag commit, event commit, product version, or source differ                         | Fail eligibility; do not build or publish.                                   |
-| Latest same-SHA main CI attempt is absent, running, failed, cancelled, or lacks the unique Required job/check | Fail eligibility; an older success is not accepted.                          |
-| A native runner/architecture, Ubuntu child digest, or tool version drifts                                     | Fail that platform job; no fallback target is allowed.                       |
-| Windows manifest/helper/MSI structure/payload/unsigned assertion fails                                        | Fail Windows output before artifact upload.                                  |
-| macOS app is not universal, identity differs, distribution identity/ticket exists, or ZIP/DMG copies differ   | Fail macOS output before artifact upload.                                    |
-| Linux package count/version/architecture differs                                                              | Fail Linux output before artifact upload.                                    |
-| Artifact tree or exact ten/twelve/thirteen allowlist differs                                                  | Fail verification/attestation/publish.                                       |
-| Mandatory attestation or bundle is absent                                                                     | Fail; do not characterize hashes alone as v0.3.0 provenance success.         |
-| Dispatch reaches publish                                                                                      | Static workflow test fails; remote preflight must create no Release.         |
-| A draft or published Release already exists                                                                   | Refuse to update, replace, or delete it.                                     |
-| Upload/re-download fails before final PATCH                                                                   | Leave the draft untouched, report ID/URL, and require manual decision.       |
-| Final PATCH has a failed or ambiguous outcome                                                                 | Read state by ID, report draft/published/unknown, and never retry or delete. |
+| Condition                                                                                                         | Required result                                                                                                     |
+| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Dispatch SHA is not full/lowercase or differs from trusted main workflow/event provenance                         | Fail eligibility before any platform build.                                                                         |
+| Formal ref, workflow ref, tag commit, event commit, product version, or source differ                             | Fail eligibility; do not build or publish.                                                                          |
+| Latest same-SHA main CI attempt is absent, running, failed, cancelled, or lacks the unique Required job/check     | Fail eligibility; an older success is not accepted.                                                                 |
+| A native runner/architecture, Ubuntu child digest, or tool version drifts                                         | Fail that platform job; no fallback target is allowed.                                                              |
+| Node is not established before pnpm, a Linux container lacks exact workspace trust, or a Release cache is enabled | Fail platform bootstrap; do not rely on runner-preinstalled tools, wildcard Git trust, or implicit Action defaults. |
+| Windows manifest/helper/MSI structure/payload/unsigned assertion fails                                            | Fail Windows output before artifact upload.                                                                         |
+| macOS app is not universal, identity differs, distribution identity/ticket exists, or ZIP/DMG copies differ       | Fail macOS output before artifact upload.                                                                           |
+| Linux package count/version/architecture differs                                                                  | Fail Linux output before artifact upload.                                                                           |
+| Artifact tree or exact ten/twelve/thirteen allowlist differs                                                      | Fail verification/attestation/publish.                                                                              |
+| Mandatory attestation or bundle is absent                                                                         | Fail; do not characterize hashes alone as v0.3.0 provenance success.                                                |
+| Dispatch reaches publish                                                                                          | Static workflow test fails; remote preflight must create no Release.                                                |
+| A draft or published Release already exists                                                                       | Refuse to update, replace, or delete it.                                                                            |
+| Upload/re-download fails before final PATCH                                                                       | Leave the draft untouched, report ID/URL, and require manual decision.                                              |
+| Final PATCH has a failed or ambiguous outcome                                                                     | Read state by ID, report draft/published/unknown, and never retry or delete.                                        |
 
 ## 9. Validation and Evidence Boundary
 
