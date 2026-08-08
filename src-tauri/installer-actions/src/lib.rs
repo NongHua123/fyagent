@@ -1,7 +1,9 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![cfg_attr(not(windows), allow(dead_code))]
 
+mod component_closure;
 mod messages;
+mod msi_probe;
 mod policy;
 
 #[cfg(windows)]
@@ -51,6 +53,22 @@ pub unsafe extern "system" fn ValidateFyAgentInstallDirUi(install: MSIHANDLE) ->
 #[no_mangle]
 pub unsafe extern "system" fn ValidateFyAgentInstallDirExecute(install: MSIHANDLE) -> u32 {
     invoke_action(install, ValidationPhase::Execute)
+}
+
+/// WiX Type 1 immediate custom action. After CostFinalize, it derives the
+/// complete INSTALLDIR component closure from the active MSI database and
+/// marks a transaction as a pure uninstall only when every component action
+/// state is absent.
+///
+/// # Safety
+///
+/// WiX must call this entry point with a live `MSIHANDLE` for the current
+/// installer session. The function does not retain or dereference the handle
+/// after returning.
+#[cfg(windows)]
+#[no_mangle]
+pub unsafe extern "system" fn ClassifyFyAgentPureUninstall(install: MSIHANDLE) -> u32 {
+    invoke_pure_uninstall_action(install)
 }
 
 #[cfg(windows)]
@@ -129,6 +147,53 @@ fn run_action(install: MSIHANDLE, phase: ValidationPhase) -> u32 {
     }
 }
 
+#[cfg(windows)]
+fn invoke_pure_uninstall_action(install: MSIHANDLE) -> u32 {
+    match catch_unwind(AssertUnwindSafe(|| run_pure_uninstall_action(install))) {
+        Ok(status) => status,
+        Err(_) => {
+            let _ = catch_unwind(AssertUnwindSafe(|| {
+                let session = MsiSession::new(install);
+                let _ = session.clear_pure_uninstall();
+                let _ = session.log_pure_uninstall_fatal("ffi", None);
+            }));
+            ERROR_INSTALL_FAILURE
+        }
+    }
+}
+
+#[cfg(windows)]
+fn run_pure_uninstall_action(install: MSIHANDLE) -> u32 {
+    let session = MsiSession::new(install);
+    if let Err(error) = session.clear_pure_uninstall() {
+        let _ = session.log_pure_uninstall_fatal("clear-property", Some(error.code));
+        return ERROR_INSTALL_FAILURE;
+    }
+
+    let components = match session.install_dir_component_ids() {
+        Ok(components) => components,
+        Err(error) => {
+            let _ = session.log_pure_uninstall_fatal("query-closure", Some(error.code));
+            return ERROR_INSTALL_FAILURE;
+        }
+    };
+    let is_pure_uninstall = match session.components_all_absent(&components) {
+        Ok(result) => result,
+        Err(error) => {
+            let _ = session.log_pure_uninstall_fatal("component-state", Some(error.code));
+            return ERROR_INSTALL_FAILURE;
+        }
+    };
+    if is_pure_uninstall {
+        if let Err(error) = session.set_pure_uninstall() {
+            let _ = session.clear_pure_uninstall();
+            let _ = session.log_pure_uninstall_fatal("write-property", Some(error.code));
+            return ERROR_INSTALL_FAILURE;
+        }
+    }
+    ERROR_SUCCESS
+}
+
 // Keep workspace checks portable. These stubs never claim a policy result and
 // therefore cannot accidentally make a non-Windows build usable as an MSI CA.
 ///
@@ -149,5 +214,15 @@ pub unsafe extern "system" fn ValidateFyAgentInstallDirUi(_install: u32) -> u32 
 #[cfg(not(windows))]
 #[no_mangle]
 pub unsafe extern "system" fn ValidateFyAgentInstallDirExecute(_install: u32) -> u32 {
+    1603
+}
+
+/// # Safety
+///
+/// This non-Windows test stub does not inspect its opaque handle value and
+/// always returns the MSI installation-failure status.
+#[cfg(not(windows))]
+#[no_mangle]
+pub unsafe extern "system" fn ClassifyFyAgentPureUninstall(_install: u32) -> u32 {
     1603
 }

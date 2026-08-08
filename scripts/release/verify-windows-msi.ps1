@@ -100,13 +100,13 @@ try {
     $record = $null
     try {
       $view = $database.OpenView($Query)
-      $view.Execute()
+      [void]$view.Execute()
       while ($null -ne ($record = $view.Fetch())) {
         $values = [ordered]@{}
         for ($index = 0; $index -lt $Columns.Count; $index += 1) {
           $values[$Columns[$index]] = [string]$record.StringData($index + 1)
         }
-        $rows.Add([PSCustomObject]$values)
+        [void]$rows.Add([PSCustomObject]$values)
         Release-ComObject $record
         $record = $null
       }
@@ -114,7 +114,7 @@ try {
       Release-ComObject $record
       if ($null -ne $view) {
         try {
-          $view.Close()
+          [void]$view.Close()
         } catch {
           Write-Warning "Failed to close a read-only MSI query view: $($_.Exception.Message)"
         }
@@ -209,7 +209,7 @@ try {
   foreach ($row in $fileRows) {
     $longName = @($row.FileName -split '\|')[-1]
     if ($row.File -ceq 'Path' -and $longName -match '(?i)(?:^|-)fyagent\.exe$') {
-      $fyAgentExecutableRows.Add($row)
+      [void]$fyAgentExecutableRows.Add($row)
     }
     if ($longName -match '(?i)^fyagent_installer_actions\.dll$') {
       throw 'MSI must not install the custom-action DLL as application payload'
@@ -227,7 +227,7 @@ try {
     $binaryView = $database.OpenView(
       "SELECT ``Data`` FROM ``Binary`` WHERE ``Name``='FyAgentInstallerActions'"
     )
-    $binaryView.Execute()
+    [void]$binaryView.Execute()
     $binaryRecord = $binaryView.Fetch()
     if ($null -eq $binaryRecord) {
       throw 'MSI does not contain Binary.FyAgentInstallerActions'
@@ -276,7 +276,7 @@ try {
     Release-ComObject $binaryRecord
     if ($null -ne $binaryView) {
       try {
-        $binaryView.Close()
+        [void]$binaryView.Close()
       } catch {
         Write-Warning "Failed to close the read-only MSI Binary view: $($_.Exception.Message)"
       }

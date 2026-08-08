@@ -1,5 +1,9 @@
 name: Release
 
+# Authorized callers wait synchronously for this whole run to complete, then
+# read its final state once. Do not attach background watchers or polling jobs;
+# fetch failed-job logs only after the completed run reports failure.
+
 on:
   push:
     tags:
@@ -492,9 +496,14 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           if ('${{ matrix.architecture }}' -eq 'arm64') {
-            pnpm tauri bundle --target '${{ matrix.rust_target }}' --bundles msi
+            pnpm tauri bundle --target '${{ matrix.rust_target }}' --bundles msi --verbose
+            $bundleExitCode = $LASTEXITCODE
           } else {
-            pnpm tauri bundle --bundles msi
+            pnpm tauri bundle --bundles msi --verbose
+            $bundleExitCode = $LASTEXITCODE
+          }
+          if ($bundleExitCode -ne 0) {
+            throw "Tauri MSI bundle failed with exit code $bundleExitCode"
           }
           $msis = @(
             Get-ChildItem -Path (Join-Path $env:FYAGENT_WINDOWS_TARGET_ROOT 'bundle/msi') `
@@ -683,7 +692,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build native Linux packages
-        run: pnpm tauri build --bundles appimage,deb,rpm
+        env:
+          # tauri-cli 2.8.1 embeds tauri-bundler 2.6.1, whose nested
+          # linuxdeploy AppImage invocation needs extraction mode on runners
+          # without FUSE or mount privileges.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: pnpm tauri build --bundles appimage,deb,rpm --verbose
 
       - name: Verify and normalize exact Linux package set
         shell: bash
