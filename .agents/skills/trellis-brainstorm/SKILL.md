@@ -34,7 +34,7 @@ Use this skill only after task-creation consent has been given and the user is r
 If no task exists yet, create one:
 
 ```bash
-TASK_DIR=$(python3 ./.trellis/scripts/task.py create "<short task title>" --slug <slug>)
+TASK_DIR=$(mise run trellis:task -- create "<short task title>" --slug <slug>)
 ```
 
 Use a concise title from the user's request. Use a slug without a date prefix. `task.py create` adds the `MM-DD-` directory prefix automatically.
@@ -96,12 +96,12 @@ Strip away implementation details to one sentence.
 
 What is absolutely true (not opinion or convention)?
 
-| Category | Examples |
-|----------|----------|
+| Category                 | Examples                                 |
+| ------------------------ | ---------------------------------------- |
 | **Physical constraints** | Network latency ≥ 0, disk I/O has limits |
-| **Business rules** | "Users must see their own data" |
-| **Technical invariants** | "Data must be consistent" |
-| **User needs** | "The user wants X within Y seconds" |
+| **Business rules**       | "Users must see their own data"          |
+| **Technical invariants** | "Data must be consistent"                |
+| **User needs**           | "The user wants X within Y seconds"      |
 
 ### Step 3: Challenge Assumptions
 

@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/08-07-fyagent-upstream-toolchain-release-modernization/research/execution-authority.md", "reason": "Approved native-only local build and five-target Actions boundary."}
+{"file": ".trellis/spec/backend/development-environment.md", "reason": "Current tool/task declarations coupled to local cross-build paths."}
+{"file": ".trellis/spec/backend/windows-release-boundary.md", "reason": "Windows installer assertions that must survive script removal."}
+{"file": "docs/fyagent/dev/v1-0.3.0/04-CROSS-BUILD-REMOVAL-DESIGN.md", "reason": "Removal graph and safety-assertion migration requirements; execution-authority overrides any stale planning boundary."}

@@ -28,29 +28,36 @@ Before changing renderer code:
 
 ## Guidelines
 
-| Guide                                                              | Use it for                                                                  |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| [Directory Structure](./directory-structure.md)                    | Selecting the existing frontend layer and test location.                    |
-| [Component Guidelines](./component-guidelines.md)                  | UI primitives, props, styling, translation, and form composition.           |
-| [Hook Guidelines](./hook-guidelines.md)                            | Naming, placement, effects, cleanup, and stateful hook APIs.                |
-| [State Management](./state-management.md)                          | React state, Context, TanStack Query keys, mutations, and persistence.      |
-| [Type Safety](./type-safety.md)                                    | Strict TypeScript, domain types, Zod schemas, and Tauri wire contracts.     |
-| [Quality Guidelines](./quality-guidelines.md)                      | Runnable checks, Vitest/MSW setup, translations, and accessible primitives. |
-| [Application Brand Assets](../backend/application-brand-assets.md) | Cross-platform generated icons and renderer About reuse.                    |
-| [Application Identity](../backend/application-identity.md)         | FyAgent-owned runtime identity and factual repository/provenance boundaries. |
+| Guide                                                              | Use it for                                                                                   |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| [Directory Structure](./directory-structure.md)                    | Selecting the existing frontend layer and test location.                                     |
+| [Component Guidelines](./component-guidelines.md)                  | UI primitives, props, styling, translation, and form composition.                            |
+| [Hook Guidelines](./hook-guidelines.md)                            | Naming, placement, effects, cleanup, and stateful hook APIs.                                 |
+| [State Management](./state-management.md)                          | React state, Context, TanStack Query keys, mutations, and persistence.                       |
+| [Type Safety](./type-safety.md)                                    | Strict TypeScript, domain types, Zod schemas, and Tauri wire contracts.                      |
+| [Quality Guidelines](./quality-guidelines.md)                      | Core and desktop-contract checks, Vitest/MSW setup, translations, and accessible primitives. |
+| [Application Brand Assets](../backend/application-brand-assets.md) | Cross-platform generated icons and renderer About reuse.                                     |
+| [Application Identity](../backend/application-identity.md)         | FyAgent-owned runtime identity and factual repository/provenance boundaries.                 |
 
 ## Quality Check
 
 For frontend code changes, run the checks applicable to the affected behavior:
 
 ```bash
-mise exec -- pnpm typecheck
-mise exec -- pnpm format:check
-mise exec -- pnpm test:unit
+mise run typecheck
+mise run format:check
+mise run test:unit
 ```
 
-`package.json` remains the source of runnable frontend scripts; `mise.toml`
-owns the Node.js and pnpm versions used to execute them.
+For desktop-shell, responsive-header, window-layout, or acceptance changes,
+also run the mock and visual-preflight checks in
+[Quality Guidelines](./quality-guidelines.md); they do not replace real native
+desktop or installer evidence.
+
+`package.json` remains the source of package-level frontend scripts. The
+repository-level entrypoint is the generated `mise run` task API; Node.js and
+pnpm versions come from `.node-version` and `package.json#packageManager`, not
+from duplicate declarations in `mise.toml`.
 
 ## Evidence
 

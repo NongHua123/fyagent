@@ -1,0 +1,229 @@
+[bootstrap]
+description = "Install locked repository tools and dependencies, then run strict environment checks"
+env = { FYAGENT_TASK_EFFECT = "dependency-environment" }
+run = [
+  "mise install --locked",
+  { task = "deps:install" },
+  { task = "env:check" },
+  { task = "tasks:validate" },
+]
+
+["deps:install"]
+description = "Install frozen pnpm dependencies and synchronize the locked uv environment"
+env = { FYAGENT_TASK_EFFECT = "dependency-environment" }
+run = [
+  "pnpm install --frozen-lockfile",
+  "uv sync --locked",
+]
+
+["env:check"]
+description = "Verify exact tools, ownership, lockfiles, Python environment, tasks, and hook contracts"
+usage = '''
+flag "--json" help="Emit one machine-readable JSON document"
+'''
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+quiet = true
+run = "node scripts/tasks/toolchain-check.mjs"
+
+["system:check"]
+description = "Check current-host Tauri prerequisites without installing or elevating anything"
+usage = '''
+flag "--json" help="Emit one machine-readable JSON document"
+'''
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+quiet = true
+run = "node scripts/tasks/system-check.mjs"
+
+[dev]
+description = "Start native Tauri development on the current host"
+env = { FYAGENT_TASK_EFFECT = "interactive", FYAGENT_WINDOWS_MANIFEST = "dev" }
+interactive = true
+run = "pnpm dev"
+
+[build]
+description = "Build the current host's native Tauri bundle (not a formal Release asset)"
+env = { FYAGENT_TASK_EFFECT = "build-output", FYAGENT_WINDOWS_MANIFEST = "dev" }
+run = "pnpm build"
+
+["build:binary"]
+description = "Build the current host's release Tauri binary without a bundle"
+env = { FYAGENT_TASK_EFFECT = "build-output", FYAGENT_WINDOWS_MANIFEST = "dev" }
+run = "pnpm tauri build --no-bundle"
+
+["build:debug"]
+description = "Build a debug Tauri bundle for the current host"
+env = { FYAGENT_TASK_EFFECT = "build-output", FYAGENT_WINDOWS_MANIFEST = "dev" }
+run = "pnpm tauri build --debug"
+
+[check]
+description = "Run the complete current-host environment, frontend, backend, and contract gate"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = [
+  { task = "env:check" },
+  { task = "check:frontend" },
+  { task = "check:backend" },
+  { task = "check:contracts" },
+]
+
+["check:frontend"]
+description = "Run frontend type, formatting, unit, i18n, desktop mock, and visual preflight checks"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = [
+  { task = "typecheck" },
+  { task = "format:check" },
+  { task = "test" },
+]
+
+["check:backend"]
+description = "Run Rust formatting, check, Clippy, and tests in fail-fast order"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = [
+  { task = "rust:fmt:check" },
+  { task = "rust:check" },
+  { task = "rust:clippy" },
+  { task = "rust:test" },
+]
+
+["check:contracts"]
+description = "Run task, docs, Python lock, version, hook, and release contract checks"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = [
+  { task = "tasks:validate" },
+  { task = "tasks:docs:check" },
+  { task = "python:lock:check" },
+  { task = "version:check" },
+  { task = "codex:hooks:check" },
+  { task = "release:check" },
+]
+
+["clean:frontend"]
+description = "Preview or remove repository-local frontend generated state"
+usage = '''
+flag "--apply" help="Perform the validated deletion; otherwise print the plan"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/clean.mjs frontend"
+
+["clean:rust"]
+description = "Preview or remove repository-local Cargo target output"
+usage = '''
+flag "--apply" help="Perform the validated deletion; otherwise print the plan"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/clean.mjs rust"
+
+["clean:python"]
+description = "Preview or remove the repository-local uv .venv"
+usage = '''
+flag "--apply" help="Perform the validated deletion; otherwise print the plan"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/clean.mjs python"
+
+["clean:artifacts"]
+description = "Preview or remove repository-local package and release artifacts"
+usage = '''
+flag "--apply" help="Perform the validated deletion; otherwise print the plan"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/clean.mjs artifacts"
+
+["clean:all"]
+description = "Preview or remove every approved repository-local generated directory"
+usage = '''
+flag "--apply" help="Perform the validated deletion; otherwise print the plan"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/clean.mjs all"
+
+["deps:outdated"]
+description = "Report outdated frontend, Rust, and Python dependencies without changing locks"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = [
+  { task = "deps:outdated:frontend" },
+  { task = "deps:outdated:rust" },
+  { task = "deps:outdated:python" },
+]
+
+["deps:outdated:frontend"]
+description = "Report outdated pnpm dependencies"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/maintenance.mjs deps-outdated-frontend"
+
+["deps:outdated:rust"]
+description = "Report Cargo lock update candidates with a dry run"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/maintenance.mjs deps-outdated-rust"
+
+["deps:outdated:python"]
+description = "Report outdated uv project dependencies"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/maintenance.mjs deps-outdated-python"
+
+["deps:update:frontend"]
+description = "Preview or apply a targeted (or explicit all-package) pnpm update"
+usage = '''
+arg "[packages]" var=#true help="Package names to update"
+flag "--all" help="Update all frontend dependencies instead of named packages"
+flag "--apply" help="Write package and pnpm lock changes; otherwise print the plan"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/maintenance.mjs deps-update-frontend"
+
+["deps:update:rust"]
+description = "Preview or apply a targeted (or explicit all-crate) Cargo lock update"
+usage = '''
+arg "[crates]" var=#true help="Crate names to update"
+flag "--all" help="Update all Cargo lock entries instead of named crates"
+flag "--apply" help="Write Cargo.lock changes; otherwise print the plan"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/maintenance.mjs deps-update-rust"
+
+["toolchain:outdated"]
+description = "Report candidate Node, Rust, pnpm, and uv toolchain updates"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/maintenance.mjs toolchain-outdated"
+
+["toolchain:update:node"]
+description = "Preview or apply an exact Node version-file and mise-lock update"
+usage = '''
+arg "<version>" help="Exact stable Node SemVer"
+flag "--apply" help="Write the standard version file and regenerated lock"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/maintenance.mjs toolchain-update-node"
+
+["toolchain:update:rust"]
+description = "Preview or apply an exact Rust toolchain and mise-lock update"
+usage = '''
+arg "<version>" help="Exact stable Rust SemVer"
+flag "--apply" help="Write the standard version file and regenerated lock"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/maintenance.mjs toolchain-update-rust"
+
+["toolchain:update:pnpm"]
+description = "Preview or apply an exact packageManager and mise-lock update"
+usage = '''
+arg "<version>" help="Exact stable pnpm SemVer"
+flag "--apply" help="Write package.json and the regenerated mise lock"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/maintenance.mjs toolchain-update-pnpm"
+
+["toolchain:update:uv"]
+description = "Preview or apply a controlled uv latest-selector lock bump"
+usage = '''
+flag "--apply" help="Advance the approved uv lock entry"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/maintenance.mjs toolchain-update-uv"
+
+["toolchain:lock"]
+description = "Preview or regenerate mise.lock for every supported platform"
+usage = '''
+flag "--apply" help="Regenerate mise.lock; otherwise validate and print the plan"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/maintenance.mjs toolchain-lock"

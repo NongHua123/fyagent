@@ -1,0 +1,4 @@
+["release:check"]
+description = "Run local read-only release contracts without tagging, signing, uploading, or publishing"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/release-check.mjs"

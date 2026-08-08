@@ -10,7 +10,7 @@ Wrap up the current session: archive the active task (and any other completed-bu
 ## Step 1: Survey current state
 
 ```bash
-python3 ./.trellis/scripts/get_context.py --mode record
+mise run trellis:context -- --mode record
 ```
 
 This prints:
@@ -40,9 +40,11 @@ For each remaining dirty path, decide whether it belongs to **the current task**
 Then route:
 
 - **Any remaining path looks like current-task work** — bail out with:
+
   > "Working tree has uncommitted code changes from this task: `<list>`. Return to workflow Phase 3.4 to commit them before running ``finish-work` (Trellis command)`."
 
   Do NOT run `git commit` here. Do NOT prompt the user to commit. The user goes back to Phase 3.4 and the AI drives the batched commit there.
+
 - **All remaining paths look unrelated** (other parallel-window work) — report them once and continue to Step 3:
   > "FYI, dirty files outside this task's scope — leaving them for the other window: `<list>`."
 - **Genuinely unsure** — ask the user once: "Are `<list>` this task's work I forgot to commit, or another window's? (commit / ignore)" — then route per their answer.
@@ -50,7 +52,7 @@ Then route:
 ## Step 3: Archive task(s)
 
 ```bash
-python3 ./.trellis/scripts/task.py archive <task-name>
+mise run trellis:task -- archive <task-name>
 ```
 
 At minimum: the current active task (if any). Plus any extra tasks the user confirmed in Step 1. Each archive produces a `chore(task): archive ...` commit via the script's auto-commit.
@@ -60,7 +62,7 @@ If there is no active task and the user did not confirm any cleanup archives, sk
 ## Step 4: Record session journal
 
 ```bash
-python3 ./.trellis/scripts/add_session.py \
+mise run trellis:session:add -- \
   --title "Session Title" \
   --commit "hash1,hash2" \
   --summary "Brief summary"

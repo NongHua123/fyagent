@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/08-07-fyagent-upstream-toolchain-release-modernization/research/execution-authority.md", "reason": "Approved exact versions, 0.3.0 product contract, and side-effect boundaries."}
+{"file": ".trellis/spec/backend/development-environment.md", "reason": "Existing toolchain and developer-environment contract to modernize."}
+{"file": ".trellis/spec/backend/fyagent-version-contract.md", "reason": "Cargo single-source version contract requiring the 0.3.0 update."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec integration and task-entrypoint context."}

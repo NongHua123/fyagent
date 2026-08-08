@@ -37,6 +37,33 @@
         <Property Id="AUTOLAUNCHAPP" Secure="yes" />
         <!-- Property to forward cli args to the launched app to not lose those of the pre-update instance -->
         <Property Id="LAUNCHAPPARGS" Secure="yes" />
+        <!-- Stable Type 1 custom-action result contract.  The helper resets
+             every value on each invocation before evaluating INSTALLDIR. -->
+        <Property Id="INSTALLDIR" Secure="yes" />
+        <Property Id="FYAGENT_INSTALLDIR_VALID" Secure="yes" />
+        <Property Id="FYAGENT_INSTALLDIR_ERROR_CODE" Secure="yes" />
+        <Property Id="FYAGENT_INSTALLDIR_ERROR_MESSAGE" Secure="yes" />
+        <Property Id="FYAGENT_INSTALLDIR_NORMALIZED" Secure="yes" />
+        <Property Id="FYAGENT_INSTALLDIR_CHECK_ID" Secure="yes" />
+        <Property Id="FYAGENT_PREVIOUS_INSTALLDIR" Secure="yes">
+          <RegistrySearch Id="FyAgentPreviousInstallDir" Root="HKLM" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="InstallDir" Type="raw" />
+        </Property>
+        <!-- AppSearch requires a public property. Clear both public inputs in
+             the first sequence before AppSearch reads HKLM: UI installs run
+             this once in the UI sequence, while silent installs run it once
+             in the execute sequence. This prevents a command-line value from
+             impersonating the trusted registry anchor without clearing the
+             secure result again before ExecuteAction. -->
+        <SetProperty Id="FYAGENT_PREVIOUS_INSTALLDIR" Action="ClearFyAgentPreviousInstallDir" Value="" Before="AppSearch" Sequence="first">Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE</SetProperty>
+        <SetProperty Id="INSTALLDIR" Action="ClearMaintenanceInstallDir" Value="" Before="AppSearch" Sequence="first">Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE</SetProperty>
+        <!-- Repairs, major upgrades, and uninstalls restore the protected HKLM
+             path before directory costing. The clear action prevents a
+             caller-supplied public INSTALLDIR from directing removal actions;
+             a pure uninstall then skips directory admission below. For repair
+             and upgrade, the native helper requires the restored path to match
+             INSTALLDIR and verifies the existing FyAgent marker before it
+             allows a non-empty directory. -->
+        <SetProperty Id="INSTALLDIR" Action="RestoreInstallDirFromPrevious" Value="[FYAGENT_PREVIOUS_INSTALLDIR]" Before="CostFinalize" Sequence="both">(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND FYAGENT_PREVIOUS_INSTALLDIR</SetProperty>
 
         {{#if allow_downgrades}}
             <MajorUpgrade Schedule="afterInstallInitialize" AllowDowngrades="yes" />
@@ -44,13 +71,57 @@
             <MajorUpgrade Schedule="afterInstallInitialize" DowngradeErrorMessage="!(loc.DowngradeErrorMessage)" AllowSameVersionUpgrades="yes" />
         {{/if}}
 
+        <!-- Architecture-matched native MSI Type 1 Custom Actions. The build
+             contract owns FYAGENT_INSTALLER_ACTIONS_DLL; the TAURI-prefixed
+             value is its narrow Candle/Light transport bridge because the
+             hardened Tauri WiX runner intentionally clears other variables. -->
+        <Binary Id="FyAgentInstallerActions" SourceFile="$(env.TAURI_FYAGENT_INSTALLER_ACTIONS_DLL)" />
+        <CustomAction Id="ValidateFyAgentInstallDirUi"
+                      BinaryKey="FyAgentInstallerActions"
+                      DllEntry="ValidateFyAgentInstallDirUi"
+                      Execute="immediate"
+                      Return="check" />
+        <CustomAction Id="ValidateFyAgentInstallDirExecute"
+                      BinaryKey="FyAgentInstallerActions"
+                      DllEntry="ValidateFyAgentInstallDirExecute"
+                      Execute="immediate"
+                      Return="check" />
+        <!-- Keep subsequent directory resolution, RegistryValue persistence,
+             and file installation on the exact normalized path that the
+             native helper inspected. -->
+        <CustomAction Id="ApplyValidatedFyAgentInstallDir"
+                      Property="INSTALLDIR"
+                      Value="[FYAGENT_INSTALLDIR_NORMALIZED]"
+                      Execute="immediate" />
+        <CustomAction Id="AbortUnsafeFyAgentInstallDir"
+                      Error="[FYAGENT_INSTALLDIR_ERROR_MESSAGE]" />
+        <!-- A pure uninstall skips directory admission. Repairs and upgrades
+             fail closed after CostFinalize if they cannot recover a protected
+             machine-scoped anchor; this also covers mixed remove/add requests
+             that could otherwise write files. -->
+        <CustomAction Id="AbortUntrustedFyAgentMaintenance"
+                      Error="FyAgent cannot safely determine the existing installation directory for this repair or upgrade. Restore the machine InstallDir value or uninstall and reinstall before retrying." />
+
         <InstallExecuteSequence>
             <RemoveShortcuts>Installed AND NOT UPGRADINGPRODUCTCODE</RemoveShortcuts>
-            <Custom Action="ValidateInstallDirectory" After="CostFinalize">NOT Installed</Custom>
+            <!-- CostFinalize resolves component action states. Only a true
+                 uninstall, where every component rooted at INSTALLDIR is
+                  absent, skips admission. The native Windows release verifier
+                  compares this complete guard list with the
+                 rendered MSI Component/Directory tables, so any template
+                 addition under INSTALLDIR must update this predicate. -->
+            <Custom Action="AbortUntrustedFyAgentMaintenance" Before="ValidateFyAgentInstallDirExecute">(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND NOT FYAGENT_PREVIOUS_INSTALLDIR AND NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2)</Custom>
+            <Custom Action="ValidateFyAgentInstallDirExecute" After="CostFinalize">NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2)</Custom>
+            <Custom Action="ApplyValidatedFyAgentInstallDir" After="ValidateFyAgentInstallDirExecute">NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2) AND FYAGENT_INSTALLDIR_VALID = "1"</Custom>
+            <Custom Action="AbortUnsafeFyAgentInstallDir" After="ApplyValidatedFyAgentInstallDir">NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2) AND FYAGENT_INSTALLDIR_VALID &lt;&gt; "1"</Custom>
         </InstallExecuteSequence>
 
         <InstallUISequence>
-            <Custom Action="ValidateInstallDirectory" After="CostFinalize">NOT Installed</Custom>
+            <!-- Covers maintenance UI flows that do not reach InstallDirDlg;
+                 the customized dialog also calls this before VerifyReadyDlg. -->
+            <Custom Action="AbortUntrustedFyAgentMaintenance" Before="ValidateFyAgentInstallDirUi">(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND NOT FYAGENT_PREVIOUS_INSTALLDIR AND NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2)</Custom>
+            <Custom Action="ValidateFyAgentInstallDirUi" After="CostFinalize">NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2)</Custom>
+            <Custom Action="ApplyValidatedFyAgentInstallDir" After="ValidateFyAgentInstallDirUi">NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2) AND FYAGENT_INSTALLDIR_VALID = "1"</Custom>
         </InstallUISequence>
 
         <Media Id="1" Cabinet="app.cab" EmbedCab="yes" />
@@ -89,240 +160,6 @@
           NOT LEGACY_FYAGENT_PER_USER_INSTALLDIR AND NOT LEGACY_FYAGENT_PER_USER_PATH
         </Condition>
 
-        <!-- This action runs in both UI and execute sequences.  It is deliberately
-             before InstallValidate so command-line installs cannot bypass the same
-             local-fixed-drive, user-directory, reparse-point, and writable-ACL
-             checks that the InstallDir dialog uses. -->
-        <CustomAction Id="ValidateInstallDirectory" Script="vbscript" Execute="immediate" Return="check"><![CDATA[
-Option Explicit
-
-Const DRIVE_FIXED = 2
-Const FILE_ATTRIBUTE_REPARSE_POINT = 1024
-Const ACCESS_WRITE_DATA = 2
-Const ACCESS_APPEND_DATA = 4
-Const ACCESS_WRITE_EA = 16
-Const ACCESS_DELETE_CHILD = 64
-Const ACCESS_WRITE_ATTRIBUTES = 256
-Const ACCESS_DELETE = 65536
-Const ACCESS_WRITE_DAC = 262144
-Const ACCESS_WRITE_OWNER = 524288
-Const ACCESS_GENERIC_ALL = 268435456
-Const ACCESS_GENERIC_WRITE = 1073741824
-Const ACE_TYPE_ACCESS_ALLOWED = 0
-Const ACE_TYPE_ACCESS_DENIED = 1
-Const ACE_FLAG_INHERIT_ONLY = 8
-Const SID_SYSTEM = "s-1-5-18"
-Const SID_ADMINISTRATORS = "s-1-5-32-544"
-Const SID_TRUSTED_INSTALLER = "s-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"
-Const SID_CREATOR_OWNER = "s-1-3-0"
-
-Dim fso
-Set fso = CreateObject("Scripting.FileSystemObject")
-
-Function NormalizedPath(ByVal value)
-  Dim result
-  result = LCase(fso.GetAbsolutePathName(value))
-  Do While Len(result) > 3 And Right(result, 1) = "\"
-    result = Left(result, Len(result) - 1)
-  Loop
-  NormalizedPath = result
-End Function
-
-Function IsSameOrChild(ByVal candidate, ByVal root)
-  Dim normalizedCandidate, normalizedRoot
-  If Len(root) = 0 Then
-    IsSameOrChild = False
-    Exit Function
-  End If
-  normalizedCandidate = NormalizedPath(candidate)
-  normalizedRoot = NormalizedPath(root)
-  IsSameOrChild = normalizedCandidate = normalizedRoot Or _
-    Left(normalizedCandidate, Len(normalizedRoot) + 1) = normalizedRoot & "\"
-End Function
-
-Sub Reject(ByVal reason)
-  Session.Property("FYAGENT_INSTALLDIR_ERROR") = reason
-  Err.Raise vbObjectError + 513, "FyAgentInstallDirectoryPolicy", _
-    "Unsafe FyAgent installation directory: " & reason
-End Sub
-
-Function IsFixedLocalDrive(ByVal path)
-  Dim driveName, drive
-  If Left(path, 2) = "\\" Then
-    IsFixedLocalDrive = False
-    Exit Function
-  End If
-  On Error Resume Next
-  driveName = fso.GetDriveName(path)
-  Set drive = fso.GetDrive(driveName)
-  IsFixedLocalDrive = Err.Number = 0 And drive.DriveType = DRIVE_FIXED
-  Err.Clear
-  On Error GoTo 0
-End Function
-
-Function HasReparseAncestor(ByVal path)
-  Dim current, parent, folder
-  current = NormalizedPath(path)
-  Do While Not fso.FolderExists(current)
-    parent = fso.GetParentFolderName(current)
-    If Len(parent) = 0 Or parent = current Then Exit Do
-    current = parent
-  Loop
-  Do While Len(current) > 0
-    On Error Resume Next
-    Set folder = fso.GetFolder(current)
-    If Err.Number <> 0 Then
-      Err.Clear
-      On Error GoTo 0
-      HasReparseAncestor = True
-      Exit Function
-    End If
-    If (folder.Attributes And FILE_ATTRIBUTE_REPARSE_POINT) <> 0 Then
-      On Error GoTo 0
-      HasReparseAncestor = True
-      Exit Function
-    End If
-    On Error GoTo 0
-    parent = fso.GetParentFolderName(current)
-    If Len(parent) = 0 Or parent = current Then Exit Do
-    current = parent
-  Loop
-  HasReparseAncestor = False
-End Function
-
-Function WmiEscape(ByVal value)
-  WmiEscape = Replace(Replace(value, "\", "\\"), "'", "''")
-End Function
-
-Function TrusteeSid(ByVal trustee)
-  Dim sid
-  TrusteeSid = ""
-  On Error Resume Next
-  sid = LCase(CStr(trustee.SIDString))
-  If Err.Number <> 0 Or Len(sid) = 0 Then
-    Err.Clear
-    On Error GoTo 0
-    Exit Function
-  End If
-  On Error GoTo 0
-  TrusteeSid = sid
-End Function
-
-Function IsTrustedAclPrincipal(ByVal trustee)
-  Dim sid
-  sid = TrusteeSid(trustee)
-  IsTrustedAclPrincipal = sid = SID_SYSTEM Or _
-    sid = SID_ADMINISTRATORS Or _
-    sid = SID_TRUSTED_INSTALLER
-End Function
-
-Function IsInheritanceOnlyCreatorOwner(ByVal ace)
-  Dim sid, aceFlags
-  IsInheritanceOnlyCreatorOwner = False
-  On Error Resume Next
-  aceFlags = CLng(ace.AceFlags)
-  If Err.Number <> 0 Then
-    Err.Clear
-    On Error GoTo 0
-    Exit Function
-  End If
-  On Error GoTo 0
-  sid = TrusteeSid(ace.Trustee)
-  IsInheritanceOnlyCreatorOwner = sid = SID_CREATOR_OWNER And _
-    (aceFlags And ACE_FLAG_INHERIT_ONLY) <> 0
-End Function
-
-Function HasWritableAcl(ByVal path)
-  Dim security, result, descriptor, ace, mask, aceType, current, parent
-  current = NormalizedPath(path)
-  Do While Not fso.FolderExists(current)
-    parent = fso.GetParentFolderName(current)
-    If Len(parent) = 0 Or parent = current Then Exit Do
-    current = parent
-  Loop
-
-  Do While Len(current) > 0
-    On Error Resume Next
-    Set security = GetObject("winmgmts:\\.\root\cimv2:Win32_LogicalFileSecuritySetting.Path='" & WmiEscape(current) & "'")
-    Set result = security.GetSecurityDescriptor()
-    If Err.Number <> 0 Or result.ReturnValue <> 0 Or IsNull(result.Descriptor.DACL) Then
-      Err.Clear
-      On Error GoTo 0
-      HasWritableAcl = True
-      Exit Function
-    End If
-    Set descriptor = result.Descriptor
-    If Not IsTrustedAclPrincipal(descriptor.Owner) Then
-      On Error GoTo 0
-      HasWritableAcl = True
-      Exit Function
-    End If
-    For Each ace In descriptor.DACL
-      On Error Resume Next
-      aceType = CLng(ace.AceType)
-      mask = CLng(ace.AccessMask)
-      If Err.Number <> 0 Then
-        Err.Clear
-        On Error GoTo 0
-        HasWritableAcl = True
-        Exit Function
-      End If
-      On Error GoTo 0
-      ' Unknown/object/callback ACE forms are deliberately rejected.  This
-      ' validator cannot calculate their effective rights safely.
-      If aceType <> ACE_TYPE_ACCESS_ALLOWED And aceType <> ACE_TYPE_ACCESS_DENIED Then
-        HasWritableAcl = True
-        Exit Function
-      End If
-      ' A deny ACE cannot grant a standard user write access.  An inherit-only
-      ' CREATOR OWNER ACE is also harmless for this existing ancestor and is a
-      ' normal Program Files pattern; the installed child receives a protected
-      ' DACL below.
-      If aceType = ACE_TYPE_ACCESS_DENIED Then
-        ' no-op
-      ElseIf IsInheritanceOnlyCreatorOwner(ace) Then
-        ' no-op
-      Else
-        If (mask And (ACCESS_WRITE_DATA Or ACCESS_APPEND_DATA Or ACCESS_WRITE_EA Or _
-          ACCESS_DELETE_CHILD Or ACCESS_WRITE_ATTRIBUTES Or ACCESS_DELETE Or _
-          ACCESS_WRITE_DAC Or ACCESS_WRITE_OWNER Or ACCESS_GENERIC_ALL Or _
-          ACCESS_GENERIC_WRITE)) <> 0 And Not IsTrustedAclPrincipal(ace.Trustee) Then
-          HasWritableAcl = True
-          Exit Function
-        End If
-      End If
-    Next
-    On Error GoTo 0
-    parent = fso.GetParentFolderName(current)
-    If Len(parent) = 0 Or parent = current Then Exit Do
-    current = parent
-  Loop
-  HasWritableAcl = False
-End Function
-
-Sub ValidateInstallDirectory()
-  Dim installDir, unsafeRoots, root
-  installDir = Session.Property("INSTALLDIR")
-  If Len(installDir) = 0 Then Reject "no installation directory was supplied"
-  If Left(installDir, 2) = "\\" Then Reject "UNC and network paths are not allowed"
-  If Not IsFixedLocalDrive(installDir) Then Reject "the path is not on a local fixed drive"
-  If HasReparseAncestor(installDir) Then Reject "the path contains a junction or symbolic-link ancestor"
-
-  unsafeRoots = Array( _
-    Session.Property("UserProfileFolder"), _
-    Session.Property("DesktopFolder"), _
-    Session.Property("PersonalFolder"), _
-    Session.Property("LocalAppDataFolder"), _
-    Session.Property("TempFolder"))
-  For Each root In unsafeRoots
-    If IsSameOrChild(installDir, CStr(root)) Then Reject "user profile, desktop, downloads, or temporary paths are not allowed"
-  Next
-  If HasWritableAcl(installDir) Then Reject "an existing path ancestor is not provably administrator controlled"
-End Sub
-
-ValidateInstallDirectory
-        ]]></CustomAction>
-
         <!-- launch app checkbox -->
         <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="!(loc.LaunchApp)" />
         <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1"/>
@@ -340,7 +177,7 @@ ValidateInstallDirectory
                      Control="Next"
                      Event="NewDialog"
                      Value="InstallDirDlg"
-                     Order="2">1</Publish>
+                     Order="2">NOT Installed AND NOT WIX_UPGRADE_DETECTED</Publish>
             <Publish Dialog="InstallDirDlg"
                      Control="Back"
                      Event="NewDialog"
@@ -349,7 +186,7 @@ ValidateInstallDirectory
             {{/unless}}
         </UI>
 
-        <UIRef Id="WixUI_InstallDir" />
+        <UIRef Id="FyAgent_InstallDir" />
 
         <Directory Id="TARGETDIR" Name="SourceDir">
             <Directory Id="$(var.PlatformProgramFilesFolder)">
@@ -403,7 +240,7 @@ ValidateInstallDirectory
                 {{#each deep_link_protocols as |protocol| ~}}
                 <RegistryKey Root="HKLM" Key="Software\Classes\\{{protocol}}">
                     <RegistryValue Type="string" Name="URL Protocol" Value=""/>
-                    <RegistryValue Type="string" Value="URL:{{bundle_id}} protocol"/>
+                    <RegistryValue Type="string" Value="URL:FyAgent protocol"/>
                     <RegistryKey Key="DefaultIcon">
                         <RegistryValue Type="string" Value="&quot;[!Path]&quot;,0" />
                     </RegistryKey>

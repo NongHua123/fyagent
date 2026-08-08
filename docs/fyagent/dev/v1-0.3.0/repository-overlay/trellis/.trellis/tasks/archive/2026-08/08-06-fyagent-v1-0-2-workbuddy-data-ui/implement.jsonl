@@ -1,0 +1,15 @@
+{"file":"docs/fyagent/dev/v1-0.2/05-WorkBuddy数据模型与安全设计.md","reason":"双根、事务、覆盖、Key 和安全约束。"}
+{"file":"docs/fyagent/dev/v1-0.2/03-交互设计与状态矩阵.md","reason":"WorkBuddy 信息架构、交互和本地化状态。"}
+{"file":".trellis/spec/backend/fyagent-v1-0-1-config-domains.md","reason":"独立 WorkBuddy 域与既有安全契约。"}
+{"file":".trellis/spec/frontend/state-management.md","reason":"query、mutation 和短生命周期 UI 状态约定。"}
+{"file":"src-tauri/src/services/workbuddy/document.rs","reason":"新增双根 WorkBuddy 文档模型，严格校验、保留未知字段和键序，并提供安全 ID 投影与 availableModels 更新。"}
+{"file":"src-tauri/src/services/workbuddy/config.rs","reason":"实现 revision 检查、预检确认、一次性覆盖令牌、原子备份替换及仅更新既有条目的 URL/API Key。"}
+{"file":"src-tauri/src/services/workbuddy/types.rs","reason":"将 WorkBuddy IPC 收敛为脱敏状态、已有 ID 投影和保存判别联合。"}
+{"file":"src-tauri/src/commands/workbuddy.rs","reason":"新增 get_workbuddy_model_ids 只读命令并接入新的保存输出契约。"}
+{"file":"src-tauri/src/lib.rs","reason":"在现有 WorkBuddy invoke handler 注册 get_workbuddy_model_ids，保持域内命令可达。"}
+{"file":"src/components/workbuddy/WorkBuddyPage.tsx","reason":"实现全宽页面、已有模型与远程模型即时搜索、冻结覆盖快照、API Key 生命周期和固定官网入口。"}
+{"file":"src/components/workbuddy/WorkBuddyStatusCard.tsx","reason":"新增只消费安全状态摘要的配置状态和下载入口卡片。"}
+{"file":"src/components/workbuddy/WorkBuddyExistingModelsCard.tsx","reason":"新增只读已有 ID 搜索、刷新、滚动列表和错误状态卡片。"}
+{"file":"src/lib/api/workbuddy.ts","reason":"对齐 v1.0.2 WorkBuddy IPC 契约，移除旧 duplicatePolicy 依赖。"}
+{"file":"src/lib/query/workbuddy.ts","reason":"为安全已有模型 ID 投影增加隔离 query key 与 query hook。"}
+{"file":"src/i18n/locales/zh.json","reason":"补齐 WorkBuddy 配置状态、已有 ID、远程模型、覆盖令牌和结构错误文案；其余三语言同步。"}

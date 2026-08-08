@@ -1777,7 +1777,7 @@ dependencies = [
 
 [[package]]
 name = "fyagent"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1802,6 +1802,7 @@ dependencies = [
  "indexmap 2.13.0",
  "json-five",
  "json5",
+ "libc",
  "log",
  "objc2 0.5.2",
  "objc2-app-kit 0.2.2",
@@ -1849,6 +1850,13 @@ dependencies = [
  "winreg 0.52.0",
  "zip",
  "zstd",
+]
+
+[[package]]
+name = "fyagent-installer-actions"
+version = "0.3.0"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

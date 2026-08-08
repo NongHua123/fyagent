@@ -8,6 +8,54 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0]
+
+FyAgent 0.3.0 modernizes the imported CC Switch v3.19.2 codebase while keeping
+FyAgent's product identity, data paths, schema 16, backup behavior, and deep
+links compatible. The application version is `0.3.0`; the release tag contract
+is exactly `v0.3.0`, not the upstream version.
+
+### Changed
+
+- Merged the complete CC Switch v3.19.2 ancestry in an isolated two-parent
+  commit and replaced its copied Release Notes with a concise provenance ledger.
+- Retired Linux/WSL-to-Windows and macOS local cross-build paths. Local tasks
+  now build only the current host; formal assets use native GitHub runners.
+- Rebuilt the development environment around the canonical `mise run` task API,
+  exact Node/pnpm/Rust/Python sources, locked uv assets, and an uv-owned Python
+  environment.
+- Removed the `cross-fetch` polyfill chain. Node tests use native Fetch through
+  MSW and Tauri mocks with deprecation warnings promoted to failures.
+
+### CI and release contract
+
+- Restored automatic PR/main CI, the stable `CI / Required` aggregate, and a
+  trusted-base automatic PR Labeler; remote event evidence remains a release
+  gate rather than a claim made by this changelog.
+- Defined one unsigned full-matrix preflight and one formal `v0.3.0` path with
+  exact same-source eligibility, ten installers, SHA-256 data in
+  `download-manifest.json`, build metadata, and a GitHub Sigstore attestation
+  bundle — exactly 13 Release attachments in total.
+- Windows and macOS outputs are intentionally unsigned. There is no signed
+  mode, signing/notarization secret, protected Release environment, branch/tag
+  ruleset, or branch protection in the v0.3.0 contract. Workflow-only source
+  validation is an explicitly accepted residual supply-chain risk.
+- Publication requires the native runs, formal Release transaction, and exact
+  asset checks defined in the
+  [v0.3.0 Release Notes](docs/release-notes/v0.3.0-en.md). Independent
+  download/signature/digest verification is recorded separately in closeout
+  evidence after it is performed.
+
+## Upstream source import: CC Switch v3.19.2 (2026-08-06)
+
+FyAgent merged the complete CC Switch v3.19.2 source ancestry from annotated tag
+`v3.19.2` in the isolated two-parent merge commit
+`f4462765e9b3a2efd1deb13aabf3ce349166a058`. The imported changes include
+upstream correctness, security, provider-management, usage-accounting, and UI
+work; they are not presented as a FyAgent release. The concise source ledger is
+[CC Switch v3.19.2 Upstream Provenance](docs/upstream/cc-switch-v3.19.2.md).
+Upstream-derived material retains its MIT ancestry and notices.
+
 ## [3.19.1] - 2026-07-31
 
 Development since v3.19.0 is a maintenance pass rather than a feature wave — and the first release in this project's history that deletes more than it adds. Three Chinese Codex gateways move onto native Responses and no longer need local routing takeover: DeepSeek connects straight to `api.deepseek.com` and brings with it a general mechanism for mirroring a vendor's own model catalog verbatim, so the GPT-5 harness and the freeform `apply_patch` registration stay self-consistent instead of collapsing into the neutral template; Volcengine's Ark Coding Plan follows now that the official documentation confirms `/api/coding/v3` serves Responses; and Tencent Hunyuan's TokenHub joins as a new preset. The correctness sweep covers four failures visible in the field: Claude Desktop usage has been counted twice since v3.18.0, once as a proxy row and once as an imported session row (#5938); switching back to the built-in official Codex provider left a third-party key in `auth.json`, so Codex authenticated to the official endpoint with the wrong credential and returned 401 without ever falling through to its login screen; `grok update` failed from Settings with a bare `os error 2` because a GUI-launched app cannot see node; and Grok Build's proxy takeover returned 404 on any non-Responses backend while every request minted a fresh session id (#5677). Rounding it out, nine interface strings that rendered as Simplified Chinese in every language are localized and the Traditional Chinese About page gains the thirty tool-manager strings it was missing, eight models that silently billed at zero gain built-in prices, deep-link import confirmations mask more and truncate less, and 3,166 lines of superseded code plus four npm dependencies are removed.

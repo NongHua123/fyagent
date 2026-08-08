@@ -1,0 +1,30 @@
+{
+  "id": "merge-cc-switch-v3-19-2",
+  "name": "merge-cc-switch-v3-19-2",
+  "title": "Merge CC Switch v3.19.2",
+  "description": "Merge the verified CC Switch v3.19.2 tag completely with explicit ancestry while preserving FyAgent identity and recording every semantic conflict.",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "fyagent-modernization",
+  "package": null,
+  "priority": "P1",
+  "creator": "project-owner",
+  "assignee": null,
+  "createdAt": "2026-08-07",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "feature/fyagent-v1",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-07-fyagent-upstream-toolchain-release-modernization",
+  "relatedFiles": [],
+  "notes": "Planning artifact only; implementation requires separate authorization.",
+  "meta": {
+    "evidenceState": "proposed",
+    "decisionRange": "1-104",
+    "sourceBaseline": "55173d2b (user-provided; unverified without .git)"
+  }
+}

@@ -17,6 +17,13 @@
 
 </div>
 
+> [!WARNING]
+> **FyAgent 0.3.0 的合同是公开、稳定、明确无签名的发布。** Windows
+> 可执行文件和 MSI 的 Authenticode 状态为 `NotSigned`，macOS 应用没有
+> Developer ID 签名或公证。安装前请阅读
+> [v0.3.0 发布说明](docs/release-notes/v0.3.0-zh.md)并核对发布证据。正式
+> workflow 尚未完成前，本提示不代表 Release 已经存在。
+
 ## 为什么选择 FyAgent？
 
 现代 AI 编程依赖于 Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw 和 Hermes 等工具——但每个工具都有自己的配置格式。切换 API 供应商意味着手动编辑 JSON、TOML 或 `.env` 文件，而在多个工具之间缺乏一个统一管理 MCP, SKILLS 的方式。
@@ -29,7 +36,7 @@
 - **系统托盘快速切换** — 从托盘菜单即时切换供应商，无需打开完整应用
 - **云同步** — 通过 Dropbox、OneDrive、iCloud 或 WebDAV 服务器在不同设备之间同步供应商数据
 - **跨平台** — 基于 Tauri 2 构建的原生桌面应用，支持 Windows、macOS 和 Linux
-- **小工具** - 内置了多种小工具来解决首次安装登录确认、禁止签名、插件拓展同步等多种功能
+- **小工具** - 内置首次安装登录确认、环境诊断、插件扩展同步等多种功能
 
 ## 界面预览
 
@@ -39,7 +46,7 @@
 
 ## 功能特性
 
-[完整更新日志](CHANGELOG.md) | [发布说明](docs/release-notes/v3.16.1-zh.md)
+[完整更新日志](CHANGELOG.md) | [v0.3.0 发布说明](docs/release-notes/v0.3.0-zh.md)
 
 ### 供应商管理
 
@@ -99,7 +106,9 @@ FyAgent 使用“通用配置片段”功能，在不同的供应商之间传递
 <details>
 <summary><strong>macOS 安装</strong></summary>
 
-请下载对应 Release 发布的 `.dmg`。代码签名和公证状态以具体构建的发布证据为准；安装前请核对所下载 FyAgent 构建对应的发布说明。
+FyAgent 0.3.0 明确不签名、不公证，macOS 可能阻止首次启动。先尝试打开
+FyAgent，然后使用 Apple 支持的“**系统设置 → 隐私与安全性 → 仍要打开**”流程并
+确认提示。请先核对该版本的发布说明和证据；不要关闭 Gatekeeper，也不要移除隔离属性。
 
 </details>
 
@@ -177,23 +186,49 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 
 ### Windows 用户
 
-从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载最新版本的 `FyAgent-v{版本号}-Windows.msi` 安装包。FyAgent 不再发布 Windows 绿色版 ZIP；请使用 MSI 安装包，以便通过受支持的全机器安装路径安装。
+从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载：x64 Windows 使用
+`FyAgent-0.3.0-Windows.msi`，ARM64 Windows 使用
+`FyAgent-0.3.0-Windows-arm64.msi`。FyAgent 不再发布 Windows 绿色版 ZIP；
+请使用受支持的全机器 MSI 安装路径。
+
+> **无签名构建：** v0.3.0 可执行文件和 MSI 的 Authenticode 状态明确为
+> `NotSigned`，Windows SmartScreen 可能显示警告。继续前请核对资产名称、manifest
+> 和 attestation 证据；不要关闭 SmartScreen，也不要削弱组织管理的安全策略。
 
 ### macOS 用户
 
-从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载 `FyAgent-v{版本号}-macOS.dmg`（推荐）或 `.zip`。
+从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载
+`FyAgent-0.3.0-macOS.dmg`（推荐）或 `FyAgent-0.3.0-macOS.zip`。
 
-> **注意**：代码签名和公证状态以具体 Release 发布的证据为准；安装前请核对所下载 FyAgent 构建对应的发布说明。
+> **无签名构建：** v0.3.0 没有 Developer ID 签名或公证。先尝试打开应用，
+> 再使用“**系统设置 → 隐私与安全性 → 仍要打开**”并确认提示。请先核对 Release
+> 证据；不要关闭 Gatekeeper 或移除隔离属性。
 
 ### Linux 用户
 
-从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载最新版本的 Linux 安装包；这些构建也可用于 Arch Linux：
+从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载与当前
+架构匹配的原生 Linux 构建：
 
-- `FyAgent-v{版本号}-Linux-{架构}.deb`（Debian/Ubuntu）
-- `FyAgent-v{版本号}-Linux-{架构}.rpm`（Fedora/RHEL/openSUSE）
-- `FyAgent-v{版本号}-Linux-{架构}.AppImage`（便携版；`{架构}` 选择 `x86_64` 或 `arm64`）
+- x64：`FyAgent-0.3.0-Linux-x86_64.AppImage`、
+  `FyAgent-0.3.0-Linux-x86_64.deb` 或
+  `FyAgent-0.3.0-Linux-x86_64.rpm`
+- ARM64：`FyAgent-0.3.0-Linux-arm64.AppImage`、
+  `FyAgent-0.3.0-Linux-arm64.deb` 或
+  `FyAgent-0.3.0-Linux-arm64.rpm`
 
 > **Flatpak**：官方 Release 不包含 Flatpak 包。如需使用，可从 `.deb` 自行构建 — 参见 [`flatpak/README.md`](flatpak/README.md)。
+
+<details>
+<summary><strong>v0.3.0 精确附件合同</strong></summary>
+
+正式 Release 只允许上述 2 个 macOS 文件、2 个 Windows MSI 和 6 个 Linux
+文件，共 **10 个安装资产**。另外只允许 3 个证据附件：包含每个安装资产 SHA-256
+的 `download-manifest.json`、`build-metadata.json` 和
+`artifact-attestation.sigstore.json`，所以总数必须为 **13**。workflow 会拒绝
+缺失、重复、改名或额外文件。在正式 workflow 完成并独立复核前，这些内容只是发布
+合同，不是已发布结果。
+
+</details>
 
 <details>
 <summary><strong>架构总览</strong></summary>
@@ -246,91 +281,86 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 - 全局安装 [mise](https://mise.jdx.dev/getting-started.html) 2026.8.0 或更高版本
 - 安装 [Tauri 2.0 系统依赖](https://v2.tauri.app/start/prerequisites/)
 
-本地开发所用 Node.js、pnpm、Python 和 Rust/Cargo 的版本统一以
-`mise.toml` 为单一事实源。Tauri CLI 随项目依赖安装；不要再根据宽泛的最低版本要求
-自行安装或选择另一套开发工具。
+仓库分别在 `.node-version`、`package.json`、`rust-toolchain.toml` 和
+`.python-version` 中固定 Node.js 24.19.0、pnpm 10.12.3、Rust 1.97.1 和
+Python 3.14.7。`mise.toml` 管理任务 API 与 uv selector；`mise.lock`、`uv.lock`
+以及由 uv 管理的 `.venv` 锁定受批准的 Python 环境。Tauri CLI 随项目依赖安装。
 
 检查仓库配置后，初始化开发环境：
 
 ```bash
 mise trust
-mise install
-mise exec -- pnpm install --frozen-lockfile
+mise run bootstrap
+mise run system:check
+mise run dev
 ```
 
-下列命令显式使用 `mise exec --`，即使没有配置 shell 激活也会解析到仓库固定的工具。
-若当前 shell 已明确激活 mise，可以省略该前缀。WSL 中禁止从 `/mnt/<drive>` 或
-Windows shim 解析受管工具。
+`mise trust` 是开发者自己的安全决策，项目任务绝不会自动执行它。`bootstrap` 不安装
+提权系统包、不修改 Git remote、不刷新 lock，也不发布。WSL 中禁止从
+`/mnt/<drive>` 或 Windows shim 解析受管工具。完整 API 见生成的
+[canonical task catalog](docs/fyagent/development/mise-tasks.md)。
 
-### 跨平台构建命令
+### 宿主平台原生构建
 
-以下 `mise` 任务调用仓库维护的跨平台构建脚本，并保留原有的预检门禁。任务启动时
-刻意不让 mise 自动安装缺失工具：常规开发使用上文的 `mise install`；macOS 包装脚本会
-在宿主机与风险检查通过后才配置固定工具；Windows 工作流要求启动前已准备好工具链。
+本地开发和打包仅支持当前宿主操作系统。标准命令不接受其他操作系统或架构目标：
 
 ```bash
-mise run build:cross-windows:x64
-mise run build:cross-windows:arm64
-mise run build:cross-windows
-mise run build:cross-macos:universal
+mise run dev
+mise run build
 ```
 
-Windows 任务需要已准备好的 x86_64 Linux 交叉编译工具链。
-`build:cross-windows` 是原子化的双架构交付入口，产物位于
-`dist-bundle/windows/<version>/<arch>/`。macOS 任务仅支持 WSL2 Ubuntu
-22.04 或 24.04；首次运行会提示确认固定 SDK、许可证、GPL 工具和实验性 DMG
-风险。无交互环境需要显式执行
-`mise run build:cross-macos:universal --accept-risk`。DMG、校验和及清单会输出到
-`dist-bundle/macos/`。这两个目录都由 Git 忽略，仅用于本地候选产物，不是公开发布位置。
+FyAgent 安装包只由 GitHub Actions 在原生 Windows x64/ARM64、Linux x64/ARM64
+和 macOS runner 上构建，其中 macOS job 生成 Universal 构建。本地从 Linux/WSL
+打包 Windows 或 macOS 不属于受支持的发布路径。
 
 ### 开发命令
 
 ```bash
-# 安装依赖
-mise exec -- pnpm install --frozen-lockfile
+# 安装锁定依赖并检查环境
+mise run bootstrap
 
 # 开发模式（热重载）
-mise exec -- pnpm dev
+mise run dev
 
 # 类型检查
-mise exec -- pnpm typecheck
+mise run typecheck
 
 # 代码格式化
-mise exec -- pnpm format
+mise run format
 
 # 检查代码格式
-mise exec -- pnpm format:check
+mise run format:check
 
 # 运行前端单元测试
-mise exec -- pnpm test:unit
+mise run test:unit
 
 # 监听模式运行测试（推荐开发时使用）
-mise exec -- pnpm test:unit:watch
+mise run test:unit:watch
 
 # 构建应用
-mise exec -- pnpm build
+mise run build
 
 # 构建调试版本
-mise exec -- pnpm tauri build --debug
+mise run build:debug
 ```
 
 ### Rust 后端开发
 
 ```bash
 # 格式化 Rust 代码
-mise exec -- cargo fmt --manifest-path src-tauri/Cargo.toml
+mise run rust:fmt
 
 # 运行 clippy 检查
-mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml
+mise run rust:clippy
 
 # 运行后端测试
-mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
+mise run rust:test
 
 # 运行特定测试
-mise exec -- cargo test --manifest-path src-tauri/Cargo.toml test_name
+mise run rust:test test_name
 
-# 运行带测试 hooks 的测试
-mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --features test-hooks
+# 提交 PR 前运行完整当前宿主门禁
+mise run check
 ```
 
 ### 测试说明
@@ -345,13 +375,13 @@ mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --features test-hoo
 
 ```bash
 # 运行所有测试
-mise exec -- pnpm test:unit
+mise run test:unit
 
 # 监听模式（自动重跑）
-mise exec -- pnpm test:unit:watch
+mise run test:unit:watch
 
-# 带覆盖率报告
-mise exec -- pnpm test:unit --coverage
+# 完整前端门禁
+mise run check:frontend
 ```
 
 ### 技术栈
@@ -411,9 +441,9 @@ mise exec -- pnpm test:unit --coverage
 
 提交 PR 前请确保：
 
-- 通过类型检查：`mise exec -- pnpm typecheck`
-- 通过格式检查：`mise exec -- pnpm format:check`
-- 通过单元测试：`mise exec -- pnpm test:unit`
+- 运行完整当前宿主门禁：`mise run check`
+- 开发时从 [canonical task catalog](docs/fyagent/development/mise-tasks.md)
+  选择聚焦任务
 
 新功能开发前，欢迎先开 Issue 讨论实现方案，不适合项目的功能性 PR 有可能会被关闭。
 

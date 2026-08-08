@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/08-07-fyagent-upstream-toolchain-release-modernization/research/execution-authority.md", "reason": "Native-host and formal target acceptance boundary."}
+{"file": ".trellis/spec/backend/windows-release-boundary.md", "reason": "Verify migrated Windows installer security assertions."}
+{"file": ".trellis/spec/backend/development-environment.md", "reason": "Verify local task and toolchain cleanup without native regression."}

@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/08-07-fyagent-upstream-toolchain-release-modernization/research/execution-authority.md", "reason": "Strict dependency-removal acceptance boundary."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Behavioral test, warning, and regression review guidance."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Native Fetch to MSW to Tauri mock data-flow review."}

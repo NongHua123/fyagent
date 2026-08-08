@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/08-07-fyagent-upstream-toolchain-release-modernization/research/execution-authority.md", "reason": "Node 24.19.0 and no-runtime-API-change execution boundary."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend/test quality contract for Native Fetch and MSW behavior."}
+{"file": ".trellis/spec/backend/development-environment.md", "reason": "Node/pnpm environment and strict deprecation execution contract."}

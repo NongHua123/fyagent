@@ -265,25 +265,38 @@ mod tests {
     use std::{
         io::{ErrorKind, Read, Write},
         net::{TcpListener, TcpStream},
-        sync::{Arc, Mutex},
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Mutex,
+        },
         thread::{self, JoinHandle},
         time::{Duration, Instant},
     };
 
     use reqwest::{redirect::Policy, Client};
 
-    const TEST_SERVER_ACCEPT_TIMEOUT: Duration = Duration::from_secs(2);
+    // Heavily parallel native CI can delay either accepting the connection or
+    // reading its headers. Keep each fixture request bounded by one shared
+    // deadline; product transport timeouts remain independent.
+    const TEST_SERVER_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
     struct LocalHttpServer {
         base_url: String,
         requests: Arc<Mutex<Vec<String>>>,
+        accepted_connections: Arc<AtomicUsize>,
         handle: JoinHandle<()>,
     }
 
     impl LocalHttpServer {
         fn finish(self) -> Vec<String> {
+            self.finish_with_contact_count().0
+        }
+
+        fn finish_with_contact_count(self) -> (Vec<String>, usize) {
             self.handle.join().expect("local HTTP server thread");
-            self.requests.lock().expect("captured requests").clone()
+            let requests = self.requests.lock().expect("captured requests").clone();
+            let accepted_connections = self.accepted_connections.load(Ordering::Relaxed);
+            (requests, accepted_connections)
         }
     }
 
@@ -299,7 +312,10 @@ mod tests {
             .expect("build loopback client")
     }
 
-    fn spawn_scripted_server(responses: Vec<Vec<u8>>, accept_timeout: Duration) -> LocalHttpServer {
+    fn spawn_scripted_server(
+        responses: Vec<Vec<u8>>,
+        request_timeout: Duration,
+    ) -> LocalHttpServer {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback test listener");
         listener
             .set_nonblocking(true)
@@ -307,15 +323,22 @@ mod tests {
         let port = listener.local_addr().expect("read loopback port").port();
         let requests = Arc::new(Mutex::new(Vec::new()));
         let captured_requests = Arc::clone(&requests);
+        let accepted_connections = Arc::new(AtomicUsize::new(0));
+        let connection_count = Arc::clone(&accepted_connections);
         let handle = thread::spawn(move || {
             for response in responses {
-                let Some(mut stream) = accept_connection(&listener, accept_timeout) else {
+                let deadline = Instant::now() + request_timeout;
+                let Some(mut stream) = accept_connection(&listener, deadline) else {
+                    return;
+                };
+                connection_count.fetch_add(1, Ordering::Relaxed);
+                let Some(request) = read_http_request(&mut stream, deadline) else {
                     return;
                 };
                 captured_requests
                     .lock()
                     .expect("captured requests")
-                    .push(read_http_request(&mut stream));
+                    .push(request);
                 let _ = stream.write_all(&response);
                 let _ = stream.flush();
             }
@@ -324,6 +347,7 @@ mod tests {
         LocalHttpServer {
             base_url: format!("http://127.0.0.1:{port}"),
             requests,
+            accepted_connections,
             handle,
         }
     }
@@ -336,14 +360,21 @@ mod tests {
         let port = listener.local_addr().expect("read delayed port").port();
         let requests = Arc::new(Mutex::new(Vec::new()));
         let captured_requests = Arc::clone(&requests);
+        let accepted_connections = Arc::new(AtomicUsize::new(0));
+        let connection_count = Arc::clone(&accepted_connections);
         let handle = thread::spawn(move || {
-            let Some(mut stream) = accept_connection(&listener, TEST_SERVER_ACCEPT_TIMEOUT) else {
+            let deadline = Instant::now() + TEST_SERVER_REQUEST_TIMEOUT;
+            let Some(mut stream) = accept_connection(&listener, deadline) else {
+                return;
+            };
+            connection_count.fetch_add(1, Ordering::Relaxed);
+            let Some(request) = read_http_request(&mut stream, deadline) else {
                 return;
             };
             captured_requests
                 .lock()
                 .expect("captured requests")
-                .push(read_http_request(&mut stream));
+                .push(request);
             thread::sleep(delay);
             let _ = stream.write_all(&response);
             let _ = stream.flush();
@@ -352,17 +383,18 @@ mod tests {
         LocalHttpServer {
             base_url: format!("http://127.0.0.1:{port}"),
             requests,
+            accepted_connections,
             handle,
         }
     }
 
-    fn accept_connection(listener: &TcpListener, timeout: Duration) -> Option<TcpStream> {
-        let deadline = Instant::now() + timeout;
+    fn accept_connection(listener: &TcpListener, deadline: Instant) -> Option<TcpStream> {
         loop {
             match listener.accept() {
                 Ok((stream, _)) => return Some(stream),
                 Err(error)
-                    if error.kind() == ErrorKind::WouldBlock && Instant::now() < deadline =>
+                    if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::Interrupted)
+                        && Instant::now() < deadline =>
                 {
                     thread::sleep(Duration::from_millis(5));
                 }
@@ -371,17 +403,85 @@ mod tests {
         }
     }
 
-    fn read_http_request(stream: &mut TcpStream) -> String {
-        let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
+    fn read_http_request(stream: &mut TcpStream, deadline: Instant) -> Option<String> {
+        const MAX_REQUEST_BYTES: usize = 16 * 1024;
+
         let mut bytes = Vec::new();
         let mut chunk = [0u8; 1024];
-        while !bytes.windows(4).any(|window| window == b"\r\n\r\n") && bytes.len() < 16 * 1024 {
-            match stream.read(&mut chunk) {
-                Ok(0) | Err(_) => break,
+
+        loop {
+            if bytes.windows(4).any(|window| window == b"\r\n\r\n") {
+                return Some(String::from_utf8_lossy(&bytes).into_owned());
+            }
+            if bytes.len() >= MAX_REQUEST_BYTES {
+                return None;
+            }
+
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() || stream.set_read_timeout(Some(remaining)).is_err() {
+                return None;
+            }
+
+            let read_capacity = (MAX_REQUEST_BYTES - bytes.len()).min(chunk.len());
+            match stream.read(&mut chunk[..read_capacity]) {
+                Ok(0) => return None,
                 Ok(read) => bytes.extend_from_slice(&chunk[..read]),
+                Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+                Err(error)
+                    if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut)
+                        && Instant::now() < deadline =>
+                {
+                    let retry_delay = Duration::from_millis(5)
+                        .min(deadline.saturating_duration_since(Instant::now()));
+                    if retry_delay.is_zero() {
+                        return None;
+                    }
+                    thread::sleep(retry_delay);
+                }
+                Err(_) => return None,
             }
         }
-        String::from_utf8_lossy(&bytes).into_owned()
+    }
+
+    #[test]
+    fn incomplete_http_headers_fail_closed_at_deadline() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind request reader listener");
+        let address = listener.local_addr().expect("read request reader address");
+        let mut client = TcpStream::connect(address).expect("connect request reader client");
+        let (mut stream, _) = listener.accept().expect("accept request reader client");
+        client
+            .write_all(b"GET /v1/models HTTP/1.1\r\nhost: localhost\r\n")
+            .expect("write incomplete request headers");
+
+        assert!(
+            read_http_request(&mut stream, Instant::now() + Duration::from_millis(25)).is_none(),
+            "incomplete request headers must never be captured as a valid request"
+        );
+    }
+
+    #[test]
+    fn request_reader_uses_total_deadline_beyond_one_second() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind delayed request listener");
+        let address = listener.local_addr().expect("read delayed request address");
+        let writer = thread::spawn(move || {
+            let mut client =
+                TcpStream::connect(address).expect("connect delayed request reader client");
+            thread::sleep(Duration::from_millis(1_100));
+            client
+                .write_all(b"GET /v1/models HTTP/1.1\r\nhost: localhost\r\n\r\n")
+                .expect("write complete delayed request headers");
+        });
+        let (mut stream, _) = listener.accept().expect("accept delayed request client");
+
+        let request = read_http_request(&mut stream, Instant::now() + Duration::from_secs(5));
+        writer.join().expect("delayed request writer thread");
+
+        assert!(
+            request
+                .as_deref()
+                .is_some_and(|request| request.starts_with("GET /v1/models HTTP/1.1")),
+            "a complete request arriving after one second must be captured before the total deadline"
+        );
     }
 
     fn has_bearer_authorization(request: &str, api_key: &str) -> bool {
@@ -550,13 +650,14 @@ mod tests {
                 &[],
                 br#"{"data":[{"id":"local-model"}]}"#,
             )],
-            TEST_SERVER_ACCEPT_TIMEOUT,
+            TEST_SERVER_REQUEST_TIMEOUT,
         );
 
         let result = fetch_from_loopback(&server, "").await.unwrap();
         assert_eq!(result.models, ["local-model"]);
         let requests = server.finish();
         assert_eq!(requests.len(), 1);
+        assert!(requests[0].starts_with("GET /v1/models HTTP/1.1"));
         assert!(
             !requests[0].to_ascii_lowercase().contains("authorization:"),
             "an allowed empty key must not create an Authorization header"
@@ -571,7 +672,7 @@ mod tests {
                 &[],
                 b"f a k e - m o d e l - k e y was reflected in a nonstandard format",
             )],
-            TEST_SERVER_ACCEPT_TIMEOUT,
+            TEST_SERVER_REQUEST_TIMEOUT,
         );
 
         let error = fetch_from_loopback(&server, "fake-model-key")
@@ -599,7 +700,7 @@ mod tests {
                 &[],
                 b"request rejected at https://user:pass@example.test/path?token=secret",
             )],
-            TEST_SERVER_ACCEPT_TIMEOUT,
+            TEST_SERVER_REQUEST_TIMEOUT,
         );
 
         let error = fetch_from_loopback(&server, "")
@@ -618,6 +719,7 @@ mod tests {
 
         let requests = server.finish();
         assert_eq!(requests.len(), 1);
+        assert!(requests[0].starts_with("GET /v1/models HTTP/1.1"));
         assert!(
             !requests[0].to_ascii_lowercase().contains("authorization:"),
             "no-key mode must not send an Authorization header"
@@ -631,7 +733,7 @@ mod tests {
                 "200 OK",
                 MAX_RESPONSE_BYTES + 1,
             )],
-            TEST_SERVER_ACCEPT_TIMEOUT,
+            TEST_SERVER_REQUEST_TIMEOUT,
         );
 
         let error = fetch_from_loopback(&server, "fake-model-key")
@@ -648,7 +750,7 @@ mod tests {
                 http_response("302 Found", &[("location", "/follow-up")], b""),
                 http_response("200 OK", &[], br#"{"data":[{"id":"redirected"}]}"#),
             ],
-            TEST_SERVER_ACCEPT_TIMEOUT,
+            TEST_SERVER_REQUEST_TIMEOUT,
         );
 
         let result = fetch_from_loopback(&server, "fake-model-key")
@@ -677,7 +779,7 @@ mod tests {
         let location = format!("{}/steal", target.base_url);
         let origin = spawn_scripted_server(
             vec![http_response("302 Found", &[("location", &location)], b"")],
-            TEST_SERVER_ACCEPT_TIMEOUT,
+            TEST_SERVER_REQUEST_TIMEOUT,
         );
 
         let error = fetch_from_loopback(&origin, "fake-model-key")
@@ -685,8 +787,13 @@ mod tests {
             .expect_err("a port-changing redirect must be rejected");
         assert_eq!(error.code(), WorkBuddyErrorCode::FetchRedirectRejected);
         assert_eq!(origin.finish().len(), 1);
+        let (target_requests, target_accepted_connections) = target.finish_with_contact_count();
+        assert_eq!(
+            target_accepted_connections, 0,
+            "a cross-origin redirect target must never be contacted"
+        );
         assert!(
-            target.finish().is_empty(),
+            target_requests.is_empty(),
             "Authorization must never be sent to a cross-origin redirect target"
         );
     }

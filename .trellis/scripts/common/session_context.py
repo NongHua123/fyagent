@@ -9,6 +9,7 @@ Provides:
     get_context_text_record   - Text for record mode
     output_json               - Print JSON
     output_text               - Print text
+    get_update_hint           - Once-per-session "update available" line
 """
 
 from __future__ import annotations
@@ -417,8 +418,16 @@ def _compare_versions(left: str, right: str) -> int | None:
     return _compare_prerelease(left_prerelease, right_prerelease)
 
 
-def _update_marker_path(repo_root: Path) -> Path:
-    context_key = resolve_context_key()
+def _update_marker_path(repo_root: Path, context_key: str | None = None) -> Path:
+    """Path of the once-per-session marker that throttles the update check.
+
+    `context_key` lets a caller that already resolved session identity pass it
+    in — the SessionStart hook reads the session id from hook stdin, which is
+    more reliable than this function's environment-only fallback chain. Shell
+    entry points leave it None and keep the previous behavior.
+    """
+    if not context_key:
+        context_key = resolve_context_key()
     if not context_key:
         terminal_key = os.environ.get("TERM_SESSION_ID", "").strip()
         context_key = terminal_key or f"ppid-{os.getppid()}"
@@ -433,8 +442,11 @@ def _update_marker_path(repo_root: Path) -> Path:
     )
 
 
-def _mark_update_check_attempted(repo_root: Path) -> bool:
-    marker_path = _update_marker_path(repo_root)
+def _mark_update_check_attempted(
+    repo_root: Path,
+    context_key: str | None = None,
+) -> bool:
+    marker_path = _update_marker_path(repo_root, context_key)
     if marker_path.exists():
         return False
     try:
@@ -445,8 +457,14 @@ def _mark_update_check_attempted(repo_root: Path) -> bool:
     return True
 
 
-def _get_update_hint(repo_root: Path) -> str | None:
-    marker_path = _update_marker_path(repo_root)
+def get_update_hint(repo_root: Path, context_key: str | None = None) -> str | None:
+    """Return the "update available" line for this session, at most once.
+
+    Public because the SessionStart hook imports it: the text-mode CLI path
+    (`get_context.py`) used to be the only caller, so hook-driven platforms —
+    Claude Code included — never saw the reminder at all.
+    """
+    marker_path = _update_marker_path(repo_root, context_key)
     if marker_path.exists():
         return None
 
@@ -458,7 +476,7 @@ def _get_update_hint(repo_root: Path) -> str | None:
     if not latest_version:
         return None
 
-    _mark_update_check_attempted(repo_root)
+    _mark_update_check_attempted(repo_root, context_key)
     comparison = _compare_versions(current_version, latest_version)
     if comparison is None or comparison >= 0:
         return None
@@ -867,7 +885,7 @@ def output_text(repo_root: Path | None = None) -> None:
     """
     if repo_root is None:
         repo_root = get_repo_root()
-    update_hint = _get_update_hint(repo_root)
+    update_hint = get_update_hint(repo_root)
     if update_hint:
         print(update_hint)
         print("")

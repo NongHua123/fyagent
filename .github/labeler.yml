@@ -1,4 +1,4 @@
-# Configuration for actions/labeler v5
+# Configuration for actions/labeler v7
 # Automatically labels PRs based on changed file paths
 
 frontend:

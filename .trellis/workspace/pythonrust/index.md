@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 9
+- **Total Sessions**: 10
 - **Last Active**: 2026-08-06
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~286 | Active |
+| `journal-1.md` | ~321 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 10 | 2026-08-06 | FyAgent 0.2.1 secure installer and version contract | `7049a834` | `feature/fyagent-v1` |
 | 9 | 2026-08-06 | Restore Windows cross-built MSI packaging | `09042531` | `feature/fyagent-v1` |
 | 8 | 2026-08-05 | Sync upstream v3.19.1 | `b8c68eb104b31ab4d77027aaac82f90d054a9e97`, `ca0f055bd373217ebef9af907a3d828cab41c59c` | `feature/fyagent-v1` |
 | 7 | 2026-08-04 | Codex 原生能力开关放宽 | `dd4162e0`, `64939d83` | `feature/fyagent-v1` |

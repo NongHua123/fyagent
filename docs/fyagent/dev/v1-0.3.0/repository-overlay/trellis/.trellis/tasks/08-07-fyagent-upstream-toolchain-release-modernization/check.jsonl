@@ -1,0 +1,3 @@
+{"file": "decisions/TRACEABILITY-MATRIX.md", "reason": "Decision-to-file/evidence traceability."}
+{"file": "implementation-map/CI-ACCEPTANCE-MATRIX.md", "reason": "Required CI evidence."}
+{"file": "implementation-map/RELEASE-ASSET-CONTRACT.md", "reason": "Formal Release acceptance."}

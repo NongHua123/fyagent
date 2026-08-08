@@ -1,25 +1,23 @@
-# Flatpak Build Guide
+# Flatpak Diagnostic Build Guide
 
-This directory contains the Flatpak manifest (`com.fyagent.desktop`) for FyAgent, used to convert the generated `.deb` artifact into an installable `.flatpak` package via CI or local builds.
+This directory contains the `com.fyagent.desktop` Flatpak manifest. It converts
+a current-host Linux DEB into a local diagnostic `.flatpak`; Flatpak is **not**
+one of the ten formal FyAgent 0.3.0 installer assets and this path does not
+produce Release evidence.
 
-## Dependencies
+## Prerequisites
 
-- The repository development environment initialized with global
-  [mise](https://mise.jdx.dev/getting-started.html) 2026.8.0 or newer
-- `flatpak`
-- `flatpak-builder`
-- Flathub remote (for installing `org.gnome.Platform//46` runtime)
-
-From the repository root, review and initialize the pinned development tools
-before building:
+Review and initialize the repository development environment:
 
 ```bash
 mise trust
-mise install
-mise exec -- pnpm install --frozen-lockfile
+mise run bootstrap
+mise run system:check
 ```
 
-For Ubuntu/Debian:
+`mise trust` is an explicit developer decision and no task runs it
+automatically. Install Flatpak tooling and the GNOME 46 runtime with the host
+package manager. For Ubuntu/Debian:
 
 ```bash
 sudo apt install flatpak flatpak-builder
@@ -27,50 +25,50 @@ flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flat
 flatpak install -y --user flathub org.gnome.Platform//46 org.gnome.Sdk//46
 ```
 
-## Local Build (Generate .flatpak from .deb)
+## Local Diagnostic Build
 
-1) Build the deb on Linux first:
-
-```bash
-mise exec -- pnpm tauri build -- --bundles deb
-```
-
-2) Copy the generated deb to this directory:
+Run the canonical native build on a Linux host:
 
 ```bash
-cp "$(find src-tauri/target/release/bundle -name '*.deb' | head -n 1)" flatpak/fyagent.deb
+mise run build
 ```
 
-3) Build the local Flatpak repository and export the `.flatpak`:
+Locate the DEB under `src-tauri/target/release/bundle/deb/`, verify that exactly
+one package for the current host architecture was generated, and copy that
+reviewed file to `flatpak/fyagent.deb`. Do not select a package with `head`, a
+wildcard that could hide duplicates, or an opposite-architecture target.
+
+Build and export the local diagnostic package:
 
 ```bash
 flatpak-builder --force-clean --user --disable-cache --repo flatpak-repo flatpak-build flatpak/com.fyagent.desktop.yml
 flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo flatpak-repo FyAgent-Linux.flatpak com.fyagent.desktop
 ```
 
-4) Install and run:
+Install and run it locally:
 
 ```bash
 flatpak install --user ./FyAgent-Linux.flatpak
 flatpak run com.fyagent.desktop
 ```
 
-## Permissions Note
+## Permission Boundary
 
-The current manifest uses `--filesystem=home` by default for "download and run" convenience, allowing the app to directly read/write CLI configuration files and app data on the host (and supporting the "directory override" feature).
-
-If you prefer minimal permissions (e.g., for Flathub submission or security concerns), you can replace `--filesystem=home` in `flatpak/com.fyagent.desktop.yml` with more precise grants:
+The current manifest grants `--filesystem=home` for compatibility with managed
+CLI configuration files and the directory-override feature. A Flathub or
+security-hardening change must replace it with reviewed least-privilege paths
+and prove user-data and CLI compatibility. For example:
 
 ```yaml
-  - --filesystem=~/.fyagent:create
-  - --filesystem=~/.claude:create
-  - --filesystem=~/.claude.json
-  - --filesystem=~/.codex:create
-  - --filesystem=~/.gemini:create
-  - --filesystem=~/.config/opencode:create
-  - --filesystem=~/.openclaw:create
+- --filesystem=~/.fyagent:create
+- --filesystem=~/.claude:create
+- --filesystem=~/.claude.json
+- --filesystem=~/.codex:create
+- --filesystem=~/.gemini:create
+- --filesystem=~/.config/opencode:create
+- --filesystem=~/.openclaw:create
 ```
 
-Note: Flatpak's `:create` modifier only works with directories, not files. Therefore, `~/.claude.json` cannot use `:create`. If this file doesn't exist on the user's machine, the app may not be able to create it with restricted permissions. Users should either run Claude Code once to generate it, or manually create an empty JSON file (content: `{}`).
-
-If you plan to publish on Flathub or want stricter permission control, adjust the `finish-args` in `flatpak/com.fyagent.desktop.yml` accordingly.
+Flatpak's `:create` modifier applies to directories, not files, so
+`~/.claude.json` requires a separately reviewed creation strategy. Permission
+changes must not silently narrow existing data-path or backup compatibility.

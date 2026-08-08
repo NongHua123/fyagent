@@ -1,0 +1,27 @@
+["rust:fmt"]
+description = "Apply rustfmt to the complete Cargo workspace"
+env = { FYAGENT_TASK_EFFECT = "source-modifying" }
+run = "cargo fmt --all --manifest-path src-tauri/Cargo.toml"
+
+["rust:fmt:check"]
+description = "Verify rustfmt for the complete Cargo workspace"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "cargo fmt --all --check --manifest-path src-tauri/Cargo.toml"
+
+["rust:check"]
+description = "Run locked Cargo check for the workspace and all host targets"
+env = { FYAGENT_TASK_EFFECT = "read-only", FYAGENT_WINDOWS_MANIFEST = "test" }
+run = "cargo check --workspace --all-targets --locked --manifest-path src-tauri/Cargo.toml"
+
+["rust:clippy"]
+description = "Run locked Clippy for the workspace and deny every warning"
+env = { FYAGENT_TASK_EFFECT = "read-only", FYAGENT_WINDOWS_MANIFEST = "test" }
+run = "cargo clippy --workspace --all-targets --locked --manifest-path src-tauri/Cargo.toml -- -D warnings"
+
+["rust:test"]
+description = "Run locked Cargo workspace tests with optional controlled filters"
+usage = '''
+arg "[filters]" var=#true help="Cargo test name filters"
+'''
+env = { FYAGENT_TASK_EFFECT = "read-only", FYAGENT_WINDOWS_MANIFEST = "test" }
+run = "node scripts/tasks/rust.mjs test"

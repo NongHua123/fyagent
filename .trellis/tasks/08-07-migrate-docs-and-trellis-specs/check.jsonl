@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/08-07-fyagent-upstream-toolchain-release-modernization/research/execution-authority.md", "reason": "Version, unsigned-release, workflow-risk, and archive truth boundary."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec-index completeness and current-contract consistency."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec-index completeness and current-contract consistency."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-document, code, workflow, and evidence consistency review."}

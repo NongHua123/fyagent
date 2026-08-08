@@ -1,0 +1,90 @@
+["dev:renderer"]
+description = "Start the Vite renderer development server"
+env = { FYAGENT_TASK_EFFECT = "interactive" }
+interactive = true
+run = "pnpm dev:renderer"
+
+["build:renderer"]
+description = "Build the production renderer without a desktop package"
+env = { FYAGENT_TASK_EFFECT = "build-output" }
+run = "pnpm build:renderer"
+
+[typecheck]
+description = "Run strict TypeScript type checking without emitting files"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "pnpm typecheck"
+
+[format]
+description = "Apply the repository Prettier configuration to frontend sources"
+env = { FYAGENT_TASK_EFFECT = "source-modifying" }
+run = "pnpm format"
+
+["format:check"]
+description = "Verify frontend formatting without writing files"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "pnpm format:check"
+
+[test]
+description = "Run the non-interactive frontend and desktop mock test aggregate"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = [
+  { task = "test:unit" },
+  { task = "test:i18n" },
+  { task = "test:desktop:mock" },
+  { task = "test:desktop:visual:preflight" },
+]
+
+["test:unit"]
+description = "Run Vitest unit and integration tests with optional controlled filters"
+usage = '''
+arg "[filters]" var=#true help="Vitest file or name filters"
+'''
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/frontend.mjs test-unit"
+
+["test:unit:watch"]
+description = "Run Vitest in interactive watch mode with optional controlled filters"
+usage = '''
+arg "[filters]" var=#true help="Vitest file or name filters"
+'''
+env = { FYAGENT_TASK_EFFECT = "interactive" }
+interactive = true
+run = "node scripts/tasks/frontend.mjs test-watch"
+
+["test:i18n"]
+description = "Verify locale key and schema parity"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "pnpm test:i18n"
+
+["test:desktop:mock"]
+description = "Run desktop acceptance fake-IPC contract tests (not native evidence)"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "pnpm test:desktop:mock"
+
+["test:desktop:visual:preflight"]
+description = "Validate visual baseline manifest and candidate policy without updating images"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "pnpm test:desktop:visual:preflight"
+
+["test:desktop:visual:update"]
+description = "Validate reviewed visual evidence before a separate human Git LFS update"
+usage = '''
+arg "<evidence>" help="Reviewed candidate evidence JSON file"
+'''
+env = { FYAGENT_TASK_EFFECT = "source-modifying" }
+confirm = { message = "Validate reviewed visual-baseline evidence?", default = "no" }
+run = "node scripts/tasks/frontend.mjs visual-update"
+
+["assets:icons"]
+description = "Preview or generate the application icon set from a validated source image"
+usage = '''
+flag "--source <file>" help="Square source PNG or SVG" default="assets/fyagent.png"
+flag "--apply" help="Generate files in src-tauri/icons; otherwise print the plan"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/frontend.mjs assets-icons"
+
+["assets:icons:check"]
+description = "Verify required application icon consumers and basic file signatures"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/frontend.mjs assets-icons-check"

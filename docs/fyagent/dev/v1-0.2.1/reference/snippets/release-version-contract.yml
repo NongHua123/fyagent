@@ -1,0 +1,54 @@
+# Merge into .github/workflows/release.yml. Do not replace existing signing,
+# notarization, permissions, or build matrices without review.
+
+jobs:
+  version-contract:
+    name: Verify FyAgent version contract
+    runs-on: ubuntu-latest
+    outputs:
+      app_version: ${{ steps.version.outputs.app_version }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      source_sha: ${{ steps.version.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Verify repository and tag
+        shell: bash
+        run: pnpm run version:check -- --tag "$GITHUB_REF_NAME"
+
+      - id: version
+        name: Export immutable version values
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_version="$(pnpm --silent run version:get)"
+          printf 'app_version=%s\n' "$app_version" >> "$GITHUB_OUTPUT"
+          printf 'release_tag=v%s\n' "$app_version" >> "$GITHUB_OUTPUT"
+          printf 'source_sha=%s\n' "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
+  # Example consumer. Apply the same contract to every platform job.
+  build-windows-x64:
+    needs: version-contract
+    runs-on: windows-latest
+    env:
+      APP_VERSION: ${{ needs.version-contract.outputs.app_version }}
+      RELEASE_TAG: ${{ needs.version-contract.outputs.release_tag }}
+      SOURCE_SHA: ${{ needs.version-contract.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify checkout contract
+        shell: pwsh
+        run: pnpm run version:check -- --tag $env:RELEASE_TAG
+      # Build, inspect, sign, lifecycle-test, then name the final asset using:
+      # FyAgent-$env:APP_VERSION-Windows.msi

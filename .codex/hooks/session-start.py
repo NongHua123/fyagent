@@ -21,7 +21,7 @@ from pathlib import Path
 # Force UTF-8 on stdin/stdout/stderr on Windows. Default codepage there is
 # cp936 / cp1252 / etc. — non-ASCII content (Chinese task names, prd snippets)
 # both in stdin (hook payload from host CLI) and stdout (our emitted blocks)
-# raises UnicodeDecodeError / UnicodeEncodeError. Equivalent to `python3 -X utf8`
+# raises UnicodeDecodeError / UnicodeEncodeError. Equivalent to `python -X utf8`
 # but applied per-stream so we don't depend on host CLI's command wiring.
 if sys.platform.startswith("win"):
     import io as _io

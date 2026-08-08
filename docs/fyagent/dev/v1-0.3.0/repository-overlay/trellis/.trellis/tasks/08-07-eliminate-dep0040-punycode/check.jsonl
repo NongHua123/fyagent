@@ -1,0 +1,2 @@
+{"file": "pnpm reverse dependency graph", "reason": "Prove exact obsolete chain removal."}
+{"file": "focused pending-deprecation probe", "reason": "Detect dependency-level DEP0040 regression."}

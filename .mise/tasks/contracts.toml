@@ -1,0 +1,55 @@
+["tasks:validate"]
+description = "Validate task metadata, DAG, safety classes, scripts, locks, and active-doc migration boundaries"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = [
+  "mise tasks validate --errors-only",
+  "node scripts/tasks/task-contract-check.mjs",
+  "node scripts/tasks/docs-contract-check.mjs",
+  "node scripts/tasks/lockfile-check.mjs",
+]
+
+["tasks:docs:generate"]
+description = "Preview or regenerate the canonical mise task reference from task metadata"
+usage = '''
+flag "--apply" help="Write docs/fyagent/development/mise-tasks.md; otherwise print generated Markdown"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/task-docs.mjs generate"
+
+["tasks:docs:check"]
+description = "Regenerate task documentation in memory and byte-compare it with the committed reference"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/task-docs.mjs check"
+
+["version:get"]
+description = "Print the Cargo-workspace product version"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "pnpm --silent run version:get"
+
+["version:check"]
+description = "Verify every product-version consumer and an optional release tag"
+usage = '''
+flag "--tag <tag>" help="Optional release tag vX.Y.Z"
+'''
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/maintenance.mjs version-check"
+
+["version:set"]
+description = "Preview or atomically set the product version through the canonical version tool"
+usage = '''
+arg "<version>" help="Exact stable product SemVer"
+flag "--apply" help="Apply the otherwise read-only version plan"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/maintenance.mjs version-set"
+
+["version:bump"]
+description = "Preview or atomically bump the product version through the canonical version tool"
+usage = '''
+arg "<level>" help="SemVer component to increment" {
+  choices "patch" "minor" "major"
+}
+flag "--apply" help="Apply the otherwise read-only version plan"
+'''
+env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
+run = "node scripts/tasks/maintenance.mjs version-bump"

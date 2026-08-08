@@ -194,7 +194,7 @@ comparison value.
 | Metadata or download redirect leaves HTTPS/allowlist policy                                               | REDIRECT_REJECTED.                                                                                                                             |
 | Artifact changes after package verification but before a platform consumes it                             | CHECKSUM_MISMATCH or a stable artifact-validation error; do not call deploy or attach.                                                         |
 | Download is cancelled before installation                                                                 | Worker cleans temp data, then publishes cancelled.                                                                                             |
-| Renderer receives `completedBytes` / `totalBytes` after `job_downloading`                                  | Keep percentage/indeterminate progress, but do not render the numeric pair with byte units.                                                    |
+| Renderer receives `completedBytes` / `totalBytes` after `job_downloading`                                 | Keep percentage/indeterminate progress, but do not render the numeric pair with byte units.                                                    |
 | A Windows MSIX uses bounded, internally consistent, single-disk ZIP64 metadata                            | Continue raw central-directory and `ZipArchive` inspection; do not reject ZIP64 solely because classic EOCD fields contain sentinels.          |
 | ZIP/ZIP64 disk fields disagree, ZIP64 records are missing/misplaced/extensible, or directory bounds drift | PACKAGE_PARSE_FAILED before manifest parsing or PackageManager deployment.                                                                     |
 | Declared ZIP uncompressed total exceeds 4 GiB or its checked sum overflows                                | PACKAGE_PARSE_FAILED; do not weaken the separately bounded 512 KiB root-manifest read.                                                         |
@@ -341,8 +341,6 @@ const totalText = formatBytes(progress?.total);
 ```tsx
 // Only the download stage owns byte-labelled progress in the card.
 const showDownloadBytes = state === "job_downloading";
-const completedText = showDownloadBytes
-  ? formatBytes(progress?.current)
-  : null;
+const completedText = showDownloadBytes ? formatBytes(progress?.current) : null;
 const totalText = showDownloadBytes ? formatBytes(progress?.total) : null;
 ```

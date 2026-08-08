@@ -1,0 +1,7 @@
+{"file":"docs/fyagent/dev/v1-0.2/07-验收标准与自动化测试计划.md","reason":"P0、自动化、人工验收和证据产物判定。"}
+{"file":"docs/fyagent/dev/v1-0.2/08-ADR与外部资料.md","reason":"已接受架构取舍与风险边界。"}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"可信安装身份与桌面边界检查。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"前端类型、格式、测试和本地化质量门。"}
+{"file":"docs/fyagent/dev/v1-0.2/04-系统架构与IPC设计.md","reason":"最终 Trellis 检查：与深链确认/IPC 契约对应的 6 个 jsdom/MSW 回归测试通过，覆盖完整 prompt 审阅、Provider 独立激活批准、旧配置合并与旧导入完成不能覆盖更新深链；未启动真实桌面应用。"}
+{"file":"docs/fyagent/dev/v1-0.2/07-验收标准与自动化测试计划.md","reason":"最终 Trellis 检查：以 zh 为基线验证 en、ja、zh-TW 四语全量叶子键集合一致，Codex Desktop 各语言均为 86 个叶子键；locale 定向集 10/10 通过。"}
+{"file":".trellis/tasks/08-06-fyagent-v1-0-2-shell-window/check.jsonl","reason":"所有 v1.0.2 子任务上下文经 task.py validate 验证通过；检查中的代码文件注入大小告警不影响 JSONL 有效性或实现验证。"}

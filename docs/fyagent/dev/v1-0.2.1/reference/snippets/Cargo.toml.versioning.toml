@@ -1,0 +1,19 @@
+# Merge this structure into src-tauri/Cargo.toml.
+# Keep all existing metadata, dependencies, target sections, and profiles.
+
+[workspace]
+members = [".", "installer-actions"]
+resolver = "2"
+
+# The only manually maintained FyAgent application version.
+[workspace.package]
+version = "0.2.1"
+
+[package]
+name = "fyagent"
+version.workspace = true
+description = "All-in-One Assistant for Claude Code, Codex & Gemini CLI"
+authors = ["Jason Young"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.85.0"

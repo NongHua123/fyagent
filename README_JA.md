@@ -17,6 +17,14 @@
 
 </div>
 
+> [!WARNING]
+> **FyAgent 0.3.0 は、公開・安定版でありながら意図的に未署名とするリリース契約です。**
+> Windows の実行ファイルと MSI の Authenticode 状態は `NotSigned`、macOS
+> アプリは Developer ID 署名も公証もありません。インストール前に
+> [v0.3.0 リリースノート](docs/release-notes/v0.3.0-ja.md)と公開証拠を確認して
+> ください。正式 workflow が完了するまでは、この案内は Release の公開済みを
+> 意味しません。
+
 ## FyAgent を選ぶ理由
 
 最新の AI コーディングは Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw、Hermes などのツールに依存していますが、各ツールの設定形式はバラバラです。API プロバイダを切り替えるたびに JSON、TOML、`.env` ファイルを手動で編集する必要があり、複数ツール間で MCP や Skills を統一的に管理する手段もありません。
@@ -29,7 +37,7 @@
 - **システムトレイでクイック切り替え** -- トレイメニューから即座にプロバイダを切り替え。アプリを開く必要なし
 - **クラウド同期** -- Dropbox、OneDrive、iCloud、または WebDAV サーバー経由でデバイス間のプロバイダデータを同期
 - **クロスプラットフォーム** -- Tauri 2 で構築された Windows、macOS、Linux 対応のネイティブデスクトップアプリ
-- **便利ツール内蔵** -- 初回起動時のログイン確認、署名バイパス、プラグイン拡張の同期など、さまざまなユーティリティを搭載
+- **便利ツール内蔵** -- 初回起動時のログイン確認、環境診断、プラグイン拡張の同期など、さまざまなユーティリティを搭載
 
 ## スクリーンショット
 
@@ -39,7 +47,7 @@
 
 ## 特長
 
-[完全な更新履歴](CHANGELOG.md) | [リリースノート](docs/release-notes/v3.16.1-ja.md)
+[完全な更新履歴](CHANGELOG.md) | [v0.3.0 リリースノート](docs/release-notes/v0.3.0-ja.md)
 
 ### プロバイダ管理
 
@@ -99,7 +107,11 @@ FyAgent には「共有設定スニペット」機能があり、APIキーやエ
 <details>
 <summary><strong>macOS のインストールについて</strong></summary>
 
-対象リリースで公開された `.dmg` をダウンロードしてください。署名と公証の状態はリリースごとに異なるため、インストール前にその FyAgent ビルドに対して公開された証拠を確認してください。
+FyAgent 0.3.0 は意図的に未署名・未公証なので、macOS が初回起動をブロックする
+場合があります。一度 FyAgent を開こうとした後、Apple がサポートする
+**システム設定 → プライバシーとセキュリティ → このまま開く**の手順で確認して
+ください。先に該当 Release のノートと証拠を検証し、Gatekeeper の無効化や隔離
+属性の削除は行わないでください。
 
 </details>
 
@@ -175,23 +187,52 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 
 ### Windows ユーザー
 
-[Releases](https://github.com/NongHua123/fyagent/releases) ページから最新版の `FyAgent-v{version}-Windows.msi` インストーラーをダウンロードしてください。FyAgent は Windows ポータブル ZIP を今後配布せず、サポート対象の全マシン インストール パスには MSI を使用します。
+x64 Windows では `FyAgent-0.3.0-Windows.msi`、ARM64 Windows では
+`FyAgent-0.3.0-Windows-arm64.msi` を
+[Releases](https://github.com/NongHua123/fyagent/releases) から取得してください。
+Windows ポータブル ZIP は配布せず、サポート対象の全マシン MSI パスを使用します。
+
+> **未署名ビルド:** v0.3.0 の実行ファイルと MSI は Authenticode `NotSigned`
+> であり、Windows SmartScreen が警告する場合があります。続行前に資産名、manifest、
+> attestation 証拠を確認してください。SmartScreen を無効化したり、組織管理の
+> セキュリティポリシーを弱めたりしないでください。
 
 ### macOS ユーザー
 
-[Releases](https://github.com/NongHua123/fyagent/releases) から `FyAgent-v{version}-macOS.dmg`（推奨）または `.zip` をダウンロード。
+[Releases](https://github.com/NongHua123/fyagent/releases) から
+`FyAgent-0.3.0-macOS.dmg`（推奨）または `FyAgent-0.3.0-macOS.zip` を
+ダウンロードしてください。
 
-> **注意**: コード署名と公証の状態は、対象リリースで公開された証拠を確認してください。インストール前に、ダウンロードした FyAgent ビルドのリリースノートを確認してください。
+> **未署名ビルド:** v0.3.0 は Developer ID 署名も公証もありません。一度アプリを
+> 開こうとした後、**システム設定 → プライバシーとセキュリティ → このまま開く**を
+> 使用して確認してください。Release 証拠を先に確認し、Gatekeeper の無効化や隔離
+> 属性の削除は行わないでください。
 
 ### Linux ユーザー
 
-[Releases](https://github.com/NongHua123/fyagent/releases) から、Arch Linux でも利用できる最新版の Linux ビルドをダウンロード：
+[Releases](https://github.com/NongHua123/fyagent/releases) から現在の
+アーキテクチャに対応するネイティブ Linux ビルドを取得してください：
 
-- `FyAgent-v{version}-Linux-{arch}.deb`（Debian/Ubuntu）
-- `FyAgent-v{version}-Linux-{arch}.rpm`（Fedora/RHEL/openSUSE）
-- `FyAgent-v{version}-Linux-{arch}.AppImage`（ポータブル版。`{arch}` は `x86_64` または `arm64`）
+- x64: `FyAgent-0.3.0-Linux-x86_64.AppImage`、
+  `FyAgent-0.3.0-Linux-x86_64.deb`、
+  `FyAgent-0.3.0-Linux-x86_64.rpm`
+- ARM64: `FyAgent-0.3.0-Linux-arm64.AppImage`、
+  `FyAgent-0.3.0-Linux-arm64.deb`、
+  `FyAgent-0.3.0-Linux-arm64.rpm`
 
 > **Flatpak**：公式リリースには含まれていません。`.deb` から自分でビルドできます — 手順は [`flatpak/README.md`](flatpak/README.md) を参照してください。
+
+<details>
+<summary><strong>v0.3.0 の正確な添付ファイル契約</strong></summary>
+
+正式 Release に許可されるインストーラーは、上記 macOS 2、Windows MSI 2、
+Linux 6 の **10 ファイル**だけです。証拠添付は、各インストーラーの SHA-256 を含む
+`download-manifest.json`、`build-metadata.json`、
+`artifact-attestation.sigstore.json` の 3 ファイルだけで、合計は **13** です。
+workflow は欠落、重複、改名、余分なファイルを拒否します。正式 workflow と公開後の
+独立検証が完了するまでは、これは公開済み結果ではなくリリース契約です。
+
+</details>
 
 <details>
 <summary><strong>アーキテクチャ概要</strong></summary>
@@ -245,95 +286,90 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
   2026.8.0 以降
 - [Tauri 2.0 のシステム要件](https://v2.tauri.app/start/prerequisites/)
 
-ローカル開発で使用する Node.js、pnpm、Python、Rust/Cargo のバージョンは、
-`mise.toml` を唯一の情報源として統一します。Tauri CLI はプロジェクト依存関係として
-インストールされます。幅広い最低バージョン要件を基に別のツールを選択しないでください。
+Node.js 24.19.0、pnpm 10.12.3、Rust 1.97.1、Python 3.14.7 はそれぞれ
+`.node-version`、`package.json`、`rust-toolchain.toml`、`.python-version` に
+固定されています。`mise.toml` はタスク API と uv selector を管理し、`mise.lock`、
+`uv.lock`、uv 管理の `.venv` が承認済み Python 環境を固定します。Tauri CLI は
+プロジェクト依存関係としてインストールされます。
 
 リポジトリ設定を確認した後、開発環境を初期化します：
 
 ```bash
 mise trust
-mise install
-mise exec -- pnpm install --frozen-lockfile
+mise run bootstrap
+mise run system:check
+mise run dev
 ```
 
-以下のコマンドは `mise exec --` を明示しているため、シェルを有効化していなくても
-固定されたツールを使用します。mise を明示的に有効化したシェルでは、この接頭辞を
-省略できます。WSL では `/mnt/<drive>` または Windows shim の管理対象ツールを
-使用しないでください。
+`mise trust` は開発者自身のセキュリティ判断であり、プロジェクトタスクが自動実行する
+ことはありません。`bootstrap` は権限昇格が必要なシステムパッケージの導入、Git remote
+変更、lock 更新、公開を行いません。WSL では `/mnt/<drive>` または Windows shim の
+管理対象ツールを使用しないでください。完全な API は生成済みの
+[canonical task catalog](docs/fyagent/development/mise-tasks.md) を参照してください。
 
-### クロスプラットフォームビルドコマンド
+### ホストネイティブビルド
 
-以下の `mise` タスクはリポジトリ管理のクロスビルドスクリプトを呼び出し、既存の
-事前チェックをそのまま維持します。タスク実行時は、不足した mise ツールを
-意図的に自動インストールしません。通常の開発では上記の `mise install` を使用し、
-macOS ラッパーはホストとリスクのチェック後にのみ固定ツールをプロビジョニングし、Windows
-ワークフローは事前に準備されたツールチェーンを必要とします。
+ローカル開発とパッケージングは、現在のホスト OS のみをサポートします。標準コマンドは
+別の OS やアーキテクチャのターゲットを受け付けません：
 
 ```bash
-mise run build:cross-windows:x64
-mise run build:cross-windows:arm64
-mise run build:cross-windows
-mise run build:cross-macos:universal
+mise run dev
+mise run build
 ```
 
-Windows タスクには、準備済みの x86_64 Linux クロスビルドツールチェーンが必要です。
-`build:cross-windows` は両アーキテクチャを原子的に配布するための入口で、候補成果物は
-`dist-bundle/windows/<version>/<arch>/` に出力されます。macOS タスクは WSL2 Ubuntu
-22.04 または 24.04 でのみサポートされ、初回実行時に固定 SDK、ライセンス、GPL ツール、
-実験的 DMG に関する確認を求めます。非対話環境では
-`mise run build:cross-macos:universal --accept-risk` を明示的に実行してください。
-DMG、チェックサム、マニフェストは `dist-bundle/macos/` に出力されます。両方の
-ディレクトリは Git で無視され、ローカル候補成果物専用であり、公開リリース用ではありません。
+FyAgent のインストーラーは、GitHub Actions のネイティブな Windows x64/ARM64、
+Linux x64/ARM64、macOS runner でのみ構築されます。macOS job は Universal build を
+生成します。Linux/WSL から Windows または macOS をローカルでパッケージする方法は、
+サポート対象のリリース経路ではありません。
 
 ### 開発コマンド
 
 ```bash
-# 依存関係をインストール
-mise exec -- pnpm install --frozen-lockfile
+# ロック済み依存関係を導入し環境を検証
+mise run bootstrap
 
 # ホットリロード付き開発モード
-mise exec -- pnpm dev
+mise run dev
 
 # 型チェック
-mise exec -- pnpm typecheck
+mise run typecheck
 
 # コード整形
-mise exec -- pnpm format
+mise run format
 
 # フォーマット検証
-mise exec -- pnpm format:check
+mise run format:check
 
 # フロントエンド単体テスト
-mise exec -- pnpm test:unit
+mise run test:unit
 
 # ウォッチモード（開発に推奨）
-mise exec -- pnpm test:unit:watch
+mise run test:unit:watch
 
 # アプリをビルド
-mise exec -- pnpm build
+mise run build
 
 # デバッグビルド
-mise exec -- pnpm tauri build --debug
+mise run build:debug
 ```
 
 ### Rust バックエンド開発
 
 ```bash
 # Rust コード整形
-mise exec -- cargo fmt --manifest-path src-tauri/Cargo.toml
+mise run rust:fmt
 
 # clippy チェック
-mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml
+mise run rust:clippy
 
 # バックエンドテスト
-mise exec -- cargo test --manifest-path src-tauri/Cargo.toml
+mise run rust:test
 
 # 特定テストのみ実行
-mise exec -- cargo test --manifest-path src-tauri/Cargo.toml test_name
+mise run rust:test test_name
 
-# test-hooks フィーチャー付きでテスト
-mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --features test-hooks
+# PR 前に現在のホスト向け全ゲートを実行
+mise run check
 ```
 
 ### テストガイド
@@ -348,13 +384,13 @@ mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --features test-hoo
 
 ```bash
 # 全テストを実行
-mise exec -- pnpm test:unit
+mise run test:unit
 
 # ウォッチモード（自動再実行）
-mise exec -- pnpm test:unit:watch
+mise run test:unit:watch
 
-# カバレッジレポート付き
-mise exec -- pnpm test:unit --coverage
+# フロントエンド全ゲート
+mise run check:frontend
 ```
 
 ### 技術スタック
@@ -414,9 +450,9 @@ Issue や提案を歓迎します！
 
 PR を送る前に以下をご確認ください：
 
-- 型チェック: `mise exec -- pnpm typecheck`
-- フォーマットチェック: `mise exec -- pnpm format:check`
-- 単体テスト: `mise exec -- pnpm test:unit`
+- 現在のホスト向け全ゲートを実行: `mise run check`
+- 開発中は [canonical task catalog](docs/fyagent/development/mise-tasks.md) から
+  集中的なタスクを選択
 
 新機能の場合は、PR を送る前に Issue でディスカッションしてください。プロジェクトに合わない機能の PR はクローズされる場合があります。
 

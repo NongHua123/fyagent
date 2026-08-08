@@ -17,12 +17,15 @@ missing or a tag is absent, the breadcrumb degrades to a generic
 "Refer to workflow.md for current step." line so users see (and fix)
 the broken state instead of the hook silently masking it.
 
-Shared across all hook-capable platforms (Claude, Cursor, Codex, Qoder,
-CodeBuddy, Droid, Gemini, Copilot, Kiro). Kiro wires this via the CLI
+Which platforms register this hook is decided by SHARED_HOOKS_BY_PLATFORM
+in templates/shared-hooks/index.ts — currently Claude, Codex, Gemini,
+Qoder, Copilot, CodeBuddy, Droid, Kiro, Trae and ZCode. That table is the
+source of truth; each listed platform's collect<Platform>Templates() pulls
+this file into its template map through collectSharedHooks(), and a single
+writer puts that map on disk at init time. Kiro wires this via the CLI
 custom agent's ``hooks.userPromptSubmit`` and the IDE ``.kiro.hook``
 ``promptSubmit`` event; its output branch emits a plain-text breadcrumb
-(Kiro adds hook stdout directly to the conversation context). Written to
-each platform's hooks directory via writeSharedHooks() at init time.
+(Kiro adds hook stdout directly to the conversation context).
 
 Silent exit 0 cases (no output):
   - No .trellis/ directory found (not a Trellis project)
@@ -41,7 +44,7 @@ from pathlib import Path
 # Force UTF-8 on stdin/stdout/stderr on Windows. Default codepage there is
 # cp936 / cp1252 / etc. — non-ASCII content (Chinese task names, prd snippets)
 # both in stdin (hook payload from host CLI) and stdout (our emitted blocks)
-# raises UnicodeDecodeError / UnicodeEncodeError. Equivalent to `python3 -X utf8`
+# raises UnicodeDecodeError / UnicodeEncodeError. Equivalent to `python -X utf8`
 # but applied per-stream so we don't depend on host CLI's command wiring.
 if sys.platform.startswith("win"):
     import io as _io
@@ -382,16 +385,26 @@ def _load_hook_input() -> dict:
     reader.start()
     try:
         raw = result_queue.get(timeout=0.2)
-    except queue.Empty:
+    except queue.Empty as exc:
+        if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
+            raise TimeoutError("timed out waiting for Codex hook input") from exc
         return {}
 
     if isinstance(raw, Exception):
+        if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
+            raise RuntimeError("failed to read Codex hook input") from raw
         return {}
     try:
-        data = json.loads(raw) if raw.strip() else {}
-    except (json.JSONDecodeError, ValueError):
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError) as exc:
+        if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
+            raise ValueError("Codex hook input must be one JSON object") from exc
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
+            raise ValueError("Codex hook input must be a JSON object")
+        return {}
+    return data
 
 
 def main() -> int:
@@ -409,6 +422,8 @@ def main() -> int:
 
     config = _read_trellis_config(root)
     if prompt_has_skip_keyword(data.get("prompt", ""), _resolve_skip_keyword(config)):
+        if _detect_platform(data) == "codex":
+            print(json.dumps({"continue": True}))
         return 0  # user opted out of the per-turn breadcrumb for this turn
 
     templates = load_breadcrumbs(root)

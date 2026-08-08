@@ -1,0 +1,5 @@
+{"file":"docs/fyagent/dev/v1-0.2.1/01-REQUIREMENTS.md","reason":"Approved installer, version, release and acceptance requirements."}
+{"file":"docs/fyagent/dev/v1-0.2.1/09-IMPLEMENTATION-CHANGE-MAP.md","reason":"Reference dependency order and affected integration surfaces."}
+{"file":"docs/fyagent/dev/v1-0.2.1/12-CODEX-EXECUTION-RUNBOOK.md","reason":"Implementation constraints and verification boundaries."}
+{"file":".trellis/spec/backend/windows-release-boundary.md","reason":"Must preserve formal Windows manifest, privilege, cross-build and native-validation boundary."}
+{"file":".trellis/spec/backend/github-release-workflow.md","reason":"Must preserve manual unsigned branch and signed tag release separation."}

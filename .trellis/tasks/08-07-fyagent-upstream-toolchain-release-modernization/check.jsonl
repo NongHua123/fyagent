@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/08-07-fyagent-upstream-toolchain-release-modernization/research/execution-authority.md", "reason": "Authoritative completion boundary for the parent GO/NO-GO review."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend long-term contract coverage."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend long-term contract coverage."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-child data-flow and release-boundary review guidance."}

@@ -31,12 +31,12 @@ const gitAttributes = fs.readFileSync(
 
 requireCondition(
   packageJson.scripts["test:desktop:mock"] ===
-    "vitest run tests/desktop-acceptance && node scripts/desktop-acceptance/verify-mock-contract.mjs",
+    "node --throw-deprecation ./node_modules/vitest/vitest.mjs run tests/desktop-acceptance && node --throw-deprecation scripts/desktop-acceptance/verify-mock-contract.mjs",
   "test:desktop:mock must run the isolated Vitest contract before this verifier",
 );
 requireCondition(
   packageJson.scripts["test:desktop:visual:preflight"] ===
-    "node scripts/desktop-acceptance/verify-visual-baseline-manifest.mjs",
+    "node --throw-deprecation scripts/desktop-acceptance/verify-visual-baseline-manifest.mjs",
   "visual preflight must be a read-only manifest verifier",
 );
 requireCondition(

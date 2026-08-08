@@ -1,83 +1,48 @@
 #!/usr/bin/env node
-// Generates the website download manifest (manifest.json) from a directory of
-// downloaded release assets. The deployment consumer and schema mirror must be
-// confirmed from the actual website configuration before changing fields or
-// classification rules; this repository does not define a website hostname.
-//
-// Usage: node scripts/generate-download-manifest.mjs <assets-dir> <tag> <base-url> [output]
 
-import { readdirSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { writeFileSync } from "node:fs";
+import { buildDownloadManifest } from "./release/release-contract.mjs";
 
-const [assetsDir, tag, baseUrl, output = "manifest.json"] =
-  process.argv.slice(2);
+const [
+  assetsDirectory,
+  version,
+  tag,
+  sourceSha,
+  baseUrl,
+  publishedAt,
+  output = "download-manifest.json",
+] = process.argv.slice(2);
 
-if (!assetsDir || !tag || !baseUrl) {
+if (
+  !assetsDirectory ||
+  !version ||
+  !tag ||
+  !sourceSha ||
+  !baseUrl ||
+  !publishedAt
+) {
   console.error(
-    "Usage: node scripts/generate-download-manifest.mjs <assets-dir> <tag> <base-url> [output]",
+    "Usage: node scripts/generate-download-manifest.mjs <assets-dir> <version> <tag> <source-sha> <base-url> <published-at> [output]",
   );
   process.exit(1);
 }
 
-// Longer suffixes must come before their shorter counterparts
-// (e.g. -Windows-arm64.msi before -Windows.msi).
-const RULES = [
-  { suffix: "-macOS.dmg", platform: "macos", kind: "dmg", arch: "universal" },
-  { suffix: "-macOS.zip", platform: "macos", kind: "zip", arch: "universal" },
-  {
-    suffix: "-Windows-arm64.msi",
-    platform: "windows",
-    kind: "msi",
-    arch: "arm64",
-  },
-  { suffix: "-Windows.msi", platform: "windows", kind: "msi", arch: "x64" },
-  {
-    suffix: "-Linux-arm64.AppImage",
-    platform: "linux",
-    kind: "appimage",
-    arch: "arm64",
-  },
-  {
-    suffix: "-Linux-x86_64.AppImage",
-    platform: "linux",
-    kind: "appimage",
-    arch: "x64",
-  },
-  { suffix: "-Linux-arm64.deb", platform: "linux", kind: "deb", arch: "arm64" },
-  { suffix: "-Linux-x86_64.deb", platform: "linux", kind: "deb", arch: "x64" },
-  { suffix: "-Linux-arm64.rpm", platform: "linux", kind: "rpm", arch: "arm64" },
-  { suffix: "-Linux-x86_64.rpm", platform: "linux", kind: "rpm", arch: "x64" },
-];
-
-const normalizedBase = baseUrl.replace(/\/+$/, "");
-const files = [];
-
-for (const name of readdirSync(assetsDir).sort()) {
-  // Unmatched files (.sig, .tar.gz updater artifacts, latest.json) are
-  // deliberately skipped — they are not user-facing downloads.
-  const rule = RULES.find((entry) => name.endsWith(entry.suffix));
-  if (!rule) continue;
-  files.push({
-    platform: rule.platform,
-    kind: rule.kind,
-    arch: rule.arch,
-    name,
-    size: statSync(join(assetsDir, name)).size,
-    url: `${normalizedBase}/${tag}/${encodeURIComponent(name)}`,
+try {
+  const manifest = await buildDownloadManifest({
+    assetsDirectory,
+    version,
+    tag,
+    sourceSha,
+    baseUrl,
+    publishedAt,
   });
-}
-
-if (files.length === 0) {
-  console.error(`No release assets matched in ${assetsDir}`);
+  writeFileSync(output, `${JSON.stringify(manifest, null, 2)}\n`, {
+    flag: "wx",
+  });
+  console.log(
+    `Wrote ${output} with exactly ${manifest.assets.length} installers for ${tag}`,
+  );
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 }
-
-const manifest = {
-  version: tag.replace(/^v/, ""),
-  tag,
-  pubDate: new Date().toISOString(),
-  files,
-};
-
-writeFileSync(output, `${JSON.stringify(manifest, null, 2)}\n`);
-console.log(`Wrote ${output} with ${files.length} files for ${tag}`);

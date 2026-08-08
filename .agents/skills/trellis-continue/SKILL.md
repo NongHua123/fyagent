@@ -12,7 +12,7 @@ Resume work on the current task — pick up at the right phase/step in `.trellis
 ## Step 1: Load Current Context
 
 ```bash
-python3 ./.trellis/scripts/get_context.py
+mise run trellis:context
 ```
 
 Confirms: current task, git state, recent commits.
@@ -20,7 +20,7 @@ Confirms: current task, git state, recent commits.
 ## Step 2: Load the Phase Index
 
 ```bash
-python3 ./.trellis/scripts/get_context.py --mode phase
+mise run trellis:context -- --mode phase
 ```
 
 Shows the Phase Index (Plan / Execute / Finish) with routing + skill mapping.
@@ -49,7 +49,7 @@ Phase rules (full detail in `.trellis/workflow.md`):
 Once you know which step to resume at:
 
 ```bash
-python3 ./.trellis/scripts/get_context.py --mode phase --step <X.X> --platform codex
+mise run trellis:context -- --mode phase --step <X.X> --platform codex
 ```
 
 Follow the loaded instructions. After each `[required]` step completes, move to the next.

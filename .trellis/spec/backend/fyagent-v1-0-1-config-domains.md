@@ -1,36 +1,32 @@
-# FyAgent v1-0.1 Configuration Domains and Version Contract
+# FyAgent v1-0.1 Configuration Domains
 
 ## 1. Scope / Trigger
 
-Read this contract before changing the FyAgent application version, the Codex
-provider-native capabilities, the Codex Desktop restart flow, or WorkBuddy
-configuration. These changes cross Rust/Tauri commands, renderer state,
-user-owned configuration files, and Windows process identity boundaries.
+Read this contract before changing the Codex provider-native capabilities, the
+Codex Desktop restart flow, or WorkBuddy configuration. These changes cross
+Rust/Tauri commands, renderer state, user-owned configuration files, and
+Windows process identity boundaries.
 
-The v1.0.1 configuration-domain input is `docs/fyagent/dev/v1-0.1/`. For the
-active v1.0.2 scope, `docs/fyagent/dev/v1-0.2/` is authoritative where it
-supersedes a contract; retain this v1.0.1 contract only for configuration-domain
-rules not superseded by v1.0.2. The v1.0.1 documents contain a historical
-`3.18.0` source snapshot and must not be mechanically rewritten as part of an
-application-version update. WorkBuddy is a top-level configuration domain, not
-an `AppType`, Provider, MCP, Skill, Prompt, Profile, Session, usage, or
-local-proxy domain.
+Application-version, release-metadata, and MSI directory-policy changes belong
+to [FyAgent 0.3.0 Version and Installer Contract](./fyagent-version-contract.md).
+
+The v1.0.1 and v1.0.2 labels in `docs/fyagent/dev/v1-0.1/` and
+`docs/fyagent/dev/v1-0.2/` name historical feature-design inputs, not the
+current application version. This long-term spec and its enforcing tests own
+the still-active configuration-domain rules; the FyAgent v0.3.0 execution
+authority owns current product/version/release decisions. Do not mechanically
+rewrite the historical design bodies. WorkBuddy is a top-level configuration
+domain, not an `AppType`, Provider, MCP, Skill, Prompt, Profile, Session, usage,
+or local-proxy domain.
 
 ## 2. Signatures
 
-### Independent application version
+### Versioning boundary
 
-```text
-package.json.version                = 0.1.0
-src-tauri/Cargo.toml package.version = 0.1.0
-src-tauri/tauri.conf.json.version    = 0.1.0
-```
-
-`Cargo.lock` is refreshed through Cargo after the manifest change. The local
-static test is `tests/versionConsistency.test.ts`; it parses the three metadata
-sources and rejects non-SemVer or divergent values. Release workflows, tags,
-updaters, changelogs, and historical documentation are deliberately outside
-this version-chain contract unless a later task explicitly expands it.
+This historical configuration-domain contract owns no application-version
+literal, Cargo.lock rule, tag, release asset, or Tauri metadata field. Follow
+the dedicated version and installer contract before changing those boundaries;
+do not restore the historical three-field version chain in this file.
 
 ### Codex provider and restart IPC
 
@@ -55,12 +51,16 @@ patch_codex_provider_features(app: "codex", provider, intent, isNew?)
 get_codex_desktop_runtime_status()
 request_codex_desktop_restart()
 continue_codex_desktop_restart_with_force(token)
+cancel_codex_desktop_restart_with_force(token) -> ()
 ```
 
 The feature commands reject every `app` other than Codex. The restart commands
 accept no PID, process name, executable path, or user-supplied launch command.
 The force token is opaque, short lived, one-time, and bound server-side to the
-already verified installation and process instance.
+already verified installation and process instance. Cancellation is a
+best-effort discard of a pending continuation capability only: it never closes,
+terminates, or launches a process, and its no-result response does not reveal
+whether a token, process, or installation exists.
 
 ### WorkBuddy IPC
 
@@ -69,14 +69,18 @@ get_workbuddy_status() -> WorkBuddyStatus
 fetch_workbuddy_models(FetchWorkBuddyModelsRequest)
   -> { models: string[], truncated: boolean }
 save_workbuddy_models(SaveWorkBuddyModelsRequest)
-  -> { revision, modelCount, createdEntries, updatedEntries, duplicateIds }
+  -> { state: "saved", revision, modelCount, createdEntries, updatedEntries }
+   | { state: "overwrite_confirmation_required", token, existingIds }
+   | { state: "concurrent_modification" }
 ```
 
 `FetchWorkBuddyModelsRequest` is `{ baseUrl, apiKey, allowNoApiKey }`.
 `SaveWorkBuddyModelsRequest` additionally carries selected/manual IDs,
 `clearExistingApiKeys`, an opaque `expectedRevision`, and optional
-`duplicatePolicy: "reject" | "updateAll"`. These dedicated commands do not
-accept `AppType`, Provider IDs, or renderer-controlled filesystem paths.
+`overwriteToken`. The backend issues `overwriteToken` only after detecting an
+existing target and binds it to the normalized, otherwise unchanged save
+request and expected revision. These dedicated commands do not accept `AppType`,
+Provider IDs, or renderer-controlled filesystem paths.
 
 ## 3. Contracts
 
@@ -115,7 +119,7 @@ accept `AppType`, Provider IDs, or renderer-controlled filesystem paths.
 - Fixed official Providers default both capabilities off and do not receive a
   Provider table merely by opening or saving the form. The first actual enable
   creates `model_provider = "custom"` and a minimal table with `name =
-  "OpenAI"`, `requires_openai_auth = true`, and `wire_api = "responses"`.
+"OpenAI"`, `requires_openai_auth = true`, and `wire_api = "responses"`.
   Private `ProviderMeta.codexNativeCapabilitiesGeneratedProvider` records
   ownership only when the capability patch actually creates the table; a
   pre-existing inactive `custom` table may be reused but is never claimed.
@@ -197,17 +201,23 @@ accept `AppType`, Provider IDs, or renderer-controlled filesystem paths.
   truncation cannot mask a malformed element.
 - A save takes the in-process write lock, rereads the current bytes, checks the
   opaque revision, validates every existing array object/ID, detects duplicate
-  target IDs, and only then writes. `reject` returns duplicate IDs/counts with
-  no backup and no main-file write; the UI freezes the exact request and retries
-  only it with `updateAll`. The backend must validate revision again.
+  target IDs, and only then writes. Existing targets without a valid matching
+  confirmation capability return `overwrite_confirmation_required` with one
+  opaque token and unique `existingIds`, with no backup or main-file write. The
+  UI freezes the exact preflight request and retries only it with that token.
+  The backend consumes the token before rereading, validates its request and
+  revision binding, and validates the revision again after the reread; reused,
+  malformed, mismatched, or expired tokens never authorize a write.
 - The externally returned revision is a process-local-key HMAC of the complete
   current file bytes, not a bare digest. It therefore detects even an external
   API Key-only change without letting the renderer validate Key guesses against
   a public file hash. Never persist or serialize the HMAC key; after a host
   restart an old token must fail safely and the renderer refreshes status.
 - Preserve non-target entries, array order, target positions, unknown fields,
-  and unknown `reasoning` fields. Update only documented managed fields and
-  remove `onlyReasoning`. Write backup then primary by flush/sync plus
+  existing `onlyReasoning`, and unknown `reasoning` fields. Update only the
+  documented connection fields (`url` and the policy-controlled `apiKey`);
+  never rebuild or normalize the existing entry. Write backup then primary by
+  flush/sync plus
   same-directory atomic replacement; Windows must use replacement semantics
   without a delete-before-rename path, Unix files must remain `0600`.
 - API keys may enter only component memory and a Tauri request, never
@@ -225,25 +235,27 @@ queries. Its API key clears on unmount and is never refilled from disk.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Metadata versions differ or are invalid SemVer | Local version consistency test fails; do not hand-edit the lockfile. |
-| Non-Codex app calls a native-feature command | Command rejects before TOML analysis or patch. |
-| Complete Codex TOML cannot be parsed | Keep both controls visible and disabled; reject capability writes and never reconstruct the document. |
-| Image header has conflicting case variants or an invalid shape | Show a non-sensitive diagnostic; preserve on unrelated save; explicit image control normalizes, replaces, or deletes only under the documented repair rule. |
-| `supports_websockets` has a non-boolean value | Show a diagnostic; preserve on unrelated save; explicit enable overwrites with `true`, explicit disable deletes. |
-| Chat/Anthropic/official/managed/proxy Provider saves with `supports_websockets = true` | Save succeeds. Return model/proxy risk codes when applicable; do not rewrite the choice. |
-| Fixed official Provider has empty TOML and both controls remain off | Preserve empty TOML and create no Provider table or capability metadata. |
-| Persisted session ID is empty, starts with a hyphen, or contains characters outside the conservative ASCII grammar | Keep the session visible but omit `resumeCommand`; never interpolate the raw ID into a shell command. |
-| DB/provider action succeeds but live Codex bytes are unchanged | Return `liveConfigChanged: false`; do not ask to restart. |
-| Several/non-identical trusted installations or running instances exist | Return ambiguous/unavailable; do not close or launch any process. |
-| Graceful exit exceeds 8 seconds | Require the opaque second-confirmation token; no automatic force kill. |
-| New process is absent at 15 seconds or installation drifts | Return restart failure; retain saved configuration and direct user to manual restart. |
-| WorkBuddy URL is non-HTTP(S), has credentials/query/fragment, or redirect leaves origin | Return `WORKBUDDY_INVALID_URL` or `WORKBUDDY_FETCH_REDIRECT_REJECTED`; do not send credentials onward. |
-| WorkBuddy response exceeds 2 MiB, times out, or has malformed `data[]` | Return bounded fetch error; retain no model IDs from that response. |
-| Existing models JSON is invalid/not-array/contains an invalid entry | Return safe config error with only an index when applicable; do not repair or overwrite it. |
-| Revision changes or target IDs are duplicated under `reject` | Return conflict; create no backup and write no primary. |
-| WorkBuddy UI receives a truncated result | Keep the truncation warning visible until a subsequent successful non-truncated fetch replaces it. |
+| Condition                                                                                                          | Required result                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Non-Codex app calls a native-feature command                                                                       | Command rejects before TOML analysis or patch.                                                                                                              |
+| Complete Codex TOML cannot be parsed                                                                               | Keep both controls visible and disabled; reject capability writes and never reconstruct the document.                                                       |
+| Image header has conflicting case variants or an invalid shape                                                     | Show a non-sensitive diagnostic; preserve on unrelated save; explicit image control normalizes, replaces, or deletes only under the documented repair rule. |
+| `supports_websockets` has a non-boolean value                                                                      | Show a diagnostic; preserve on unrelated save; explicit enable overwrites with `true`, explicit disable deletes.                                            |
+| Chat/Anthropic/official/managed/proxy Provider saves with `supports_websockets = true`                             | Save succeeds. Return model/proxy risk codes when applicable; do not rewrite the choice.                                                                    |
+| Fixed official Provider has empty TOML and both controls remain off                                                | Preserve empty TOML and create no Provider table or capability metadata.                                                                                    |
+| Persisted session ID is empty, starts with a hyphen, or contains characters outside the conservative ASCII grammar | Keep the session visible but omit `resumeCommand`; never interpolate the raw ID into a shell command.                                                       |
+| DB/provider action succeeds but live Codex bytes are unchanged                                                     | Return `liveConfigChanged: false`; do not ask to restart.                                                                                                   |
+| Several/non-identical trusted installations or running instances exist                                             | Return ambiguous/unavailable; do not close or launch any process.                                                                                           |
+| Graceful exit exceeds 8 seconds                                                                                    | Require the opaque second-confirmation token; no automatic force kill.                                                                                      |
+| User cancels a pending Codex force-restart continuation                                                            | Best-effort discard that capability only; do not close, terminate, launch, or disclose any process/installation/token existence.                            |
+| New process is absent at 15 seconds or installation drifts                                                         | Return restart failure; retain saved configuration and direct user to manual restart.                                                                       |
+| WorkBuddy URL is non-HTTP(S), has credentials/query/fragment, or redirect leaves origin                            | Return `WORKBUDDY_INVALID_URL` or `WORKBUDDY_FETCH_REDIRECT_REJECTED`; do not send credentials onward.                                                      |
+| WorkBuddy response exceeds 2 MiB, times out, or has malformed `data[]`                                             | Return bounded fetch error; retain no model IDs from that response.                                                                                         |
+| Existing models JSON is invalid/not-array/contains an invalid entry                                                | Return safe config error with only an index when applicable; do not repair or overwrite it.                                                                 |
+| Revision changes before a WorkBuddy save or confirmed overwrite                                                    | Return `concurrent_modification`; create no backup and write no primary.                                                                                    |
+| Existing WorkBuddy target IDs arrive without a valid matching overwrite token                                      | Return `overwrite_confirmation_required` with a fresh opaque token and unique `existingIds`; create no backup and write no primary.                         |
+| WorkBuddy overwrite token is malformed, mismatched, expired, or reused                                             | Return the structured token error; consume it once and create no backup or primary write.                                                                   |
+| WorkBuddy UI receives a truncated result                                                                           | Keep the truncation warning visible until a subsequent successful non-truncated fetch replaces it.                                                          |
 
 ## 5. Good / Base / Bad Cases
 
@@ -269,8 +281,9 @@ queries. Its API key clears on unmount and is never refilled from disk.
   a restart command; a process-name scan kills `codex.exe`; the backend accepts
   any such control.
 - Good: WorkBuddy fetches an ordered model response, returns the first 1,000
-  unique IDs plus `truncated: true`, and a user confirms duplicate update-all
-  against the same revision. Non-target JSON and extra `reasoning` keys remain.
+  unique IDs plus `truncated: true`, and a user resubmits the frozen duplicate
+  request with the backend-issued one-time overwrite token against the same
+  revision. Non-target JSON, `onlyReasoning`, and extra `reasoning` keys remain.
 - Base: The user explicitly allows an empty key; fetch/save sends no
   Authorization and existing per-model keys remain unless clear-existing is
   selected.
@@ -280,13 +293,12 @@ queries. Its API key clears on unmount and is never refilled from disk.
 
 ## 6. Tests Required
 
-- TypeScript: parse all three version metadata files and assert exact `0.1.0`;
-  test legacy WorkBuddy visibility/order, top-level isolation, all four locale
-  key sets, password/default key lifecycle, HTTP warning, persistent truncation,
-  duplicate-dialog frozen request/retry, all Codex Provider categories showing
-  initially collapsed capability controls, document-vs-field diagnostics,
-  format-change preservation, add/update warning-toast merge/repetition/failure
-  behavior, and Codex capability/restart dialogs.
+- TypeScript: test legacy WorkBuddy visibility/order, top-level isolation, all
+  four locale key sets, password/default key lifecycle, HTTP warning, persistent
+  truncation, duplicate-dialog frozen request/retry, all Codex Provider
+  categories showing initially collapsed capability controls, document-vs-field
+  diagnostics, format-change preservation, add/update warning-toast
+  merge/repetition/failure behavior, and Codex capability/restart dialogs.
 - Rust Codex: TOML comments/order/unknown headers, case-insensitive managed
   header repair and invalid-shape preservation, historical marker migration,
   official delayed generation/safe cleanup, WebSocket writes for Responses,
@@ -295,22 +307,23 @@ queries. Its API key clears on unmount and is never refilled from disk.
   capability grant, GPT/non-GPT/mixed/empty warning matrices, normal/official
   proxy projection and restore, live-byte change truth table, command app guard,
   and fake-platform trusted restart state machine including graceful timeout,
-  force confirmation, original-installation drift, and 15-second verification
-  failure.
+  force confirmation/cancellation, original-installation drift, and 15-second
+  verification failure.
 - Rust WorkBuddy: URL normalization/rejection, redirection and Authorization
   policy, timeout/2 MiB bounds, malformed entries after cap, exact order and
   case-sensitive de-duplication, no-key behavior, HMAC revision opacity and
-  API-Key-only revision conflict, duplicate reject/update-all, unknown-field
-  preservation, backup/primary failure paths, and test-home isolation. Tests
-  must not access the real profile.
+  API-Key-only revision conflict, overwrite-token request/revision binding,
+  expiry and single consumption, unknown-field/`onlyReasoning` preservation,
+  backup/primary failure paths, and test-home isolation. Tests must not access
+  the real profile.
 - Local gates when dependencies permit:
-  - `mise exec -- pnpm typecheck`
-  - `mise exec -- pnpm format:check`
-  - `mise exec -- pnpm test:unit`
-  - `mise exec -- pnpm run build:renderer`
-  - `mise exec -- cargo fmt --check --manifest-path src-tauri/Cargo.toml`
-  - `mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml --offline --locked -- -D warnings`
-  - `mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --offline --locked`
+  - `mise run typecheck`
+  - `mise run format:check`
+  - `mise run test:unit`
+  - `mise run build:renderer`
+  - `mise run rust:fmt:check`
+  - `mise run rust:clippy`
+  - `mise run rust:test`
   - `git diff --check`
 
   Do not characterize these as native E2E, platform, CI, or release evidence.

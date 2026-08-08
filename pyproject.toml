@@ -1,0 +1,13 @@
+[project]
+name = "fyagent-development-environment"
+version = "0.0.0"
+requires-python = ">=3.14,<3.15"
+dependencies = []
+
+[dependency-groups]
+dev = []
+
+[tool.uv]
+package = false
+python-preference = "only-managed"
+python-downloads = "automatic"

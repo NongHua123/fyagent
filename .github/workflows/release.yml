@@ -3,852 +3,1335 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - "v0.3.0"
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Immutable 40-character main commit SHA to preflight
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: release-${{ github.ref_name }}
-  cancel-in-progress: true
+  group: release-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.sha }}
+  cancel-in-progress: false
 
 jobs:
-  release:
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch')
-    runs-on: ${{ matrix.os }}
-    environment: release
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(github.ref_type == 'tag' && '{"include":[{"os":"windows-2022"},{"os":"windows-11-arm","arch":"arm64"},{"os":"ubuntu-22.04"},{"os":"ubuntu-22.04-arm","arch":"arm64"},{"os":"macos-14"}]}' || '{"include":[{"os":"macos-14"}]}') }}
-
+  eligibility:
+    name: Freeze source and release eligibility
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+    outputs:
+      app_version: ${{ steps.contract.outputs.app_version }}
+      release_tag: ${{ steps.contract.outputs.release_tag }}
+      source_sha: ${{ steps.contract.outputs.source_sha }}
+      workflow_sha: ${{ steps.contract.outputs.workflow_sha }}
+      release_mode: ${{ steps.contract.outputs.release_mode }}
+      generated_at: ${{ steps.contract.outputs.generated_at }}
+      ci_run_id: ${{ steps.ci.outputs.ci_run_id }}
+      ci_run_attempt: ${{ steps.ci.outputs.ci_run_attempt }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - name: Validate the untrusted request envelope before checkout
+        id: request
+        shell: bash
+        env:
+          DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          expected_repository='NongHua123/fyagent'
+          expected_repository_id='1313497021'
+          expected_workflow_ref_prefix="${expected_repository}/.github/workflows/release.yml@"
+          [ "$GITHUB_REPOSITORY" = "$expected_repository" ]
+          [ "$GITHUB_REPOSITORY_ID" = "$expected_repository_id" ]
+          [ "$GITHUB_WORKFLOW" = 'Release' ]
+          [[ "$GITHUB_WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+          case "$GITHUB_EVENT_NAME" in
+            workflow_dispatch)
+              [[ "$DISPATCH_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+                echo 'workflow_dispatch source_sha must be a lowercase full 40-character commit SHA' >&2
+                exit 1
+              }
+              [ "$DISPATCH_SOURCE_SHA" = "$GITHUB_WORKFLOW_SHA" ] || {
+                echo 'v0.3.0 preflight must attest the exact trusted main workflow commit' >&2
+                exit 1
+              }
+              [ "$GITHUB_REF" = 'refs/heads/main' ]
+              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/main" ]
+              requested_source_sha="$DISPATCH_SOURCE_SHA"
+              requested_mode='preflight'
+              ;;
+            push)
+              [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+              [ "$GITHUB_REF" = 'refs/tags/v0.3.0' ]
+              [ "$GITHUB_REF_TYPE" = 'tag' ]
+              [ "$GITHUB_REF_NAME" = 'v0.3.0' ]
+              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/tags/v0.3.0" ]
+              requested_source_sha="$GITHUB_SHA"
+              requested_mode='formal'
+              ;;
+            *)
+              echo "Unsupported release event: $GITHUB_EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+
+          printf 'requested_source_sha=%s\n' "$requested_source_sha" >> "$GITHUB_OUTPUT"
+          printf 'requested_mode=%s\n' "$requested_mode" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout trusted workflow definition
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.workflow_sha }}
+
+      - name: Checkout requested candidate as untrusted data
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: candidate-source
+          persist-credentials: false
+          ref: ${{ steps.request.outputs.requested_source_sha }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "20"
+          node-version-file: .node-version
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Add Windows ARM64 target
-        if: runner.os == 'Windows' && matrix.arch == 'arm64'
-        shell: pwsh
-        run: rustup target add aarch64-pc-windows-msvc
-
-      - name: Add macOS targets
-        if: runner.os == 'macOS'
-        run: |
-          rustup target add aarch64-apple-darwin x86_64-apple-darwin
-
-      - name: Install Linux system deps
-        if: runner.os == 'Linux'
+      - name: Validate repository, workflow, ref, source, and version
+        id: contract
         shell: bash
-        run: |
-          set -euxo pipefail
-          sudo apt-get update
-          # Core build tools and pkg-config
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            pkg-config \
-            curl \
-            wget \
-            file \
-            patchelf \
-            libssl-dev \
-            rpm \
-            flatpak \
-            flatpak-builder \
-            elfutils \
-            xdg-utils
-          # GTK/GLib stack for gdk-3.0, glib-2.0, gio-2.0
-          sudo apt-get install -y --no-install-recommends \
-            libgtk-3-dev \
-            librsvg2-dev \
-            libayatana-appindicator3-dev
-          # WebKit2GTK (version differs across Ubuntu images; try 4.1 then 4.0)
-          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev \
-            || sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.0-dev
-          # libsoup also changed major version; prefer 3.0 with fallback to 2.4
-          sudo apt-get install -y --no-install-recommends libsoup-3.0-dev \
-            || sudo apt-get install -y --no-install-recommends libsoup2.4-dev
-
-      - name: Setup pnpm
-        if: runner.os != 'Windows' || matrix.arch != 'arm64'
-        uses: pnpm/action-setup@v6
-        with:
-          version: 10.12.3
-          run_install: false
-
-      - name: Setup pnpm (Windows ARM64)
-        if: runner.os == 'Windows' && matrix.arch == 'arm64'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          corepack enable
-          corepack prepare pnpm@10.12.3 --activate
-          node --version
-          pnpm --version
-
-      - name: Get pnpm store directory
-        if: runner.os != 'Windows' || matrix.arch != 'arm64'
-        id: pnpm-store
-        shell: bash
-        run: echo "path=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
-
-      - name: Setup pnpm cache
-        if: runner.os != 'Windows' || matrix.arch != 'arm64'
-        uses: actions/cache@v5
-        with:
-          path: ${{ steps.pnpm-store.outputs.path }}
-          key: ${{ runner.os }}-${{ runner.arch }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-${{ runner.arch }}-pnpm-store-
-
-      - name: Setup LLVM for Windows ARM64
-        if: runner.os == 'Windows' && matrix.arch == 'arm64'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $llvmRoot = 'C:\Program Files\LLVM'
-          if (-not (Test-Path $llvmRoot)) {
-            throw "LLVM not found at $llvmRoot"
-          }
-          $llvmBin = Join-Path $llvmRoot 'bin'
-          "LIBCLANG_PATH=$llvmBin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "CLANG_PATH=$(Join-Path $llvmBin 'clang.exe')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          $llvmBin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-
-      - name: Install frontend deps
-        run: pnpm install --frozen-lockfile
-
-      - name: Import Apple signing certificate
-        if: runner.os == 'macOS' && github.ref_type == 'tag'
-        shell: bash
+        env:
+          DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}
+          REQUESTED_MODE: ${{ steps.request.outputs.requested_mode }}
+          REQUESTED_SOURCE_SHA: ${{ steps.request.outputs.requested_source_sha }}
         run: |
           set -euo pipefail
-          # Decode .p12 certificate from base64
-          CERT_PATH="$RUNNER_TEMP/certificate.p12"
-          printf '%s' "${{ secrets.APPLE_CERTIFICATE }}" | (base64 --decode 2>/dev/null || base64 -D) > "$CERT_PATH"
 
-          # Save original default keychain for cleanup
-          ORIGINAL_DEFAULT_KEYCHAIN=$(security default-keychain -d user | tr -d '"' | xargs)
-          echo "ORIGINAL_DEFAULT_KEYCHAIN=$ORIGINAL_DEFAULT_KEYCHAIN" >> "$GITHUB_ENV"
+          expected_repository='NongHua123/fyagent'
+          expected_repository_id='1313497021'
+          expected_workflow_ref_prefix="${expected_repository}/.github/workflows/release.yml@"
+          [ "$GITHUB_REPOSITORY" = "$expected_repository" ] || {
+            echo "Unexpected repository: $GITHUB_REPOSITORY" >&2
+            exit 1
+          }
+          [ "$GITHUB_REPOSITORY_ID" = "$expected_repository_id" ] || {
+            echo "Unexpected repository ID: $GITHUB_REPOSITORY_ID" >&2
+            exit 1
+          }
+          [ "$GITHUB_WORKFLOW" = 'Release' ] || {
+            echo "Unexpected workflow name: $GITHUB_WORKFLOW" >&2
+            exit 1
+          }
+          case "$GITHUB_WORKFLOW_REF" in
+            "${expected_workflow_ref_prefix}"*) ;;
+            *) echo "Unexpected workflow ref: $GITHUB_WORKFLOW_REF" >&2; exit 1 ;;
+          esac
 
-          # Create temporary keychain
-          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
-          security create-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security default-keychain -s "$KEYCHAIN_PATH"
-          security unlock-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" "$KEYCHAIN_PATH"
-
-          # Import certificate
-          security import "$CERT_PATH" \
-            -k "$KEYCHAIN_PATH" \
-            -P "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" \
-            -T /usr/bin/codesign \
-            -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${{ secrets.KEYCHAIN_PASSWORD }}" "$KEYCHAIN_PATH"
-
-          # Dynamically resolve signing identity (must be "Developer ID Application")
-          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
-            | grep "Developer ID Application" | grep -oE '"[^"]+"' | head -1 | tr -d '"')
-          if [ -z "$IDENTITY" ]; then
-            echo "❌ No 'Developer ID Application' identity found — listing all identities:" >&2
-            security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          trusted_checkout_sha="$(git rev-parse HEAD)"
+          event_commit="$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          workflow_commit="$(git rev-parse "${GITHUB_WORKFLOW_SHA}^{commit}")"
+          if [ "$event_commit" != "$workflow_commit" ] || [ "$trusted_checkout_sha" != "$workflow_commit" ]; then
+            echo "Event ($event_commit), workflow ($workflow_commit), and trusted checkout ($trusted_checkout_sha) sources must agree" >&2
             exit 1
           fi
-          echo "✅ Signing identity: $IDENTITY"
-          echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          source_sha="$(git -C candidate-source rev-parse HEAD)"
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "Candidate source is not a lowercase full commit SHA: $source_sha" >&2
+            exit 1
+          }
 
-          # Cleanup certificate file
-          rm -f "$CERT_PATH"
-
-      - name: Build Tauri App (macOS)
-        if: runner.os == 'macOS' && github.ref_type == 'tag'
-        shell: bash
-        timeout-minutes: 60
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          set -euo pipefail
-          max_attempts=3
-          for attempt in $(seq 1 "$max_attempts"); do
-            echo "=== macOS build/notarization attempt ${attempt}/${max_attempts} ==="
-            if pnpm tauri build --target universal-apple-darwin; then
-              echo "✅ macOS build/notarization succeeded"
-              exit 0
-            fi
-
-            if [ "$attempt" -eq "$max_attempts" ]; then
-              echo "❌ macOS build/notarization failed after ${max_attempts} attempts" >&2
+          case "$GITHUB_EVENT_NAME" in
+            workflow_dispatch)
+              [[ "$DISPATCH_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+                echo 'workflow_dispatch source_sha must be a lowercase full 40-character commit SHA' >&2
+                exit 1
+              }
+              [ "$GITHUB_REF" = 'refs/heads/main' ] || {
+                echo "Preflight must run from trusted refs/heads/main; received $GITHUB_REF" >&2
+                exit 1
+              }
+              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/main" ] || {
+                echo "Preflight workflow ref is not trusted main: $GITHUB_WORKFLOW_REF" >&2
+                exit 1
+              }
+              [ "$source_sha" = "$DISPATCH_SOURCE_SHA" ] || {
+                echo "Dispatch input does not resolve to the exact candidate commit: $DISPATCH_SOURCE_SHA" >&2
+                exit 1
+              }
+              [ "$source_sha" = "$workflow_commit" ] || {
+                echo 'Preflight candidate differs from the trusted workflow provenance SHA' >&2
+                exit 1
+              }
+              release_mode='preflight'
+              ;;
+            push)
+              [ "$GITHUB_REF" = 'refs/tags/v0.3.0' ] || {
+                echo "Formal Release accepts only refs/tags/v0.3.0; received $GITHUB_REF" >&2
+                exit 1
+              }
+              if [ "$GITHUB_REF_TYPE" != 'tag' ] || [ "$GITHUB_REF_NAME" != 'v0.3.0' ]; then
+                echo 'Formal Release event is not the exact v0.3.0 tag' >&2
+                exit 1
+              fi
+              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/tags/v0.3.0" ] || {
+                echo "Formal workflow ref is not bound to v0.3.0: $GITHUB_WORKFLOW_REF" >&2
+                exit 1
+              }
+              tag_commit="$(git rev-parse 'refs/tags/v0.3.0^{commit}')"
+              if [ "$source_sha" != "$trusted_checkout_sha" ] ||
+                [ "$source_sha" != "$event_commit" ] || [ "$source_sha" != "$tag_commit" ]; then
+                echo 'Tag, event SHA, and checked-out source do not resolve to one commit' >&2
+                exit 1
+              fi
+              release_mode='formal'
+              ;;
+            *)
+              echo "Unsupported release event: $GITHUB_EVENT_NAME" >&2
               exit 1
-            fi
+              ;;
+          esac
+          [ "$release_mode" = "$REQUESTED_MODE" ] || {
+            echo "Request mode changed after checkout: $REQUESTED_MODE -> $release_mode" >&2
+            exit 1
+          }
+          [ "$source_sha" = "$(git -C candidate-source rev-parse "${REQUESTED_SOURCE_SHA}^{commit}")" ] || {
+            echo 'Requested source changed during candidate checkout' >&2
+            exit 1
+          }
 
-            sleep_seconds=$((attempt * 60))
-            echo "⚠️ macOS build/notarization failed, retrying in ${sleep_seconds}s..."
-            sleep "$sleep_seconds"
-          done
+          candidate_contract_root="$RUNNER_TEMP/fyagent-candidate-version-contract"
+          rm -rf "$candidate_contract_root"
+          mkdir -p "$candidate_contract_root/scripts" \
+            "$candidate_contract_root/src-tauri/installer-actions"
+          cp scripts/version.mjs "$candidate_contract_root/scripts/version.mjs"
+          cp candidate-source/package.json "$candidate_contract_root/package.json"
+          cp candidate-source/src-tauri/tauri.conf.json "$candidate_contract_root/src-tauri/tauri.conf.json"
+          cp candidate-source/src-tauri/Cargo.toml "$candidate_contract_root/src-tauri/Cargo.toml"
+          cp candidate-source/src-tauri/Cargo.lock "$candidate_contract_root/src-tauri/Cargo.lock"
+          cp candidate-source/src-tauri/installer-actions/Cargo.toml \
+            "$candidate_contract_root/src-tauri/installer-actions/Cargo.toml"
+          node "$candidate_contract_root/scripts/version.mjs" check --tag v0.3.0
+          app_version="$(node "$candidate_contract_root/scripts/version.mjs" get)"
+          [ "$app_version" = '0.3.0' ] || {
+            echo "FyAgent v0.3.0 workflow cannot release product version $app_version" >&2
+            exit 1
+          }
 
-      - name: Build unsigned Tauri App (macOS branch)
-        if: runner.os == 'macOS' && github.ref_type != 'tag'
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$workflow_commit" refs/remotes/origin/main || {
+            echo "Trusted workflow commit $workflow_commit is not on origin/main" >&2
+            exit 1
+          }
+          if [ "$release_mode" = 'formal' ]; then
+            git merge-base --is-ancestor "$source_sha" refs/remotes/origin/main || {
+              echo "Candidate $source_sha is not an ancestor of origin/main" >&2
+              exit 1
+            }
+          fi
+
+          {
+            printf 'app_version=%s\n' "$app_version"
+            printf 'release_tag=v0.3.0\n'
+            printf 'source_sha=%s\n' "$source_sha"
+            printf 'workflow_sha=%s\n' "$workflow_commit"
+            printf 'release_mode=%s\n' "$release_mode"
+            printf 'generated_at=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Bind successful Required CI to the exact source
+        if: steps.contract.outputs.release_mode == 'formal'
+        id: ci
         shell: bash
-        timeout-minutes: 60
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.contract.outputs.source_sha }}
         run: |
           set -euo pipefail
-          pnpm tauri build --target universal-apple-darwin --bundles app
-          echo "Unsigned macOS branch app build succeeded; no signing or notarization was requested."
 
-      - name: Build Tauri App (Windows)
-        if: runner.os == 'Windows'
+          repository='NongHua123/fyagent'
+          workflow_path='.github/workflows/ci.yml'
+          workflow_json="$(gh api "repos/${repository}/actions/workflows/ci.yml")"
+          [ "$(jq -r '.path' <<<"$workflow_json")" = "$workflow_path" ] || {
+            echo 'CI workflow API path identity drifted' >&2
+            exit 1
+          }
+          [ "$(jq -r '.state' <<<"$workflow_json")" = 'active' ] || {
+            echo 'CI workflow is not active' >&2
+            exit 1
+          }
+          workflow_id="$(jq -r '.id' <<<"$workflow_json")"
+
+          runs_json="$(gh api -X GET "repos/${repository}/actions/workflows/${workflow_id}/runs" \
+            -f branch=main -f event=push -f per_page=100)"
+          matching_runs="$(jq --arg sha "$SOURCE_SHA" --arg path "$workflow_path" '
+            [.workflow_runs[]
+              | select(.head_sha == $sha)
+              | select(.event == "push" and .head_branch == "main")
+              | select(.path == $path and .repository.full_name == "NongHua123/fyagent")]
+            | sort_by(.run_number, .run_attempt)
+          ' <<<"$runs_json")"
+          [ "$(jq 'length' <<<"$matching_runs")" -gt 0 ] || {
+            echo "No completed main push CI run exists for $SOURCE_SHA" >&2
+            exit 1
+          }
+          ci_run="$(jq 'last' <<<"$matching_runs")"
+          if [ "$(jq -r '.status' <<<"$ci_run")" != 'completed' ] ||
+            [ "$(jq -r '.conclusion' <<<"$ci_run")" != 'success' ]; then
+            echo 'The latest matching main push CI run did not succeed' >&2
+            exit 1
+          fi
+          ci_run_id="$(jq -r '.id' <<<"$ci_run")"
+          ci_run_attempt="$(jq -r '.run_attempt' <<<"$ci_run")"
+          check_suite_id="$(jq -r '.check_suite_id' <<<"$ci_run")"
+
+          jobs_json="$(gh api -X GET \
+            "repos/${repository}/actions/runs/${ci_run_id}/attempts/${ci_run_attempt}/jobs" \
+            -f per_page=100)"
+          required_jobs="$(jq '[.jobs[] | select(.name == "CI / Required")]' <<<"$jobs_json")"
+          [ "$(jq 'length' <<<"$required_jobs")" -eq 1 ] || {
+            echo 'Expected exactly one CI / Required job in the selected run attempt' >&2
+            exit 1
+          }
+          if [ "$(jq -r '.[0].status' <<<"$required_jobs")" != 'completed' ] ||
+            [ "$(jq -r '.[0].conclusion' <<<"$required_jobs")" != 'success' ]; then
+            echo 'CI / Required job is not completed successfully' >&2
+            exit 1
+          fi
+          required_job_check_url="$(jq -r '.[0].check_run_url' <<<"$required_jobs")"
+          case "$required_job_check_url" in
+            "https://api.github.com/repos/${repository}/check-runs/"*) ;;
+            *) echo 'CI / Required job check-run URL identity drifted' >&2; exit 1 ;;
+          esac
+
+          checks_json="$(gh api -X GET \
+            "repos/${repository}/check-suites/${check_suite_id}/check-runs" \
+            -f per_page=100)"
+          required_checks="$(jq --arg run "$ci_run_id" --arg sha "$SOURCE_SHA" --arg job_url "$required_job_check_url" '
+            [.check_runs[]
+              | select(.name == "CI / Required")
+              | select(.app.slug == "github-actions")
+              | select(.head_sha == $sha)
+              | select(.url == $job_url)
+              | select(.details_url | contains("/actions/runs/" + $run + "/job/"))]
+          ' <<<"$checks_json")"
+          [ "$(jq 'length' <<<"$required_checks")" -eq 1 ] || {
+            echo 'Expected one GitHub Actions CI / Required check-run bound to the selected run' >&2
+            exit 1
+          }
+          if [ "$(jq -r '.[0].status' <<<"$required_checks")" != 'completed' ] ||
+            [ "$(jq -r '.[0].conclusion' <<<"$required_checks")" != 'success' ]; then
+            echo 'Bound CI / Required check-run is not completed successfully' >&2
+            exit 1
+          fi
+
+          printf 'ci_run_id=%s\n' "$ci_run_id" >> "$GITHUB_OUTPUT"
+          printf 'ci_run_attempt=%s\n' "$ci_run_attempt" >> "$GITHUB_OUTPUT"
+
+  build-windows:
+    name: Windows ${{ matrix.architecture }} unsigned installer
+    needs: eligibility
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            target_group: windows-x64
+            architecture: x64
+            rust_target: x86_64-pc-windows-msvc
+            asset_suffix: ""
+          - runner: windows-11-arm
+            target_group: windows-arm64
+            architecture: arm64
+            rust_target: aarch64-pc-windows-msvc
+            asset_suffix: -arm64
+    env:
+      APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
+      RELEASE_TAG: ${{ needs.eligibility.outputs.release_tag }}
+      SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
+      RELEASE_MODE: ${{ needs.eligibility.outputs.release_mode }}
+      EXPECTED_CI_RUN_ID: ${{ needs.eligibility.outputs.ci_run_id }}
+      EXPECTED_CI_RUN_ATTEMPT: ${{ needs.eligibility.outputs.ci_run_attempt }}
+    steps:
+      - name: Checkout immutable source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.eligibility.outputs.source_sha }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: 1.97.1
+          target: ${{ matrix.rust_target }}
+
+      - name: Verify native runner and frozen toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expectedRunnerArch = if ('${{ matrix.architecture }}' -eq 'arm64') { 'ARM64' } else { 'X64' }
+          if ($env:RUNNER_ARCH -cne $expectedRunnerArch) {
+            throw "Windows runner architecture $env:RUNNER_ARCH is not native $expectedRunnerArch"
+          }
+          if ((git rev-parse HEAD) -cne $env:SOURCE_SHA) {
+            throw 'Windows checkout is not the frozen source SHA'
+          }
+          pnpm run version:check -- --tag $env:RELEASE_TAG
+          $nodeVersion = node --version
+          $pnpmVersion = pnpm --version
+          $rustVersion = rustc --version
+          if ($nodeVersion -cne 'v24.19.0' -or $pnpmVersion -cne '10.12.3' -or
+              -not $rustVersion.StartsWith('rustc 1.97.1 ', [StringComparison]::Ordinal)) {
+            throw "Toolchain drift: node=$nodeVersion pnpm=$pnpmVersion rustc=$rustVersion"
+          }
+          "ACTUAL_NODE_VERSION=$nodeVersion" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "ACTUAL_PNPM_VERSION=$pnpmVersion" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "ACTUAL_RUST_VERSION=$rustVersion" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Configure native LLVM on Windows ARM64
+        if: matrix.architecture == 'arm64'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $llvmBin = 'C:\Program Files\LLVM\bin'
+          if (-not (Test-Path -LiteralPath (Join-Path $llvmBin 'clang.exe') -PathType Leaf)) {
+            throw "Native LLVM was not found at $llvmBin"
+          }
+          "LIBCLANG_PATH=$llvmBin" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "CLANG_PATH=$(Join-Path $llvmBin 'clang.exe')" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          $llvmBin | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Install locked frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build unsigned Windows application executable
         shell: pwsh
         env:
-          WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
           FYAGENT_WINDOWS_MANIFEST: release
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') {
-            pnpm tauri build --target aarch64-pc-windows-msvc --no-bundle
+          if ('${{ matrix.architecture }}' -eq 'arm64') {
+            pnpm tauri build --target '${{ matrix.rust_target }}' --no-bundle
+            $targetRoot = 'src-tauri/target/${{ matrix.rust_target }}/release'
           } else {
             pnpm tauri build --no-bundle
-          }
-
-      - name: Verify embedded Windows release manifest before EXE signing
-        if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $targetRoot = if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') {
-            'src-tauri/target/aarch64-pc-windows-msvc/release'
-          } else {
-            'src-tauri/target/release'
+            $targetRoot = 'src-tauri/target/release'
           }
           $exePath = Join-Path $targetRoot 'fyagent.exe'
           if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
             throw "Windows release executable not found: $exePath"
           }
+          "FYAGENT_WINDOWS_TARGET_ROOT=$targetRoot" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "FYAGENT_WINDOWS_EXE=$exePath" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
-          $manifestPath = Join-Path $env:RUNNER_TEMP 'fyagent-release-before-exe-sign.manifest'
-          Remove-Item -LiteralPath $manifestPath -Force -ErrorAction SilentlyContinue
-          Get-Command mt.exe -ErrorAction Stop | Out-Null
-          # mt.exe only reads the PE RT_MANIFEST resource; it never runs fyagent.exe.
-          & mt.exe "-inputresource:$exePath;#1" "-out:$manifestPath" -nologo
-          if ($LASTEXITCODE -ne 0) {
-            throw "mt.exe failed to extract RT_MANIFEST from $exePath before executable signing"
-          }
-          if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
-            throw "mt.exe did not write the extracted RT_MANIFEST: $manifestPath"
-          }
-
-          $manifest = [System.Xml.XmlDocument]::new()
-          try {
-            $manifest.Load($manifestPath)
-          } catch {
-            throw "Extracted RT_MANIFEST is not valid XML: $($_.Exception.Message)"
-          }
-          $requestedExecutionLevels = @(
-            $manifest.SelectNodes("//*[local-name()='requestedExecutionLevel']")
-          )
-          if ($requestedExecutionLevels.Count -ne 1) {
-            throw "Embedded RT_MANIFEST must contain exactly one requestedExecutionLevel; found $($requestedExecutionLevels.Count)"
-          }
-          [System.Xml.XmlElement]$requestedExecutionLevel = $requestedExecutionLevels[0]
-          if (
-            $requestedExecutionLevel.NamespaceURI -cne 'urn:schemas-microsoft-com:asm.v3' -or
-            $requestedExecutionLevel.Attributes.Count -ne 2 -or
-            -not $requestedExecutionLevel.HasAttribute('level') -or
-            -not $requestedExecutionLevel.HasAttribute('uiAccess') -or
-            $requestedExecutionLevel.GetAttribute('level') -cne 'requireAdministrator' -or
-            $requestedExecutionLevel.GetAttribute('uiAccess') -cne 'false'
-          ) {
-            throw 'Embedded RT_MANIFEST must contain exactly one requestedExecutionLevel level="requireAdministrator" uiAccess="false"'
-          }
-
-      - name: Import Windows Authenticode certificate
-        if: runner.os == 'Windows'
+      - name: Verify elevated release manifest before MSI bundle
         shell: pwsh
-        env:
-          WINDOWS_AUTHENTICODE_PFX_BASE64: ${{ secrets.WINDOWS_AUTHENTICODE_PFX_BASE64 }}
-          WINDOWS_AUTHENTICODE_PFX_PASSWORD: ${{ secrets.WINDOWS_AUTHENTICODE_PFX_PASSWORD }}
-          WINDOWS_AUTHENTICODE_PUBLISHER_SUBJECT: ${{ secrets.WINDOWS_AUTHENTICODE_PUBLISHER_SUBJECT }}
-          WINDOWS_AUTHENTICODE_TIMESTAMP_URL: ${{ secrets.WINDOWS_AUTHENTICODE_TIMESTAMP_URL }}
+        run: |
+          ./scripts/release/verify-windows-release-manifest.ps1 `
+            -ExePath $env:FYAGENT_WINDOWS_EXE `
+            -AppVersion $env:APP_VERSION `
+            -Architecture '${{ matrix.architecture }}' `
+            -Phase before-msi-bundle
+
+      - name: Build and verify architecture-matched installer-actions DLL
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($name in @(
-            'WINDOWS_AUTHENTICODE_PFX_BASE64',
-            'WINDOWS_AUTHENTICODE_PFX_PASSWORD',
-            'WINDOWS_AUTHENTICODE_PUBLISHER_SUBJECT',
-            'WINDOWS_AUTHENTICODE_TIMESTAMP_URL'
-          )) {
-            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-              throw "Required Windows Authenticode signing input is missing: $name"
-            }
-          }
-
-          $pfxPath = Join-Path $env:RUNNER_TEMP 'fyagent-authenticode-signing.pfx'
-          [IO.File]::WriteAllBytes(
-            $pfxPath,
-            [Convert]::FromBase64String($env:WINDOWS_AUTHENTICODE_PFX_BASE64)
-          )
-          $password = ConvertTo-SecureString `
-            $env:WINDOWS_AUTHENTICODE_PFX_PASSWORD `
-            -AsPlainText `
-            -Force
-          $certificate = Import-PfxCertificate `
-            -FilePath $pfxPath `
-            -CertStoreLocation Cert:\CurrentUser\My `
-            -Password $password
-          if ($null -eq $certificate -or -not $certificate.HasPrivateKey) {
-            throw 'The Windows Authenticode certificate has no usable private key'
-          }
-
-          "FYAGENT_WINDOWS_CERT_THUMBPRINT=$($certificate.Thumbprint)" |
-            Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "FYAGENT_WINDOWS_CERT_PUBLISHER_SUBJECT=$env:WINDOWS_AUTHENTICODE_PUBLISHER_SUBJECT" |
-            Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "FYAGENT_WINDOWS_CERT_PATH=$pfxPath" |
-            Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-
-      - name: Sign and verify Windows application executable
-        if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
-          WINDOWS_AUTHENTICODE_TIMESTAMP_URL: ${{ secrets.WINDOWS_AUTHENTICODE_TIMESTAMP_URL }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $targetRoot = if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') {
-            'src-tauri/target/aarch64-pc-windows-msvc/release'
+          $installerActionsTarget = Join-Path $PWD 'src-tauri/target/installer-actions'
+          $env:CARGO_TARGET_DIR = $installerActionsTarget
+          if ('${{ matrix.architecture }}' -eq 'arm64') {
+            cargo build --locked --manifest-path src-tauri/Cargo.toml `
+              --package fyagent-installer-actions --target '${{ matrix.rust_target }}' --release
+            $dllPath = Join-Path $installerActionsTarget '${{ matrix.rust_target }}/release/fyagent_installer_actions.dll'
+            [uint16]$expectedMachine = 0xAA64
           } else {
-            'src-tauri/target/release'
+            cargo build --locked --manifest-path src-tauri/Cargo.toml `
+              --package fyagent-installer-actions --release
+            $dllPath = Join-Path $installerActionsTarget 'release/fyagent_installer_actions.dll'
+            [uint16]$expectedMachine = 0x8664
           }
-          $exePath = Join-Path $targetRoot 'fyagent.exe'
-          if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
-            throw "Windows release executable not found: $exePath"
+          $bytes = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $dllPath))
+          if ($bytes.Length -lt 0x40 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {
+            throw "installer-actions output is not a PE DLL: $dllPath"
           }
+          $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+          if ($peOffset -lt 0x40 -or $peOffset + 6 -gt $bytes.Length -or
+              $bytes[$peOffset] -ne 0x50 -or $bytes[$peOffset + 1] -ne 0x45) {
+            throw "installer-actions output has no valid PE header: $dllPath"
+          }
+          [uint16]$machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+          if ($machine -ne $expectedMachine) {
+            throw "installer-actions PE Machine is 0x$($machine.ToString('X4')); expected 0x$($expectedMachine.ToString('X4'))"
+          }
+          $resolvedDll = (Resolve-Path -LiteralPath $dllPath).Path
+          "FYAGENT_INSTALLER_ACTIONS_DLL=$resolvedDll" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "TAURI_FYAGENT_INSTALLER_ACTIONS_DLL=$resolvedDll" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
-          & signtool.exe sign `
-            /fd SHA256 `
-            /tr $env:WINDOWS_AUTHENTICODE_TIMESTAMP_URL `
-            /td SHA256 `
-            /sha1 $env:FYAGENT_WINDOWS_CERT_THUMBPRINT `
-            /v `
-            $exePath
-          if ($LASTEXITCODE -ne 0) {
-            throw "Authenticode signing failed for $exePath"
-          }
-          & signtool.exe verify /pa /all /v $exePath
-          if ($LASTEXITCODE -ne 0) {
-            throw "Authenticode verification failed for $exePath"
-          }
-
-          $signature = Get-AuthenticodeSignature -FilePath $exePath
-          if ($signature.Status -ne 'Valid' -or
-              $null -eq $signature.SignerCertificate -or
-              $null -eq $signature.TimeStamperCertificate) {
-            throw "Executable must have a valid Authenticode signer and timestamp: $exePath"
-          }
-          if ($signature.SignerCertificate.Subject -ne $env:FYAGENT_WINDOWS_CERT_PUBLISHER_SUBJECT) {
-            throw "Executable signer does not match the expected publisher subject: $exePath"
-          }
-
-      - name: Bundle signed Windows MSI
-        if: runner.os == 'Windows'
+      - name: Bundle unsigned Windows MSI
         shell: pwsh
         env:
-          WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
           FYAGENT_WINDOWS_MANIFEST: release
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') {
-            pnpm tauri bundle --target aarch64-pc-windows-msvc --bundles msi
+          if ('${{ matrix.architecture }}' -eq 'arm64') {
+            pnpm tauri bundle --target '${{ matrix.rust_target }}' --bundles msi
           } else {
             pnpm tauri bundle --bundles msi
           }
-
-      - name: Re-verify embedded Windows release manifest after MSI bundle
-        if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $targetRoot = if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') {
-            'src-tauri/target/aarch64-pc-windows-msvc/release'
-          } else {
-            'src-tauri/target/release'
-          }
-          $exePath = Join-Path $targetRoot 'fyagent.exe'
-          if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
-            throw "Windows release executable not found after MSI bundle: $exePath"
-          }
-
-          $manifestPath = Join-Path $env:RUNNER_TEMP 'fyagent-release-after-msi-bundle.manifest'
-          Remove-Item -LiteralPath $manifestPath -Force -ErrorAction SilentlyContinue
-          Get-Command mt.exe -ErrorAction Stop | Out-Null
-          # Re-read the same signed release EXE; never install the MSI to inspect it.
-          & mt.exe "-inputresource:$exePath;#1" "-out:$manifestPath" -nologo
-          if ($LASTEXITCODE -ne 0) {
-            throw "mt.exe failed to extract RT_MANIFEST from $exePath after MSI bundle"
-          }
-          if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
-            throw "mt.exe did not write the extracted RT_MANIFEST: $manifestPath"
-          }
-
-          $manifest = [System.Xml.XmlDocument]::new()
-          try {
-            $manifest.Load($manifestPath)
-          } catch {
-            throw "Extracted RT_MANIFEST is not valid XML: $($_.Exception.Message)"
-          }
-          $requestedExecutionLevels = @(
-            $manifest.SelectNodes("//*[local-name()='requestedExecutionLevel']")
-          )
-          if ($requestedExecutionLevels.Count -ne 1) {
-            throw "Embedded RT_MANIFEST must contain exactly one requestedExecutionLevel; found $($requestedExecutionLevels.Count)"
-          }
-          [System.Xml.XmlElement]$requestedExecutionLevel = $requestedExecutionLevels[0]
-          if (
-            $requestedExecutionLevel.NamespaceURI -cne 'urn:schemas-microsoft-com:asm.v3' -or
-            $requestedExecutionLevel.Attributes.Count -ne 2 -or
-            -not $requestedExecutionLevel.HasAttribute('level') -or
-            -not $requestedExecutionLevel.HasAttribute('uiAccess') -or
-            $requestedExecutionLevel.GetAttribute('level') -cne 'requireAdministrator' -or
-            $requestedExecutionLevel.GetAttribute('uiAccess') -cne 'false'
-          ) {
-            throw 'Embedded RT_MANIFEST must contain exactly one requestedExecutionLevel level="requireAdministrator" uiAccess="false"'
-          }
-
-      - name: Sign and verify Windows MSI
-        if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
-          WINDOWS_AUTHENTICODE_TIMESTAMP_URL: ${{ secrets.WINDOWS_AUTHENTICODE_TIMESTAMP_URL }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $targetRoot = if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') {
-            'src-tauri/target/aarch64-pc-windows-msvc/release'
-          } else {
-            'src-tauri/target/release'
-          }
           $msis = @(
-            Get-ChildItem `
-              -Path (Join-Path $targetRoot 'bundle/msi') `
-              -Recurse `
-              -Filter *.msi `
-              -File `
-              -ErrorAction Stop
+            Get-ChildItem -Path (Join-Path $env:FYAGENT_WINDOWS_TARGET_ROOT 'bundle/msi') `
+              -Recurse -Filter *.msi -File -ErrorAction Stop
           )
           if ($msis.Count -ne 1) {
-            throw "Expected exactly one Windows MSI to sign, found $($msis.Count)"
+            throw "Expected exactly one raw Windows MSI, found $($msis.Count)"
           }
-          $msiPath = $msis[0].FullName
+          "FYAGENT_WINDOWS_MSI=$($msis[0].FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
-          & signtool.exe sign `
-            /fd SHA256 `
-            /tr $env:WINDOWS_AUTHENTICODE_TIMESTAMP_URL `
-            /td SHA256 `
-            /sha1 $env:FYAGENT_WINDOWS_CERT_THUMBPRINT `
-            /v `
-            $msiPath
-          if ($LASTEXITCODE -ne 0) {
-            throw "Authenticode signing failed for $msiPath"
-          }
-          & signtool.exe verify /pa /all /v $msiPath
-          if ($LASTEXITCODE -ne 0) {
-            throw "Authenticode verification failed for $msiPath"
-          }
-
-          $signature = Get-AuthenticodeSignature -FilePath $msiPath
-          if ($signature.Status -ne 'Valid' -or
-              $null -eq $signature.SignerCertificate -or
-              $null -eq $signature.TimeStamperCertificate) {
-            throw "MSI must have a valid Authenticode signer and timestamp: $msiPath"
-          }
-          if ($signature.SignerCertificate.Subject -ne $env:FYAGENT_WINDOWS_CERT_PUBLISHER_SUBJECT) {
-            throw "MSI signer does not match the expected publisher subject: $msiPath"
-          }
-
-      - name: Build Tauri App (Linux)
-        if: runner.os == 'Linux'
-        run: pnpm tauri build --bundles appimage,deb,rpm
-
-      - name: Prepare macOS Assets
-        if: runner.os == 'macOS' && github.ref_type == 'tag'
-        shell: bash
+      - name: Re-verify elevated manifest and MSI security boundary
+        shell: pwsh
         run: |
-          set -euxo pipefail
-          mkdir -p release-assets
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            VERSION="${GITHUB_REF_NAME}"  # e.g., v3.5.0
-          else
-            VERSION=$(printf '%s' "${GITHUB_REF_NAME}" | sed 's/[^A-Za-z0-9._-]/-/g')
-          fi
+          $ErrorActionPreference = 'Stop'
+          ./scripts/release/verify-windows-release-manifest.ps1 `
+            -ExePath $env:FYAGENT_WINDOWS_EXE `
+            -AppVersion $env:APP_VERSION `
+            -Architecture '${{ matrix.architecture }}' `
+            -Phase after-msi-bundle
+          ./scripts/release/verify-windows-msi-structure.ps1 `
+            -MsiPath $env:FYAGENT_WINDOWS_MSI `
+            -Architecture '${{ matrix.architecture }}' `
+            -AppVersion $env:APP_VERSION `
+            -BuiltExePath $env:FYAGENT_WINDOWS_EXE
+          ./scripts/release/verify-windows-msi.ps1 `
+            -MsiPath $env:FYAGENT_WINDOWS_MSI `
+            -InstallerActionsDll $env:FYAGENT_INSTALLER_ACTIONS_DLL `
+            -Architecture '${{ matrix.architecture }}' `
+            -AppVersion $env:APP_VERSION
+          ./scripts/release/verify-windows-unsigned.ps1 `
+            -ExePath $env:FYAGENT_WINDOWS_EXE `
+            -MsiPath $env:FYAGENT_WINDOWS_MSI
 
-          # Locate bundle artifacts
-          APP_PATH=""
-          for path in \
-            "src-tauri/target/universal-apple-darwin/release/bundle/macos" \
-            "src-tauri/target/aarch64-apple-darwin/release/bundle/macos" \
-            "src-tauri/target/x86_64-apple-darwin/release/bundle/macos" \
-            "src-tauri/target/release/bundle/macos"; do
-            if [ -d "$path" ]; then
-              [ -z "$APP_PATH" ] && APP_PATH=$(find "$path" -maxdepth 1 -name "*.app" -type d | head -1 || true)
-            fi
-          done
+      - name: Normalize exact Windows installer and metadata
+        shell: pwsh
+        env:
+          TARGET_GROUP: ${{ matrix.target_group }}
+          TARGET_PLATFORM: windows
+          TARGET_ARCHITECTURE: ${{ matrix.architecture }}
+          RUNNER_LABEL: ${{ matrix.runner }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force release-assets, platform-metadata | Out-Null
+          $assetName = "FyAgent-$env:APP_VERSION-Windows${{ matrix.asset_suffix }}.msi"
+          Copy-Item -LiteralPath $env:FYAGENT_WINDOWS_MSI -Destination (Join-Path release-assets $assetName)
+          node scripts/release/write-platform-metadata.mjs "platform-metadata/${{ matrix.target_group }}.json"
 
-          if [ -z "$APP_PATH" ]; then
-            echo "❌ No .app found" >&2
-            exit 1
-          fi
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installers-${{ matrix.target_group }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
 
-          # Staple notarization ticket to .app (Tauri already notarized it)
-          xcrun stapler staple "$APP_PATH"
-          echo "✅ .app stapled"
+      - name: Upload Windows build metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: metadata-${{ matrix.target_group }}
+          path: platform-metadata/*
+          if-no-files-found: error
+          retention-days: 7
 
-          # Collect the signed app as a normal user-downloadable ZIP. V1 has
-          # no in-app automatic-update artifact or signature sidecar.
-          NEW_ZIP="FyAgent-${VERSION}-macOS.zip"
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "release-assets/$NEW_ZIP"
-          echo "macOS zip ready: $NEW_ZIP"
-
-          # Create a styled DMG with create-dmg (Tauri's built-in DMG styling doesn't work on CI)
-          if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
-            echo "❌ APPLE_SIGNING_IDENTITY is missing before DMG creation" >&2
-            exit 1
-          fi
-
-          HOMEBREW_NO_AUTO_UPDATE=1 brew install create-dmg
-          NEW_DMG="FyAgent-${VERSION}-macOS.dmg"
-          DMG_STAGE_DIR="$RUNNER_TEMP/dmg-stage"
-          rm -rf "$DMG_STAGE_DIR"
-          mkdir -p "$DMG_STAGE_DIR"
-          ditto "$APP_PATH" "$DMG_STAGE_DIR/FyAgent.app"
-
-          create-dmg \
-            --volname "FyAgent" \
-            --background "src-tauri/icons/dmg-background.png" \
-            --window-size 660 400 \
-            --window-pos 200 120 \
-            --icon-size 80 \
-            --icon "FyAgent.app" 180 220 \
-            --hide-extension "FyAgent.app" \
-            --app-drop-link 480 220 \
-            --codesign "$APPLE_SIGNING_IDENTITY" \
-            --no-internet-enable \
-            "release-assets/$NEW_DMG" \
-            "$DMG_STAGE_DIR"
-
-          rm -rf "$DMG_STAGE_DIR"
-          echo "✅ Styled DMG created: $NEW_DMG"
-
-      - name: Prepare and verify unsigned macOS branch assets
-        if: runner.os == 'macOS' && github.ref_type != 'tag'
+  build-linux:
+    name: Linux ${{ matrix.architecture }} unsigned installers
+    needs: eligibility
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ubuntu:22.04@${{ matrix.container_digest }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target_group: linux-x64
+            architecture: x64
+            expected_runner_arch: X64
+            asset_arch: x86_64
+            uname_arch: x86_64
+            deb_arch: amd64
+            rpm_arch: x86_64
+            container_digest: sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e
+          - runner: ubuntu-24.04-arm
+            target_group: linux-arm64
+            architecture: arm64
+            expected_runner_arch: ARM64
+            asset_arch: arm64
+            uname_arch: aarch64
+            deb_arch: arm64
+            rpm_arch: aarch64
+            container_digest: sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149
+    env:
+      APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
+      RELEASE_TAG: ${{ needs.eligibility.outputs.release_tag }}
+      SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
+      RELEASE_MODE: ${{ needs.eligibility.outputs.release_mode }}
+      EXPECTED_CI_RUN_ID: ${{ needs.eligibility.outputs.ci_run_id }}
+      EXPECTED_CI_RUN_ATTEMPT: ${{ needs.eligibility.outputs.ci_run_attempt }}
+      CONTAINER_DIGEST: ${{ matrix.container_digest }}
+    steps:
+      - name: Install Ubuntu 22.04 native build dependencies
         shell: bash
         run: |
           set -euo pipefail
+          . /etc/os-release
+          [ "$RUNNER_ARCH" = '${{ matrix.expected_runner_arch }}' ] || {
+            echo "Linux runner architecture $RUNNER_ARCH is not native ${{ matrix.expected_runner_arch }}" >&2
+            exit 1
+          }
+          if [ "$ID" != ubuntu ] || [ "$VERSION_ID" != '22.04' ]; then
+            echo "Release container is not Ubuntu 22.04: ${ID:-unknown} ${VERSION_ID:-unknown}" >&2
+            exit 1
+          fi
+          [ "$(uname -m)" = '${{ matrix.uname_arch }}' ] || {
+            echo "Container architecture $(uname -m) is not native ${{ matrix.uname_arch }}" >&2
+            exit 1
+          }
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates curl file git libayatana-appindicator3-dev \
+            libfuse2 librsvg2-dev libssl-dev patchelf pkg-config rpm wget xdg-utils
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev \
+            || DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+              libgtk-3-dev libwebkit2gtk-4.0-dev libsoup2.4-dev
+
+      - name: Checkout immutable source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.eligibility.outputs.source_sha }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: 1.97.1
+
+      - name: Verify native source and frozen toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "$(uname -m)" = '${{ matrix.uname_arch }}' ]
+          [ "$(git rev-parse HEAD)" = "$SOURCE_SHA" ]
+          pnpm run version:check -- --tag "$RELEASE_TAG"
+          node_version="$(node --version)"
+          pnpm_version="$(pnpm --version)"
+          rust_version="$(rustc --version)"
+          [ "$node_version" = 'v24.19.0' ]
+          [ "$pnpm_version" = '10.12.3' ]
+          case "$rust_version" in 'rustc 1.97.1 '*) ;; *) echo "Rust drift: $rust_version" >&2; exit 1;; esac
+          {
+            printf 'ACTUAL_NODE_VERSION=%s\n' "$node_version"
+            printf 'ACTUAL_PNPM_VERSION=%s\n' "$pnpm_version"
+            printf 'ACTUAL_RUST_VERSION=%s\n' "$rust_version"
+          } >> "$GITHUB_ENV"
+
+      - name: Install locked frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build native Linux packages
+        run: pnpm tauri build --bundles appimage,deb,rpm
+
+      - name: Verify and normalize exact Linux package set
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle_root='src-tauri/target/release/bundle'
+          mapfile -t appimages < <(find "$bundle_root" -type f -name '*.AppImage' -print)
+          mapfile -t debs < <(find "$bundle_root" -type f -name '*.deb' -print)
+          mapfile -t rpms < <(find "$bundle_root" -type f -name '*.rpm' -print)
+          if [ "${#appimages[@]}" -ne 1 ] || [ "${#debs[@]}" -ne 1 ] || [ "${#rpms[@]}" -ne 1 ]; then
+            echo "Expected exactly one raw AppImage, DEB, and RPM; found ${#appimages[@]}/${#debs[@]}/${#rpms[@]}" >&2
+            exit 1
+          fi
+          case "$(basename "${appimages[0]}")" in *"$APP_VERSION"*) ;; *) echo 'AppImage version drifted' >&2; exit 1;; esac
+          file "${appimages[0]}" | grep -Eq '${{ matrix.architecture == 'arm64' && 'ARM aarch64' || 'x86-64' }}' || {
+            echo 'AppImage ELF architecture drifted' >&2
+            exit 1
+          }
+          deb_version="$(dpkg-deb -f "${debs[0]}" Version)"
+          case "$deb_version" in "$APP_VERSION"|"$APP_VERSION"-*|"$APP_VERSION"+*) ;; *) echo "DEB version drifted: $deb_version" >&2; exit 1;; esac
+          [ "$(dpkg-deb -f "${debs[0]}" Architecture)" = '${{ matrix.deb_arch }}' ] || {
+            echo 'DEB architecture drifted' >&2
+            exit 1
+          }
+          [ "$(rpm -qp --qf '%{VERSION}' "${rpms[0]}")" = "$APP_VERSION" ] || {
+            echo 'RPM version drifted' >&2
+            exit 1
+          }
+          [ "$(rpm -qp --qf '%{ARCH}' "${rpms[0]}")" = '${{ matrix.rpm_arch }}' ] || {
+            echo 'RPM architecture drifted' >&2
+            exit 1
+          }
+
           mkdir -p release-assets
-          VERSION=$(printf '%s' "${GITHUB_REF_NAME}" | sed 's/[^A-Za-z0-9._-]/-/g')
-          if [ -z "$VERSION" ]; then
-            echo "Unable to derive a safe branch asset name" >&2
+          cp "${appimages[0]}" "release-assets/FyAgent-${APP_VERSION}-Linux-${{ matrix.asset_arch }}.AppImage"
+          cp "${debs[0]}" "release-assets/FyAgent-${APP_VERSION}-Linux-${{ matrix.asset_arch }}.deb"
+          cp "${rpms[0]}" "release-assets/FyAgent-${APP_VERSION}-Linux-${{ matrix.asset_arch }}.rpm"
+          [ "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 3 ]
+
+      - name: Record Linux build metadata
+        env:
+          TARGET_GROUP: ${{ matrix.target_group }}
+          TARGET_PLATFORM: linux
+          TARGET_ARCHITECTURE: ${{ matrix.architecture }}
+          RUNNER_LABEL: ${{ matrix.runner }}
+        run: |
+          mkdir -p platform-metadata
+          node scripts/release/write-platform-metadata.mjs "platform-metadata/${{ matrix.target_group }}.json"
+
+      - name: Upload Linux installers
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installers-${{ matrix.target_group }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Linux build metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: metadata-${{ matrix.target_group }}
+          path: platform-metadata/*
+          if-no-files-found: error
+          retention-days: 7
+
+  build-macos:
+    name: macOS Universal unsigned installers
+    needs: eligibility
+    runs-on: macos-15
+    env:
+      APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
+      RELEASE_TAG: ${{ needs.eligibility.outputs.release_tag }}
+      SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
+      RELEASE_MODE: ${{ needs.eligibility.outputs.release_mode }}
+      EXPECTED_CI_RUN_ID: ${{ needs.eligibility.outputs.ci_run_id }}
+      EXPECTED_CI_RUN_ATTEMPT: ${{ needs.eligibility.outputs.ci_run_attempt }}
+    steps:
+      - name: Checkout immutable source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.eligibility.outputs.source_sha }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Setup Rust with both universal targets
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: 1.97.1
+          target: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Verify frozen source and toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "$(git rev-parse HEAD)" = "$SOURCE_SHA" ]
+          pnpm run version:check -- --tag "$RELEASE_TAG"
+          node_version="$(node --version)"
+          pnpm_version="$(pnpm --version)"
+          rust_version="$(rustc --version)"
+          [ "$node_version" = 'v24.19.0' ]
+          [ "$pnpm_version" = '10.12.3' ]
+          case "$rust_version" in 'rustc 1.97.1 '*) ;; *) echo "Rust drift: $rust_version" >&2; exit 1;; esac
+          {
+            printf 'ACTUAL_NODE_VERSION=%s\n' "$node_version"
+            printf 'ACTUAL_PNPM_VERSION=%s\n' "$pnpm_version"
+            printf 'ACTUAL_RUST_VERSION=%s\n' "$rust_version"
+          } >> "$GITHUB_ENV"
+
+      - name: Install locked frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build unsigned universal macOS app
+        run: pnpm tauri build --target universal-apple-darwin --bundles app
+
+      - name: Verify app identity and absence of distribution trust
+        id: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle_root='src-tauri/target/universal-apple-darwin/release/bundle/macos'
+          app_count="$(find "$bundle_root" -maxdepth 1 -type d -name 'FyAgent.app' -print | wc -l | tr -d ' ')"
+          [ "$app_count" -eq 1 ] || {
+            echo "Expected exactly one raw universal FyAgent.app, found $app_count" >&2
+            exit 1
+          }
+          app_path="$(find "$bundle_root" -maxdepth 1 -type d -name 'FyAgent.app' -print | head -1)"
+          plist="$app_path/Contents/Info.plist"
+          bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")"
+          bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")"
+          executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")"
+          if [ "$bundle_version" != "$APP_VERSION" ] || [ "$bundle_id" != 'com.fyagent.desktop' ]; then
+            echo "macOS bundle identity drifted: version=$bundle_version id=$bundle_id" >&2
+            exit 1
+          fi
+          binary="$app_path/Contents/MacOS/$executable"
+          archs="$(lipo -archs "$binary")"
+          if [[ " $archs " != *' arm64 '* ]] || [[ " $archs " != *' x86_64 '* ]]; then
+            echo "FyAgent executable is not universal: $archs" >&2
             exit 1
           fi
 
-          APP_PATH=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos \
-            -maxdepth 1 -name "FyAgent.app" -type d | head -1 || true)
-          if [ -z "$APP_PATH" ]; then
-            echo "No FyAgent.app found in the unsigned macOS bundle output" >&2
+          signature_info="$(codesign -dvvv "$app_path" 2>&1 || true)"
+          if grep -Eq '^Authority=|Developer ID' <<<"$signature_info"; then
+            echo 'Unsigned v0.3.0 app unexpectedly has a distribution signing authority' >&2
             exit 1
           fi
+          team_identifier="$(sed -n 's/^TeamIdentifier=//p' <<<"$signature_info" | tail -1)"
+          [ -z "$team_identifier" ] || [ "$team_identifier" = 'not set' ] || {
+            echo "Unsigned v0.3.0 app unexpectedly has TeamIdentifier=$team_identifier" >&2
+            exit 1
+          }
+          if xcrun stapler validate "$app_path" >/dev/null 2>&1; then
+            echo 'Unsigned v0.3.0 app unexpectedly contains a notarization ticket' >&2
+            exit 1
+          fi
+          printf 'app_path=%s\n' "$app_path" >> "$GITHUB_OUTPUT"
+          printf 'executable=%s\n' "$executable" >> "$GITHUB_OUTPUT"
 
-          NEW_ZIP="FyAgent-${VERSION}-macOS-unsigned.zip"
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "release-assets/$NEW_ZIP"
-
-          DMG_STAGE_DIR="$RUNNER_TEMP/unsigned-dmg-stage"
-          MOUNT_POINT="$RUNNER_TEMP/unsigned-dmg-mount"
-          rm -rf "$DMG_STAGE_DIR" "$MOUNT_POINT"
-          mkdir -p "$DMG_STAGE_DIR" "$MOUNT_POINT"
-          detach_required=false
+      - name: Create and verify unsigned ZIP and DMG from the same app
+        shell: bash
+        env:
+          APP_PATH: ${{ steps.app.outputs.app_path }}
+          APP_EXECUTABLE: ${{ steps.app.outputs.executable }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          zip_path="release-assets/FyAgent-${APP_VERSION}-macOS.zip"
+          dmg_path="release-assets/FyAgent-${APP_VERSION}-macOS.dmg"
+          stage="$RUNNER_TEMP/fyagent-dmg-stage"
+          mount_point="$RUNNER_TEMP/fyagent-dmg-mount"
+          unzip_root="$RUNNER_TEMP/fyagent-zip-verify"
+          rm -rf "$stage" "$mount_point" "$unzip_root"
+          mkdir -p "$stage" "$mount_point" "$unzip_root"
+          mounted=false
           cleanup() {
-            exit_code=$?
+            status=$?
             trap - EXIT
             set +e
-            if [ "$detach_required" = true ]; then
-              hdiutil detach "$MOUNT_POINT"
-              if [ "$?" -ne 0 ]; then
-                echo "Failed to detach unsigned DMG from $MOUNT_POINT" >&2
-                exit_code=1
-              fi
-            fi
-            rm -rf "$DMG_STAGE_DIR" "$MOUNT_POINT"
-            if [ "$?" -ne 0 ]; then
-              echo "Failed to clean unsigned DMG temporary directories" >&2
-              exit_code=1
-            fi
-            exit "$exit_code"
+            if [ "$mounted" = true ]; then hdiutil detach "$mount_point"; fi
+            rm -rf "$stage" "$mount_point" "$unzip_root"
+            exit "$status"
           }
           trap cleanup EXIT
 
-          ditto "$APP_PATH" "$DMG_STAGE_DIR/FyAgent.app"
+          source_digest="$(shasum -a 256 "$APP_PATH/Contents/MacOS/$APP_EXECUTABLE" | awk '{print $1}')"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$zip_path"
+          ditto -x -k "$zip_path" "$unzip_root"
+          [ -d "$unzip_root/FyAgent.app" ]
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$unzip_root/FyAgent.app/Contents/Info.plist")" = "$APP_VERSION" ]
+          [ "$(shasum -a 256 "$unzip_root/FyAgent.app/Contents/MacOS/$APP_EXECUTABLE" | awk '{print $1}')" = "$source_digest" ]
 
-          NEW_DMG="FyAgent-${VERSION}-macOS-unsigned.dmg"
-          DMG_PATH="release-assets/$NEW_DMG"
-          hdiutil create -volname "FyAgent unsigned" -srcfolder "$DMG_STAGE_DIR" \
-            -ov -format UDZO "$DMG_PATH"
-          hdiutil verify "$DMG_PATH"
-
-          detach_required=true
-          hdiutil attach "$DMG_PATH" -readonly -nobrowse -noautoopen -mountpoint "$MOUNT_POINT"
-          if [ ! -d "$MOUNT_POINT/FyAgent.app" ]; then
-            echo "Mounted unsigned DMG does not contain FyAgent.app" >&2
+          ditto "$APP_PATH" "$stage/FyAgent.app"
+          hdiutil create -volname 'FyAgent' -srcfolder "$stage" -ov -format UDZO "$dmg_path"
+          hdiutil verify "$dmg_path"
+          mounted=true
+          hdiutil attach "$dmg_path" -readonly -nobrowse -noautoopen -mountpoint "$mount_point"
+          [ -d "$mount_point/FyAgent.app" ]
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$mount_point/FyAgent.app/Contents/Info.plist")" = "$APP_VERSION" ]
+          [ "$(shasum -a 256 "$mount_point/FyAgent.app/Contents/MacOS/$APP_EXECUTABLE" | awk '{print $1}')" = "$source_digest" ]
+          hdiutil detach "$mount_point"
+          mounted=false
+          if xcrun stapler validate "$dmg_path" >/dev/null 2>&1; then
+            echo 'Unsigned v0.3.0 DMG unexpectedly contains a notarization ticket' >&2
             exit 1
           fi
-          echo "Unsigned DMG verified and mounted with FyAgent.app present; no signing, notarization, or Gatekeeper claim is made."
+          dmg_signature="$(codesign -dvvv "$dmg_path" 2>&1 || true)"
+          if grep -Eq '^Authority=|Developer ID|^TeamIdentifier=[A-Z0-9]+' <<<"$dmg_signature"; then
+            echo 'Unsigned v0.3.0 DMG unexpectedly has a distribution identity' >&2
+            exit 1
+          fi
+          [ "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 2 ]
 
-      - name: Notarize macOS DMG
-        if: runner.os == 'macOS' && github.ref_type == 'tag'
-        shell: bash
-        timeout-minutes: 30
+      - name: Record macOS build metadata
         env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TARGET_GROUP: macos-universal
+          TARGET_PLATFORM: macos
+          TARGET_ARCHITECTURE: universal
+          RUNNER_LABEL: macos-15
         run: |
-          set -euo pipefail
+          mkdir -p platform-metadata
+          node scripts/release/write-platform-metadata.mjs platform-metadata/macos-universal.json
 
-          DMG_PATH=$(find release-assets -maxdepth 1 -name "*.dmg" -type f | head -1 || true)
-          if [ -z "$DMG_PATH" ]; then
-            echo "❌ No .dmg found in release-assets/ to notarize" >&2
-            exit 1
-          fi
-
-          echo "=== Notarizing DMG: $DMG_PATH ==="
-          max_attempts=3
-          for attempt in $(seq 1 "$max_attempts"); do
-            echo "=== DMG notarization attempt ${attempt}/${max_attempts} ==="
-            if xcrun notarytool submit "$DMG_PATH" \
-              --apple-id "$APPLE_ID" \
-              --password "$APPLE_PASSWORD" \
-              --team-id "$APPLE_TEAM_ID" \
-              --wait; then
-              echo "✅ DMG notarization succeeded"
-              xcrun stapler staple "$DMG_PATH"
-              echo "✅ DMG stapled"
-              break
-            fi
-
-            if [ "$attempt" -eq "$max_attempts" ]; then
-              echo "❌ DMG notarization failed after ${max_attempts} attempts" >&2
-              exit 1
-            fi
-
-            sleep_seconds=$((attempt * 60))
-            echo "⚠️ DMG notarization failed, retrying in ${sleep_seconds}s..."
-            sleep "$sleep_seconds"
-          done
-
-      - name: Verify macOS code signing and notarization
-        if: runner.os == 'macOS' && github.ref_type == 'tag'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          # Verify .app (from Tauri bundle)
-          APP_PATH=""
-          for path in \
-            "src-tauri/target/universal-apple-darwin/release/bundle/macos" \
-            "src-tauri/target/aarch64-apple-darwin/release/bundle/macos" \
-            "src-tauri/target/x86_64-apple-darwin/release/bundle/macos" \
-            "src-tauri/target/release/bundle/macos"; do
-            if [ -d "$path" ]; then
-              [ -z "$APP_PATH" ] && APP_PATH=$(find "$path" -maxdepth 1 -name "*.app" -type d | head -1 || true)
-            fi
-          done
-
-          if [ -z "$APP_PATH" ]; then
-            echo "❌ No .app found for verification" >&2
-            exit 1
-          fi
-          echo "=== Verifying .app: $APP_PATH ==="
-          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-          echo "✅ codesign verification passed"
-          spctl -a -t exec -vv "$APP_PATH"
-          echo "✅ spctl assessment passed"
-          xcrun stapler validate "$APP_PATH"
-          echo "✅ .app stapler validation passed"
-
-          # Verify .dmg (from release-assets/, created by create-dmg + notarized)
-          DMG_PATH=$(find release-assets -maxdepth 1 -name "*.dmg" -type f | head -1 || true)
-          if [ -n "$DMG_PATH" ]; then
-            echo "=== Verifying .dmg: $DMG_PATH ==="
-            codesign --verify --verbose=2 "$DMG_PATH"
-            echo "✅ .dmg codesign verification passed"
-            spctl -a -t open --context context:primary-signature -vv "$DMG_PATH"
-            echo "✅ .dmg spctl assessment passed"
-            xcrun stapler validate "$DMG_PATH"
-            echo "✅ .dmg stapler validation passed"
-          else
-            echo "❌ No .dmg found for verification — release would ship without verified DMG" >&2
-            exit 1
-          fi
-
-      - name: Prepare Windows Assets
-        if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
-          $VERSION = $env:GITHUB_REF_NAME  # e.g., v3.5.0
-          $isArm64 = $env:WINDOWS_RELEASE_ARCH -eq 'arm64'
-          $targetRoot = if ($isArm64) { 'src-tauri/target/aarch64-pc-windows-msvc/release' } else { 'src-tauri/target/release' }
-          $assetSuffix = if ($isArm64) { '-arm64' } else { '' }
-
-          # 仅打包 MSI 手动安装器。
-          $msi = Get-ChildItem -Path (Join-Path $targetRoot 'bundle/msi') -Recurse -Include *.msi -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($null -eq $msi) {
-            # 兜底：全局搜索 .msi
-            $msi = Get-ChildItem -Path (Join-Path $targetRoot 'bundle') -Recurse -Include *.msi -ErrorAction SilentlyContinue | Select-Object -First 1
-          }
-          if ($null -ne $msi) {
-            $dest = "FyAgent-$VERSION-Windows$assetSuffix.msi"
-            Copy-Item $msi.FullName (Join-Path release-assets $dest)
-            Write-Host "Installer copied: $dest"
-          } else {
-            throw "No signed Windows MSI installer found for $env:WINDOWS_RELEASE_ARCH"
-          }
-
-      - name: Remove Windows Authenticode certificate
-        if: always() && runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          if (-not [string]::IsNullOrWhiteSpace($env:FYAGENT_WINDOWS_CERT_THUMBPRINT)) {
-            $certificatePath = "Cert:\CurrentUser\My\$env:FYAGENT_WINDOWS_CERT_THUMBPRINT"
-            if (Test-Path -LiteralPath $certificatePath) {
-              Remove-Item -LiteralPath $certificatePath -Force
-            }
-          }
-          if (-not [string]::IsNullOrWhiteSpace($env:FYAGENT_WINDOWS_CERT_PATH) -and
-              (Test-Path -LiteralPath $env:FYAGENT_WINDOWS_CERT_PATH)) {
-            Remove-Item -LiteralPath $env:FYAGENT_WINDOWS_CERT_PATH -Force
-          }
-
-      - name: Prepare Linux Assets
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -euxo pipefail
-          mkdir -p release-assets
-          VERSION="${GITHUB_REF_NAME}"  # e.g., v3.5.0
-          ARCH="${{ matrix.arch || 'x86_64' }}"
-          # 手动安装 AppImage。
-          APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" | head -1 || true)
-          if [ -n "$APPIMAGE" ]; then
-            NEW_APPIMAGE="FyAgent-${VERSION}-Linux-${ARCH}.AppImage"
-            cp "$APPIMAGE" "release-assets/$NEW_APPIMAGE"
-            echo "AppImage copied: $NEW_APPIMAGE"
-          else
-            echo "No AppImage found under target/release/bundle" >&2
-          fi
-          # 额外上传 .deb（用于手动安装）。
-          DEB=$(find src-tauri/target/release/bundle -name "*.deb" | head -1 || true)
-          if [ -n "$DEB" ]; then
-            cp "$DEB" "release-assets/FyAgent-${VERSION}-Linux-${ARCH}.deb"
-            echo "Deb package copied: FyAgent-${VERSION}-Linux-${ARCH}.deb"
-          else
-            echo "No .deb found (optional)"
-          fi
-          # 额外上传 .rpm（用于 Fedora/RHEL/openSUSE 等的手动安装）。
-          RPM=$(find src-tauri/target/release/bundle -name "*.rpm" | head -1 || true)
-          if [ -n "$RPM" ]; then
-            cp "$RPM" "release-assets/FyAgent-${VERSION}-Linux-${ARCH}.rpm"
-            echo "RPM package copied: FyAgent-${VERSION}-Linux-${ARCH}.rpm"
-          else
-            echo "No .rpm found (optional)"
-          fi
-
-      - name: List prepared assets
-        shell: bash
-        run: |
-          ls -la release-assets || true
-
-      - name: Upload release artifacts to workflow
-        uses: actions/upload-artifact@v7
+      - name: Upload macOS installers
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: release-assets-${{ runner.os }}-${{ matrix.arch || runner.arch }}
+          name: installers-macos-universal
           path: release-assets/*
           if-no-files-found: error
+          retention-days: 7
 
-      - name: List generated bundles (debug)
-        if: always()
-        shell: bash
-        run: |
-          echo "Listing bundles in src-tauri/target..."
-          find src-tauri/target -maxdepth 4 -type f -name "*.*" 2>/dev/null || true
-
-      - name: Clean up Apple signing keychain
-        if: runner.os == 'macOS' && always()
-        shell: bash
-        run: |
-          if [ -n "${ORIGINAL_DEFAULT_KEYCHAIN:-}" ]; then
-            security default-keychain -s "$ORIGINAL_DEFAULT_KEYCHAIN" || true
-          fi
-          if [ -f "$RUNNER_TEMP/build.keychain-db" ]; then
-            security delete-keychain "$RUNNER_TEMP/build.keychain-db" || true
-          fi
-
-  publish-release:
-    name: Publish GitHub Release
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-22.04
-    needs: release
-    permissions:
-      contents: write
-    steps:
-      - name: Download built release artifacts
-        uses: actions/download-artifact@v8
+      - name: Upload macOS build metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          pattern: release-assets-*
-          path: release-assets
-          merge-multiple: true
+          name: metadata-macos-universal
+          path: platform-metadata/*
+          if-no-files-found: error
+          retention-days: 7
 
-      - name: List downloaded release artifacts
+  verify-assets:
+    name: Verify exact installers and generate evidence
+    needs: [eligibility, build-windows, build-linux, build-macos]
+    runs-on: ubuntu-24.04
+    env:
+      APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
+      RELEASE_TAG: ${{ needs.eligibility.outputs.release_tag }}
+      SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
+      TRUSTED_WORKFLOW_SHA: ${{ needs.eligibility.outputs.workflow_sha }}
+      RELEASE_MODE: ${{ needs.eligibility.outputs.release_mode }}
+      GENERATED_AT: ${{ needs.eligibility.outputs.generated_at }}
+      EXPECTED_CI_RUN_ID: ${{ needs.eligibility.outputs.ci_run_id }}
+      EXPECTED_CI_RUN_ATTEMPT: ${{ needs.eligibility.outputs.ci_run_attempt }}
+    steps:
+      - name: Checkout evidence generators
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.eligibility.outputs.workflow_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Download all native installers
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: installers-*
+          path: downloaded-installers
+
+      - name: Download all platform metadata
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: metadata-*
+          path: downloaded-metadata
+
+      - name: Verify exact ten and generate two machine-readable subjects
         shell: bash
         run: |
           set -euo pipefail
-          ls -la release-assets
+          node scripts/release/collect-workflow-artifacts.mjs \
+            installers downloaded-installers installers "$APP_VERSION"
+          node scripts/release/collect-workflow-artifacts.mjs \
+            metadata downloaded-metadata platform-metadata "$APP_VERSION"
+          node scripts/release/verify-release-files.mjs installers installers "$APP_VERSION"
+          mkdir verified-subjects
+          cp installers/* verified-subjects/
+          node scripts/generate-download-manifest.mjs \
+            installers "$APP_VERSION" "$RELEASE_TAG" "$SOURCE_SHA" \
+            'https://github.com/NongHua123/fyagent/releases/download' "$GENERATED_AT" \
+            verified-subjects/download-manifest.json
+          node scripts/release/generate-build-metadata.mjs \
+            platform-metadata "$APP_VERSION" "$RELEASE_TAG" "$SOURCE_SHA" \
+            "$GITHUB_REPOSITORY" "$GITHUB_REPOSITORY_ID" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            "$GITHUB_EVENT_NAME" "$RELEASE_MODE" "$GITHUB_WORKFLOW_REF" \
+            "$TRUSTED_WORKFLOW_SHA" \
+            "$EXPECTED_CI_RUN_ID" "$EXPECTED_CI_RUN_ATTEMPT" "$GENERATED_AT" \
+            verified-subjects/build-metadata.json
+          node scripts/release/verify-release-files.mjs subjects verified-subjects "$APP_VERSION"
 
-      - name: Upload Release Assets
-        uses: softprops/action-gh-release@v3
+      - name: Upload the exact twelve attestation subjects
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          tag_name: ${{ github.ref_name }}
-          name: FyAgent ${{ github.ref_name }}
-          prerelease: true
-          body: |
-            ## FyAgent ${{ github.ref_name }}
+          name: verified-attestation-subjects
+          path: verified-subjects/*
+          if-no-files-found: error
+          retention-days: 7
 
-            Claude Code 供应商切换工具
+  attest:
+    name: Attest ten installers and two evidence files
+    needs: [eligibility, verify-assets]
+    runs-on: ubuntu-24.04
+    permissions:
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+    env:
+      APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
+    steps:
+      - name: Checkout release contract verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.eligibility.outputs.workflow_sha }}
 
-            ### 下载
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
 
-            - **macOS**: `FyAgent-${{ github.ref_name }}-macOS.dmg`（推荐）或 `FyAgent-${{ github.ref_name }}-macOS.zip`（解压即用）
-            - **Windows (x86_64)**: `FyAgent-${{ github.ref_name }}-Windows.msi`（签名安装版）
-            - **Windows (ARM64)**: `FyAgent-${{ github.ref_name }}-Windows-arm64.msi`（签名安装版）
-            - **Linux (x86_64)**: `FyAgent-${{ github.ref_name }}-Linux-x86_64.AppImage` / `.deb` / `.rpm`
-            - **Linux (ARM64)**: `FyAgent-${{ github.ref_name }}-Linux-arm64.AppImage` / `.deb` / `.rpm`
+      - name: Download verified subjects
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: verified-attestation-subjects
+          path: verified-subjects
 
-            ---
-            macOS 版本已通过 Apple 代码签名和公证，可直接安装使用。
-          files: release-assets/*
+      - name: Recheck the exact twelve subjects
+        run: node scripts/release/verify-release-files.mjs subjects verified-subjects "$APP_VERSION"
+
+      - name: Generate mandatory GitHub artifact attestation
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: verified-subjects/*
+
+      - name: Assemble and verify exact thirteen Release attachments
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          [ -s "$BUNDLE_PATH" ] || {
+            echo 'actions/attest did not return a non-empty Sigstore bundle' >&2
+            exit 1
+          }
+          mkdir release-attachments
+          cp verified-subjects/* release-attachments/
+          cp "$BUNDLE_PATH" release-attachments/artifact-attestation.sigstore.json
+          node scripts/release/verify-release-files.mjs attachments release-attachments "$APP_VERSION"
+
+      - name: Upload exact Release transaction payload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-attachments
+          path: release-attachments/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish stable GitHub Release
+    if: needs.eligibility.outputs.release_mode == 'formal'
+    needs: [eligibility, attest]
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+    env:
+      APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
+      RELEASE_TAG: ${{ needs.eligibility.outputs.release_tag }}
+      SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout immutable formal source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ needs.eligibility.outputs.source_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Download complete Release transaction payload
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-attachments
+          path: release-attachments
+
+      - name: Fail closed before the one-time publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/tags/v0.3.0 ]
+          [ "$GITHUB_WORKFLOW_REF" = 'NongHua123/fyagent/.github/workflows/release.yml@refs/tags/v0.3.0' ]
+          [ "$GITHUB_WORKFLOW_SHA" = "$SOURCE_SHA" ]
+          [ "$RELEASE_TAG" = v0.3.0 ] && [ "$APP_VERSION" = 0.3.0 ]
+          [ "$(git rev-parse HEAD)" = "$SOURCE_SHA" ]
+          [ "$(git rev-parse 'refs/tags/v0.3.0^{commit}')" = "$SOURCE_SHA" ]
+          node scripts/release/verify-release-files.mjs attachments release-attachments "$APP_VERSION"
+          [ -s docs/release-notes/v0.3.0-en.md ] || {
+            echo 'English v0.3.0 Release Notes are missing' >&2
+            exit 1
+          }
+
+      - name: Stage, re-download, and publish one stable Release transaction
+        shell: bash
+        run: |
+          set -euo pipefail
+          repository='NongHua123/fyagent'
+          api_root='https://api.github.com'
+          uploads_root='https://uploads.github.com'
+          transaction_root="$(mktemp -d "$RUNNER_TEMP/fyagent-release-transaction.XXXXXX")"
+          draft_created=false
+          publish_attempted=false
+          draft_id=''
+          draft_url=''
+          report_failure() {
+            status=$?
+            trap - EXIT
+            if [ "$status" -ne 0 ] && [ "$draft_created" = true ]; then
+              observed_state='unknown'
+              observed_json="$transaction_root/failure-release-state.json"
+              if observed_status="$(curl --silent --show-error \
+                --output "$observed_json" --write-out '%{http_code}' \
+                "${api_headers[@]}" "$api_root/repos/$repository/releases/$draft_id")" &&
+                [ "$observed_status" = 200 ] &&
+                jq -e --argjson id "$draft_id" --arg tag "$RELEASE_TAG" \
+                  '.id == $id and .tag_name == $tag and (.draft | type) == "boolean"' \
+                  "$observed_json" >/dev/null; then
+                observed_state="$(jq -r 'if .draft then "draft" else "published" end' "$observed_json")"
+              fi
+              echo "Release transaction failed after creating id=$draft_id url=$draft_url; publish_attempted=$publish_attempted; observed_state=$observed_state" >&2
+              case "$observed_state" in
+                draft)
+                  echo 'The API re-read shows that the Release remains a draft. The workflow leaves it untouched; inspect it and make a separate manual cleanup decision before retrying.' >&2
+                  ;;
+                published)
+                  echo 'The API re-read shows that the Release is published. Do not retry, patch, delete, or move the tag; perform an independent release verification and decision.' >&2
+                  ;;
+                *)
+                  echo 'The publish outcome is unknown. Do not retry, patch, delete, or move the tag until an operator has inspected the Release by ID.' >&2
+                  ;;
+              esac
+            fi
+            rm -rf "$transaction_root"
+            exit "$status"
+          }
+          trap report_failure EXIT
+
+          api_headers=(
+            -H "Authorization: Bearer $GH_TOKEN"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+          existing_json="$transaction_root/existing.json"
+          printf '[]\n' > "$existing_json"
+          page=1
+          while :; do
+            page_json="$transaction_root/existing-page-$page.json"
+            page_headers="$transaction_root/existing-page-$page.headers"
+            page_status="$(curl --silent --show-error \
+              --dump-header "$page_headers" \
+              --output "$page_json" --write-out '%{http_code}' \
+              "${api_headers[@]}" \
+              "$api_root/repos/$repository/releases?per_page=100&page=$page")"
+            if [ "$page_status" != 200 ] || ! jq -e 'type == "array"' "$page_json" >/dev/null; then
+              echo "Cannot enumerate Release inventory page $page (HTTP $page_status)" >&2
+              exit 1
+            fi
+            jq -s '.[0] + .[1]' "$existing_json" "$page_json" \
+              > "$transaction_root/existing-next.json"
+            mv "$transaction_root/existing-next.json" "$existing_json"
+            if ! grep -Eqi '^link:.*rel="next"' "$page_headers"; then
+              break
+            fi
+            page=$((page + 1))
+            [ "$page" -le 1000 ] || {
+              echo 'Release inventory pagination exceeded the fail-closed safety bound' >&2
+              exit 1
+            }
+          done
+          [ "$(jq --arg tag "$RELEASE_TAG" '[.[] | select(.tag_name == $tag)] | length' "$existing_json")" -eq 0 ] || {
+            echo "A draft or published Release already exists for $RELEASE_TAG; refusing to update, replace, or delete it" >&2
+            exit 1
+          }
+
+          transaction_marker="fyagent-release-transaction:run=$GITHUB_RUN_ID;attempt=$GITHUB_RUN_ATTEMPT;source=$SOURCE_SHA"
+          notes="$(cat docs/release-notes/v0.3.0-en.md)"
+          draft_body="${notes}"$'\n\n'"<!-- ${transaction_marker} -->"
+          jq -n \
+            --arg tag "$RELEASE_TAG" \
+            --arg source "$SOURCE_SHA" \
+            --arg name "FyAgent $RELEASE_TAG" \
+            --arg body "$draft_body" \
+            '{tag_name:$tag,target_commitish:$source,name:$name,body:$body,draft:true,prerelease:false,generate_release_notes:false}' \
+            > "$transaction_root/create.json"
+          create_json="$transaction_root/created.json"
+          create_status="$(curl --silent --show-error \
+            --request POST --output "$create_json" --write-out '%{http_code}' \
+            "${api_headers[@]}" -H 'Content-Type: application/json' \
+            --data-binary @"$transaction_root/create.json" \
+            "$api_root/repos/$repository/releases")"
+          [ "$create_status" = 201 ] || {
+            echo "Draft creation failed with HTTP $create_status" >&2
+            exit 1
+          }
+          draft_id="$(jq -r '.id' "$create_json")"
+          draft_url="$(jq -r '.html_url' "$create_json")"
+          [[ "$draft_id" =~ ^[1-9][0-9]*$ ]]
+          draft_created=true
+          jq -e \
+            --argjson id "$draft_id" \
+            --arg tag "$RELEASE_TAG" \
+            --arg marker "$transaction_marker" \
+            --arg uploads "$uploads_root/repos/$repository/releases/$draft_id/assets{?name,label}" \
+            '.id == $id and .draft == true and .prerelease == false and
+             .tag_name == $tag and
+             (.body | contains($marker)) and .upload_url == $uploads and
+             (.assets | length) == 0' \
+            "$create_json" >/dev/null
+
+          upload_base="$uploads_root/repos/$repository/releases/$draft_id/assets"
+          while IFS= read -r asset_path; do
+            asset_name="$(basename "$asset_path")"
+            [[ "$asset_name" =~ ^[A-Za-z0-9._-]+$ ]]
+            upload_json="$transaction_root/upload-$asset_name.json"
+            upload_status="$(curl --silent --show-error \
+              --request POST --output "$upload_json" --write-out '%{http_code}' \
+              "${api_headers[@]}" -H 'Content-Type: application/octet-stream' \
+              --data-binary @"$asset_path" \
+              "$upload_base?name=$asset_name")"
+            [ "$upload_status" = 201 ] || {
+              echo "Upload failed for $asset_name with HTTP $upload_status" >&2
+              exit 1
+            }
+            jq -e \
+              --arg name "$asset_name" \
+              --argjson size "$(stat -c '%s' "$asset_path")" \
+              '.name == $name and .state == "uploaded" and .size == $size and (.id | type) == "number"' \
+              "$upload_json" >/dev/null
+          done < <(find release-attachments -maxdepth 1 -type f -print | LC_ALL=C sort)
+
+          assets_json="$transaction_root/assets.json"
+          assets_status="$(curl --silent --show-error \
+            --output "$assets_json" --write-out '%{http_code}' \
+            "${api_headers[@]}" \
+            "$api_root/repos/$repository/releases/$draft_id/assets?per_page=100")"
+          [ "$assets_status" = 200 ]
+          jq -e '
+            length == 13 and
+            (map(.id) | unique | length) == 13 and
+            (map(.name) | unique | length) == 13 and
+            all(.state == "uploaded" and .size > 0)
+          ' "$assets_json" >/dev/null
+
+          remote_root="$transaction_root/remote-release-attachments"
+          mkdir "$remote_root"
+          while IFS=$'\t' read -r asset_id asset_name; do
+            [[ "$asset_id" =~ ^[1-9][0-9]*$ ]]
+            [[ "$asset_name" =~ ^[A-Za-z0-9._-]+$ ]]
+            download_status="$(curl --silent --show-error --location \
+              --output "$remote_root/$asset_name" --write-out '%{http_code}' \
+              "${api_headers[@]}" -H 'Accept: application/octet-stream' \
+              "$api_root/repos/$repository/releases/assets/$asset_id")"
+            [ "$download_status" = 200 ] || {
+              echo "Re-download failed for $asset_name with HTTP $download_status" >&2
+              exit 1
+            }
+            local_digest="$(sha256sum "release-attachments/$asset_name" | cut -d' ' -f1)"
+            remote_digest="$(sha256sum "$remote_root/$asset_name" | cut -d' ' -f1)"
+            [ "$local_digest" = "$remote_digest" ] || {
+              echo "Re-downloaded bytes differ for $asset_name" >&2
+              exit 1
+            }
+          done < <(jq -r '.[] | [.id, .name] | @tsv' "$assets_json")
+          node scripts/release/verify-release-files.mjs attachments "$remote_root" "$APP_VERSION"
+
+          prepublish_json="$transaction_root/prepublish.json"
+          prepublish_status="$(curl --silent --show-error \
+            --output "$prepublish_json" --write-out '%{http_code}' \
+            "${api_headers[@]}" "$api_root/repos/$repository/releases/$draft_id")"
+          [ "$prepublish_status" = 200 ] || {
+            echo "Cannot re-read the private draft immediately before publish (HTTP $prepublish_status)" >&2
+            exit 1
+          }
+          jq -e \
+            --argjson id "$draft_id" \
+            --arg tag "$RELEASE_TAG" \
+            --arg marker "$transaction_marker" \
+            --slurpfile expected "$assets_json" \
+            '.id == $id and .draft == true and .prerelease == false and
+             .tag_name == $tag and (.body | contains($marker)) and
+             ((.assets | map({id,name,size,state}) | sort_by(.id)) ==
+              ($expected[0] | map({id,name,size,state}) | sort_by(.id)))' \
+            "$prepublish_json" >/dev/null
+
+          jq -n \
+            --arg name "FyAgent $RELEASE_TAG" \
+            --arg body "$notes" \
+            '{name:$name,body:$body,draft:false,prerelease:false,make_latest:"true"}' \
+            > "$transaction_root/publish.json"
+          published_json="$transaction_root/published.json"
+          publish_attempted=true
+          publish_status="$(curl --silent --show-error \
+            --request PATCH --output "$published_json" --write-out '%{http_code}' \
+            "${api_headers[@]}" -H 'Content-Type: application/json' \
+            --data-binary @"$transaction_root/publish.json" \
+            "$api_root/repos/$repository/releases/$draft_id")"
+          [ "$publish_status" = 200 ] || {
+            echo "Final publish failed with HTTP $publish_status" >&2
+            exit 1
+          }
+          jq -e \
+            --argjson id "$draft_id" \
+            --arg tag "$RELEASE_TAG" \
+            --arg body "$notes" \
+            '.id == $id and .draft == false and .prerelease == false and
+             .tag_name == $tag and
+             .name == ("FyAgent " + $tag) and .body == $body and
+             (.published_at | type) == "string" and (.assets | length) == 13' \
+            "$published_json" >/dev/null
+
+          published_confirm_json="$transaction_root/published-confirmed.json"
+          published_confirm_status="$(curl --silent --show-error \
+            --output "$published_confirm_json" --write-out '%{http_code}' \
+            "${api_headers[@]}" "$api_root/repos/$repository/releases/$draft_id")"
+          [ "$published_confirm_status" = 200 ] || {
+            echo "Cannot confirm the published Release by ID (HTTP $published_confirm_status)" >&2
+            exit 1
+          }
+          jq -e \
+            --argjson id "$draft_id" \
+            --arg tag "$RELEASE_TAG" \
+            --arg body "$notes" \
+            --slurpfile expected "$assets_json" \
+            '.id == $id and .draft == false and .prerelease == false and
+             .tag_name == $tag and .name == ("FyAgent " + $tag) and
+             .body == $body and (.published_at | type) == "string" and
+             ((.assets | map({id,name,size,state}) | sort_by(.id)) ==
+              ($expected[0] | map({id,name,size,state}) | sort_by(.id)))' \
+            "$published_confirm_json" >/dev/null
+
+          latest_json="$transaction_root/latest.json"
+          latest_status="$(curl --silent --show-error \
+            --output "$latest_json" --write-out '%{http_code}' \
+            "${api_headers[@]}" "$api_root/repos/$repository/releases/latest")"
+          [ "$latest_status" = 200 ]
+          jq -e --argjson id "$draft_id" '.id == $id and .draft == false and .prerelease == false' \
+            "$latest_json" >/dev/null
+          draft_created=false
+          publish_attempted=false

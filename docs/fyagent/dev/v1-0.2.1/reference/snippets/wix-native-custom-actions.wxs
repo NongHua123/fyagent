@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Concept fragment only. Merge with the project's WiX v3 template and the
+  customized WixUI_InstallDir event chain described in document 05.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <Property Id="INSTALLDIR" Secure="yes" />
+    <Property Id="FYAGENT_INSTALLDIR_VALID" Secure="yes" />
+    <Property Id="FYAGENT_INSTALLDIR_ERROR_CODE" Secure="yes" />
+    <Property Id="FYAGENT_INSTALLDIR_ERROR_MESSAGE" Secure="yes" />
+    <Property Id="FYAGENT_INSTALLDIR_NORMALIZED" Secure="yes" />
+
+    <Binary
+      Id="FyAgentInstallerActions"
+      SourceFile="$(env.FYAGENT_INSTALLER_ACTIONS_DLL)" />
+
+    <CustomAction
+      Id="ValidateFyAgentInstallDirUi"
+      BinaryKey="FyAgentInstallerActions"
+      DllEntry="ValidateFyAgentInstallDirUi"
+      Execute="immediate"
+      Return="check" />
+
+    <CustomAction
+      Id="ValidateFyAgentInstallDirExecute"
+      BinaryKey="FyAgentInstallerActions"
+      DllEntry="ValidateFyAgentInstallDirExecute"
+      Execute="immediate"
+      Return="check" />
+
+    <CustomAction
+      Id="AbortUnsafeFyAgentInstallDir"
+      Error="[FYAGENT_INSTALLDIR_ERROR_MESSAGE]" />
+  </Fragment>
+
+  <Fragment>
+    <InstallExecuteSequence>
+      <Custom
+        Action="ValidateFyAgentInstallDirExecute"
+        After="CostFinalize"><![CDATA[
+          NOT (REMOVE~="ALL")
+        ]]></Custom>
+
+      <Custom
+        Action="AbortUnsafeFyAgentInstallDir"
+        After="ValidateFyAgentInstallDirExecute"><![CDATA[
+          NOT (REMOVE~="ALL")
+          AND FYAGENT_INSTALLDIR_VALID <> "1"
+        ]]></Custom>
+    </InstallExecuteSequence>
+  </Fragment>
+</Wix>

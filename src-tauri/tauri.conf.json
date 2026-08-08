@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "FyAgent",
-  "version": "0.2.0",
   "identifier": "com.fyagent.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -53,7 +52,8 @@
     ],
     "windows": {
       "wix": {
-        "template": "wix/per-machine-main.wxs"
+        "template": "wix/per-machine-main.wxs",
+        "fragmentPaths": ["wix/fyagent-install-dir-ui.wxs"]
       }
     },
     "macOS": {
