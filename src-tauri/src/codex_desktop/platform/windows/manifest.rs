@@ -800,6 +800,7 @@ mod tests {
     use super::*;
 
     const PUBLISHER: &str = "CN=fixture publisher";
+    type Zip64BoundaryMutation = (&'static str, &'static str, Box<dyn Fn(&mut [u8])>);
 
     fn manifest(architecture: &str, identity: &str, publisher: &str, inner: &str) -> String {
         format!(
@@ -1061,7 +1062,7 @@ mod tests {
         let central_directory_offset =
             usize::try_from(read_zip_u64(&valid, record_offset + 48).unwrap()).unwrap();
 
-        let mutations: [(&str, &str, Box<dyn Fn(&mut [u8])>); 11] = [
+        let mutations: [Zip64BoundaryMutation; 11] = [
             (
                 "missing-locator",
                 "MSIX ZIP64 end locator is missing",
