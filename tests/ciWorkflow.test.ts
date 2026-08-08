@@ -13,6 +13,7 @@ const REQUIRED_JOBS = [
   "desktop-acceptance-contract",
   "backend-linux",
   "backend-windows",
+  "windows-msi-query",
   "backend-macos",
 ] as const;
 
@@ -65,7 +66,7 @@ function actionSteps(action: string): string[] {
 }
 
 describe("automatic CI workflow", () => {
-  it("keeps exactly six unconditional dependencies behind one stable gate", () => {
+  it("keeps exactly seven unconditional dependencies behind one stable gate", () => {
     const jobsSection = source.slice(source.indexOf("\njobs:\n"));
     const jobIds = [...jobsSection.matchAll(/^  ([a-z][a-z0-9-]*):\s*$/gm)].map(
       (match) => match[1],
@@ -101,6 +102,9 @@ describe("automatic CI workflow", () => {
     );
     expect(jobBlock("backend-linux")).toContain("runs-on: ubuntu-24.04");
     expect(jobBlock("backend-windows")).toContain("runs-on: windows-2022");
+    expect(jobBlock("windows-msi-query")).toContain(
+      "runs-on: ${{ matrix.runner }}",
+    );
     expect(jobBlock("backend-macos")).toContain("runs-on: macos-15");
   });
 
@@ -127,7 +131,7 @@ describe("automatic CI workflow", () => {
     }
 
     const checkoutSteps = actionSteps("actions/checkout");
-    expect(checkoutSteps).toHaveLength(7);
+    expect(checkoutSteps).toHaveLength(8);
     for (const step of checkoutSteps) {
       expect(step).toContain("persist-credentials: false");
     }
@@ -244,6 +248,28 @@ describe("automatic CI workflow", () => {
     );
     expect(jobBlock("backend-linux")).toContain(
       "cargo fmt --all --check --manifest-path src-tauri/Cargo.toml",
+    );
+  });
+
+  it("runs the lightweight query fixture on native Windows x64 and ARM64", () => {
+    const block = jobBlock("windows-msi-query");
+    expect(block).toContain("timeout-minutes: 15");
+    expect(block).toContain("fail-fast: false");
+    expect(block).toContain(
+      "runner: windows-2022\n            architecture: X64",
+    );
+    expect(block).toContain(
+      "runner: windows-11-arm\n            architecture: Arm64",
+    );
+    expect(block).toContain("shell: pwsh");
+    expect(block).toContain("./tests/windowsInstallerQuery.integration.ps1");
+    expect(block).toContain(
+      "-ExpectedArchitecture '${{ matrix.architecture }}'",
+    );
+    expect(block.match(/^      - name:/gm)).toHaveLength(2);
+    expect(block.match(/^        uses:/gm)).toHaveLength(1);
+    expect(block).not.toMatch(
+      /setup-(?:node|rust)|\b(?:node|npm|npx|pnpm|yarn|bun|cargo|rustc)\b|tauri|src-tauri|frontend|package|bundle/i,
     );
   });
 

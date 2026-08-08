@@ -207,8 +207,15 @@ cleared before every classification.
   product, version, tag, sourceSha, publishedAt, and per-asset
   platform/architecture/format/name/sizeBytes/sha256/url.
 - `build-metadata.json` independently binds the five target groups, actual
-  runner images/toolchains, reviewed Linux child digests, repository ID,
-  Release workflow ref/run, and selected Required CI path/run/attempt.
+  toolchains, repository ID, Release workflow ref/run, and selected Required CI
+  path/run/attempt. Each target separates the requested runner label from the
+  documented runner-context OS/architecture. Windows/macOS use
+  `container: null`; Linux binds the fully qualified configured Ubuntu 22.04
+  child reference/manifest digest and the emission-time observed
+  `/etc/os-release` ID/version plus `uname -m`. Both the per-platform and
+  aggregate schemas remain unpublished v1 and are finalized in place; discovery
+  of any public v1 consumer before publication requires an atomic move of both
+  schemas to v2, with no compatibility reader or synthesized defaults.
 - FyAgent v0.3.0 has no signing, timestamping, notarization, signing secrets, or
   Release environment. Windows EXE/MSI `NotSigned` and absence of macOS
   Developer ID/Team/notarization tickets are mandatory negative gates. A local
@@ -317,6 +324,9 @@ cleared before every classification.
   workflow_dispatch for the exact trusted main/workflow SHA produces all ten unsigned
   installers, two evidence JSON files, and attestation evidence as workflow
   artifacts with `requiredCi: null`, but never creates or updates a GitHub Release.
+- Base: platform metadata freezes the reviewed runner-context map, including
+  `macos-15` as `macOS` / `ARM64`; the Universal macOS output architecture is a
+  separate artifact fact and never permits an `X64` source-runner record.
 - Bad: Add a version property back to package.json, use GITHUB_REF_NAME as the
   platform version, trim v from a tag in a platform job, or hand-edit a
   historical document as part of a bump.

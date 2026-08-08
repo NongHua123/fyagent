@@ -6,6 +6,8 @@ const CI_SAFE_TESTS = Object.freeze([
   "tests/releaseWorkflow.test.ts",
   "tests/downloadManifest.test.ts",
   "tests/releaseAssets.test.ts",
+  "tests/writePlatformMetadata.test.ts",
+  "tests/windowsInstallerQueryContract.test.ts",
   "tests/githubWorkflowTriggers.test.ts",
   "tests/ciWorkflow.test.ts",
   "tests/requiredCiGate.test.ts",

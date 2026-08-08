@@ -6,6 +6,8 @@ export type ReleaseTargetGroup =
   | "windows-arm64"
   | "linux-x64"
   | "linux-arm64";
+export type GitHubRunnerOS = "Linux" | "Windows" | "macOS";
+export type GitHubRunnerArch = "X86" | "X64" | "ARM" | "ARM64";
 
 export interface InstallerRule {
   readonly suffix: string;
@@ -18,9 +20,16 @@ export interface ExpectedTarget {
   readonly targetGroup: ReleaseTargetGroup;
   readonly platform: ReleasePlatform;
   readonly architecture: ReleaseArchitecture;
-  readonly runnerLabel: string;
-  readonly expectedRunnerArch: "X64" | "ARM64" | null;
-  readonly containerDigest: string | null;
+  readonly requestedRunnerLabel: string;
+  readonly expectedRunnerOs: GitHubRunnerOS;
+  readonly expectedRunnerArch: GitHubRunnerArch;
+  readonly expectedContainer: {
+    readonly imageReference: string;
+    readonly manifestDigest: string;
+    readonly osReleaseId: "ubuntu";
+    readonly osReleaseVersionId: "22.04";
+    readonly unameMachine: "x86_64" | "aarch64";
+  } | null;
 }
 
 export interface ReleaseIdentity {
@@ -61,24 +70,41 @@ export interface DownloadManifest {
   assets: DownloadManifestAsset[];
 }
 
-export interface PlatformBuildMetadata {
+export interface PlatformBuildTargetMetadata {
   schema: "fyagent-platform-build/v1";
   targetGroup: ReleaseTargetGroup;
   platform: ReleasePlatform;
   architecture: ReleaseArchitecture;
-  runnerLabel: string;
   runner: {
-    runnerOs: string;
-    runnerArch: string;
-    imageOs: string;
-    imageVersion: string;
+    requestedLabel: string;
+    context: {
+      os: GitHubRunnerOS;
+      arch: GitHubRunnerArch;
+    };
   };
-  containerDigest: string | null;
+  container: {
+    configuredImage: {
+      reference: string;
+      manifestDigest: string;
+    };
+    observed: {
+      osRelease: {
+        id: string;
+        versionId: string;
+      };
+      unameMachine: string;
+    };
+  } | null;
   toolchain: {
     node: string;
     pnpm: string;
     rustc: string;
   };
+}
+
+export interface PlatformBuildMetadataRecord
+  extends PlatformBuildTargetMetadata {
+  identity: ReleaseIdentity;
 }
 
 export interface BuildMetadata {
@@ -108,7 +134,7 @@ export interface BuildMetadata {
     conclusion: "success";
   } | null;
   generatedAt: string;
-  targets: PlatformBuildMetadata[];
+  targets: PlatformBuildTargetMetadata[];
 }
 
 export const PRODUCT_NAME: "FyAgent";
@@ -122,6 +148,7 @@ export const DOWNLOAD_MANIFEST_NAME: "download-manifest.json";
 export const BUILD_METADATA_NAME: "build-metadata.json";
 export const ATTESTATION_BUNDLE_NAME: "artifact-attestation.sigstore.json";
 
+export const GITHUB_RUNNER_ARCHITECTURES: readonly GitHubRunnerArch[];
 export const INSTALLER_RULES: readonly InstallerRule[];
 export const EXPECTED_TARGETS: readonly ExpectedTarget[];
 export const EXPECTED_INSTALLERS_BY_TARGET: Readonly<

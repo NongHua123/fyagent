@@ -112,6 +112,27 @@ const WINDOWS_UNSIGNED_VERIFIER = path.resolve(
   "release",
   "verify-windows-unsigned.ps1",
 );
+const PLATFORM_METADATA_WRITER = path.resolve(
+  __dirname,
+  "..",
+  "scripts",
+  "release",
+  "write-platform-metadata.mjs",
+);
+const RELEASE_CONTRACT = path.resolve(
+  __dirname,
+  "..",
+  "scripts",
+  "release",
+  "release-contract.mjs",
+);
+const RELEASE_CONTRACT_TYPES = path.resolve(
+  __dirname,
+  "..",
+  "scripts",
+  "release",
+  "release-contract.d.mts",
+);
 const AUTO_LAUNCH = path.resolve(
   __dirname,
   "..",
@@ -164,6 +185,12 @@ describe("FyAgent release workflow", () => {
     WINDOWS_UNSIGNED_VERIFIER,
     "utf8",
   );
+  const platformMetadataWriter = fs.readFileSync(
+    PLATFORM_METADATA_WRITER,
+    "utf8",
+  );
+  const releaseContract = fs.readFileSync(RELEASE_CONTRACT, "utf8");
+  const releaseContractTypes = fs.readFileSync(RELEASE_CONTRACT_TYPES, "utf8");
 
   it("supports only an immutable unsigned preflight and the exact v0.3.0 tag", () => {
     const trigger = source.slice(0, source.indexOf("\npermissions:"));
@@ -348,7 +375,10 @@ describe("FyAgent release workflow", () => {
   });
 
   it("uses native Linux hosts with reviewed per-architecture Ubuntu 22.04 child digests", () => {
-    expect(source).toContain("ubuntu:22.04@${{ matrix.container_digest }}");
+    expect(source).toContain(
+      "image: ${{ matrix.container_image }}@${{ matrix.container_digest }}",
+    );
+    expect(source).toContain("docker.io/library/ubuntu:22.04");
     expect(source).toContain(
       "sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e",
     );
@@ -378,6 +408,114 @@ describe("FyAgent release workflow", () => {
     expect(packageStep).not.toContain("privileged:");
     expect(source).not.toContain("SYS_ADMIN");
     expect(source).not.toContain("/dev/fuse");
+  });
+
+  it("records source-explicit runner and container metadata", () => {
+    const windowsMetadataStep = namedStepBlock(
+      workflowJobBlock(source, "build-windows", "build-linux"),
+      "Normalize exact Windows installer and metadata",
+    );
+    const linuxJob = workflowJobBlock(source, "build-linux", "build-macos");
+    const linuxMetadataStep = namedStepBlock(
+      linuxJob,
+      "Record Linux build metadata",
+    );
+    const macosMetadataStep = namedStepBlock(
+      workflowJobBlock(source, "build-macos", "verify-assets"),
+      "Record macOS build metadata",
+    );
+    const metadataSteps = [
+      windowsMetadataStep,
+      linuxMetadataStep,
+      macosMetadataStep,
+    ];
+    for (const step of metadataSteps) {
+      expectExactLine(step, "          ACTUAL_RUNNER_OS: ${{ runner.os }}");
+      expectExactLine(step, "          ACTUAL_RUNNER_ARCH: ${{ runner.arch }}");
+      expect(step).toContain("write-platform-metadata.mjs");
+    }
+    expectExactLine(
+      windowsMetadataStep,
+      "          REQUESTED_RUNNER_LABEL: ${{ matrix.runner }}",
+    );
+    expectExactLine(
+      linuxMetadataStep,
+      "          REQUESTED_RUNNER_LABEL: ${{ matrix.runner }}",
+    );
+    expectExactLine(
+      macosMetadataStep,
+      "          REQUESTED_RUNNER_LABEL: macos-15",
+    );
+    expect(source.match(/REQUESTED_RUNNER_LABEL:/g)).toHaveLength(3);
+    expect(
+      source.match(/ACTUAL_RUNNER_OS: \$\{\{ runner\.os \}\}/g),
+    ).toHaveLength(3);
+    expect(
+      source.match(/ACTUAL_RUNNER_ARCH: \$\{\{ runner\.arch \}\}/g),
+    ).toHaveLength(3);
+    expectExactLine(
+      linuxJob,
+      "      image: ${{ matrix.container_image }}@${{ matrix.container_digest }}",
+    );
+    expect(
+      linuxJob.match(/container_image: docker\.io\/library\/ubuntu:22\.04/g),
+    ).toHaveLength(2);
+    expectExactLine(linuxMetadataStep, "        shell: bash");
+    expectExactLine(linuxMetadataStep, "          set -euo pipefail");
+    expectExactLine(linuxMetadataStep, "          source /etc/os-release");
+    expect(linuxMetadataStep).toContain('[ "${ACTUAL_RUNNER_OS}" = Linux ]');
+    expect(linuxMetadataStep).toContain(
+      "[ \"${ACTUAL_RUNNER_ARCH}\" = '${{ matrix.expected_runner_arch }}' ]",
+    );
+    expect(linuxMetadataStep).toContain('actual_uname_machine="$(uname -m)"');
+    expect(linuxMetadataStep).toContain(
+      "CONTAINER_IMAGE_REFERENCE: ${{ matrix.container_image }}@${{ matrix.container_digest }}",
+    );
+    expect(linuxMetadataStep).toContain(
+      "CONTAINER_MANIFEST_DIGEST: ${{ matrix.container_digest }}",
+    );
+    for (const variable of [
+      "CONTAINER_IMAGE_REFERENCE",
+      "CONTAINER_MANIFEST_DIGEST",
+      "ACTUAL_CONTAINER_OS_ID",
+      "ACTUAL_CONTAINER_OS_VERSION_ID",
+      "ACTUAL_CONTAINER_UNAME_MACHINE",
+    ]) {
+      expect(linuxMetadataStep).toContain(variable);
+      expect(windowsMetadataStep).not.toContain(variable);
+      expect(macosMetadataStep).not.toContain(variable);
+    }
+    expect(linuxMetadataStep.indexOf("source /etc/os-release")).toBeLessThan(
+      linuxMetadataStep.indexOf("write-platform-metadata.mjs"),
+    );
+    expect(linuxMetadataStep.indexOf("$(uname -m)")).toBeLessThan(
+      linuxMetadataStep.indexOf("write-platform-metadata.mjs"),
+    );
+    expect(platformMetadataWriter).toContain(
+      'const requestedRunnerLabel = required("REQUESTED_RUNNER_LABEL")',
+    );
+    expect(platformMetadataWriter).toContain(
+      'const runnerOs = required("ACTUAL_RUNNER_OS")',
+    );
+    expect(platformMetadataWriter).toContain(
+      'const runnerArch = required("ACTUAL_RUNNER_ARCH")',
+    );
+    for (const ambientVariable of [
+      '"RUNNER_OS"',
+      '"RUNNER_ARCH"',
+      '"ImageOS"',
+      '"ImageVersion"',
+    ]) {
+      expect(platformMetadataWriter).not.toContain(ambientVariable);
+    }
+    for (const retiredField of ["imageOs", "imageVersion"]) {
+      expect(platformMetadataWriter).not.toContain(retiredField);
+      expect(releaseContract).not.toContain(retiredField);
+      expect(releaseContractTypes).not.toContain(retiredField);
+    }
+    expect(platformMetadataWriter).not.toContain("verified");
+    expect(platformMetadataWriter).not.toContain("actualImageDigest");
+    expect(platformMetadataWriter).not.toContain("hostImageVersion");
   });
 
   it("preserves Windows elevation, helper, MSI table, payload, and unsigned gates", () => {
@@ -444,7 +582,9 @@ describe("FyAgent release workflow", () => {
     expect(windowsManifestVerifier).toContain("requireAdministrator");
     expect(windowsManifestVerifier).toContain("0xAA64");
     expect(windowsManifestVerifier).toContain("0x8664");
-    expect(windowsMsiStructureVerifier).toContain("WindowsInstaller.Installer");
+    expect(windowsMsiStructureVerifier).toContain(
+      "Import-Module -Name $queryModule -Force -ErrorAction Stop",
+    );
     expect(windowsMsiStructureVerifier).toContain(
       "ValidateFyAgentInstallDirUi",
     );
@@ -471,9 +611,7 @@ describe("FyAgent release workflow", () => {
       "context-redirected ProgramMenuFolder",
     );
     expect(windowsMsiStructureVerifier).toContain("MSI sequence order failed");
-    expect(windowsMsiStructureVerifier).toContain(
-      "SELECT ``Data`` FROM ``_Streams``",
-    );
+    expect(windowsMsiStructureVerifier).toContain("Export-MsiBoundedStream");
     expect(windowsMsiStructureVerifier).toContain(
       "Start-Process -FilePath $expandCommand.Source",
     );
@@ -731,7 +869,9 @@ describe("FyAgent Windows elevation and installer boundary", () => {
       JSON.parse(fs.readFileSync(TAURI_CONFIG, "utf8")).bundle.windows.wix
         .fragmentPaths,
     ).toEqual(["wix/fyagent-install-dir-ui.wxs"]);
-    expect(windowsMsiStructureVerifier).toContain("WindowsInstaller.Installer");
+    expect(windowsMsiStructureVerifier).toContain(
+      "Open-MsiQuerySession -Path $resolvedMsi",
+    );
   });
 
   it("uses architecture-matched Type 1 validation and fail-closed uninstall classification", () => {
@@ -1052,40 +1192,9 @@ describe("FyAgent Windows elevation and installer boundary", () => {
     expect(windowsMsiStructureVerifier).toContain(
       "MSI product Start Menu directory cleanup row drifted",
     );
-    expect(windowsMsiStructureVerifier).toContain("$maxDirectoryRows = 4096");
-    expect(windowsMsiStructureVerifier).toContain("$maxComponentRows = 32768");
-    expect(windowsMsiStructureVerifier).toContain(
-      "$maxMsiFieldUtf16Units = 1024",
+    expect(windowsMsiStructureVerifier).not.toContain(
+      "WindowsInstaller.Installer",
     );
-    expect(windowsMsiStructureVerifier).toContain("-MaxRows $maxDirectoryRows");
-    expect(windowsMsiStructureVerifier).toContain("-MaxRows $maxComponentRows");
-    expect(windowsMsiStructureVerifier).toContain(
-      "$value.Length -gt $maxMsiFieldUtf16Units",
-    );
-    expect(windowsMsiStructureVerifier).toContain(
-      "[void]$rows.Add([PSCustomObject]@{ Values = $values })",
-    );
-    expect(windowsMsiStructureVerifier).toContain("return $rows.ToArray()");
-    expect(
-      windowsMsiStructureVerifier.match(/Release-ComObject \$record/g),
-    ).toHaveLength(2);
-    expect(
-      windowsMsiStructureVerifier.match(/Release-ComObject \$view/g),
-    ).toHaveLength(1);
-    expect(windowsMsiStructureVerifier).toContain(
-      "FinalReleaseComObject($Value)",
-    );
-    expect(
-      windowsMsiStructureVerifier.match(/\$record\.StringData\(/g),
-    ).toHaveLength(1);
-    expect(windowsMsiStructureVerifier).not.toContain(".IntegerData(");
-    expect(
-      windowsMsiStructureVerifier.match(/\[void\]\$view\.Execute\(\)/g),
-    ).toHaveLength(2);
-    expect(
-      windowsMsiStructureVerifier.match(/\[void\]\$view\.Close\(\)/g),
-    ).toHaveLength(2);
-    expect(windowsMsiStructureVerifier).not.toMatch(/^\s*\$view\.Execute\(\)/m);
     expect(
       windowsMsiVerifier.match(/\[void\]\$(?:view|binaryView)\.Execute\(\)/g),
     ).toHaveLength(2);

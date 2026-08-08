@@ -14,7 +14,17 @@ Formal source eligibility is workflow-enforced rather than administrator-enforce
 
 ## Failure Policy
 
-The task is fail-closed for runner/tool identity, action pins, minimal permissions, Required dependency results, repository/source eligibility, five native target groups, exact ten installers, manifest, metadata, attestations, and one-time publish. ARM preview runner unavailability may be retried but never replaced by cross-build or partial release.
+The task is fail-closed for runner/tool identity, action pins, minimal permissions, Required dependency results, repository/source eligibility, five native target groups, exact ten installers, manifest, metadata, attestations, and one-time publish. ARM preview runner unavailability may be retried only as a separately authorized whole run and is never replaced by cross-build or partial release.
+
+After repeated full-preflight failures, the full Release matrix is not a low-level
+debugging loop. Windows Installer query behavior is exercised by a generated
+temporary MSI fixture on native Windows x64 and ARM64 in Required CI. Platform
+metadata is produced by a directly tested, exact-key, source-explicit writer:
+requested runner routing, documented runner context, configured OCI evidence,
+and in-container observations remain distinct. Compatibility fallbacks for an
+unknown COM projection failure or undocumented hosted-image variables are not
+accepted. A new full preflight is allowed only after the implementation PR and
+exact-main Required CI both pass these shifted-left gates.
 
 An authorized Actions trigger remains owned by the initiating primary flow.
 That flow performs one blocking whole-run wait until `completed`, then reads the

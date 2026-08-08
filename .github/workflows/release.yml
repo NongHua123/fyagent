@@ -543,7 +543,9 @@ jobs:
           TARGET_GROUP: ${{ matrix.target_group }}
           TARGET_PLATFORM: windows
           TARGET_ARCHITECTURE: ${{ matrix.architecture }}
-          RUNNER_LABEL: ${{ matrix.runner }}
+          REQUESTED_RUNNER_LABEL: ${{ matrix.runner }}
+          ACTUAL_RUNNER_OS: ${{ runner.os }}
+          ACTUAL_RUNNER_ARCH: ${{ runner.arch }}
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force release-assets, platform-metadata | Out-Null
@@ -572,7 +574,7 @@ jobs:
     needs: eligibility
     runs-on: ${{ matrix.runner }}
     container:
-      image: ubuntu:22.04@${{ matrix.container_digest }}
+      image: ${{ matrix.container_image }}@${{ matrix.container_digest }}
     strategy:
       fail-fast: false
       matrix:
@@ -585,6 +587,7 @@ jobs:
             uname_arch: x86_64
             deb_arch: amd64
             rpm_arch: x86_64
+            container_image: docker.io/library/ubuntu:22.04
             container_digest: sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e
           - runner: ubuntu-24.04-arm
             target_group: linux-arm64
@@ -594,6 +597,7 @@ jobs:
             uname_arch: aarch64
             deb_arch: arm64
             rpm_arch: aarch64
+            container_image: docker.io/library/ubuntu:22.04
             container_digest: sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149
     env:
       APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
@@ -602,7 +606,6 @@ jobs:
       RELEASE_MODE: ${{ needs.eligibility.outputs.release_mode }}
       EXPECTED_CI_RUN_ID: ${{ needs.eligibility.outputs.ci_run_id }}
       EXPECTED_CI_RUN_ATTEMPT: ${{ needs.eligibility.outputs.ci_run_attempt }}
-      CONTAINER_DIGEST: ${{ matrix.container_digest }}
     steps:
       - name: Install Ubuntu 22.04 native build dependencies
         shell: bash
@@ -738,14 +741,41 @@ jobs:
           [ "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 3 ]
 
       - name: Record Linux build metadata
+        shell: bash
         env:
           TARGET_GROUP: ${{ matrix.target_group }}
           TARGET_PLATFORM: linux
           TARGET_ARCHITECTURE: ${{ matrix.architecture }}
-          RUNNER_LABEL: ${{ matrix.runner }}
+          REQUESTED_RUNNER_LABEL: ${{ matrix.runner }}
+          ACTUAL_RUNNER_OS: ${{ runner.os }}
+          ACTUAL_RUNNER_ARCH: ${{ runner.arch }}
+          CONTAINER_IMAGE_REFERENCE: ${{ matrix.container_image }}@${{ matrix.container_digest }}
+          CONTAINER_MANIFEST_DIGEST: ${{ matrix.container_digest }}
         run: |
+          set -euo pipefail
+          source /etc/os-release
+          [ "${ACTUAL_RUNNER_OS}" = Linux ] || {
+            echo "Runner context OS ${ACTUAL_RUNNER_OS} is not Linux" >&2
+            exit 1
+          }
+          [ "${ACTUAL_RUNNER_ARCH}" = '${{ matrix.expected_runner_arch }}' ] || {
+            echo "Runner context architecture ${ACTUAL_RUNNER_ARCH} is not ${{ matrix.expected_runner_arch }}" >&2
+            exit 1
+          }
+          if [ "${ID:-}" != ubuntu ] || [ "${VERSION_ID:-}" != '22.04' ]; then
+            echo "Release container is not Ubuntu 22.04 at metadata emission: ${ID:-unknown} ${VERSION_ID:-unknown}" >&2
+            exit 1
+          fi
+          actual_uname_machine="$(uname -m)"
+          [ "$actual_uname_machine" = '${{ matrix.uname_arch }}' ] || {
+            echo "Container architecture $actual_uname_machine is not native ${{ matrix.uname_arch }} at metadata emission" >&2
+            exit 1
+          }
           mkdir -p platform-metadata
-          node scripts/release/write-platform-metadata.mjs "platform-metadata/${{ matrix.target_group }}.json"
+          ACTUAL_CONTAINER_OS_ID="$ID" \
+          ACTUAL_CONTAINER_OS_VERSION_ID="$VERSION_ID" \
+          ACTUAL_CONTAINER_UNAME_MACHINE="$actual_uname_machine" \
+            node scripts/release/write-platform-metadata.mjs "platform-metadata/${{ matrix.target_group }}.json"
 
       - name: Upload Linux installers
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -926,7 +956,9 @@ jobs:
           TARGET_GROUP: macos-universal
           TARGET_PLATFORM: macos
           TARGET_ARCHITECTURE: universal
-          RUNNER_LABEL: macos-15
+          REQUESTED_RUNNER_LABEL: macos-15
+          ACTUAL_RUNNER_OS: ${{ runner.os }}
+          ACTUAL_RUNNER_ARCH: ${{ runner.arch }}
         run: |
           mkdir -p platform-metadata
           node scripts/release/write-platform-metadata.mjs platform-metadata/macos-universal.json

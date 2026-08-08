@@ -50,10 +50,11 @@ frontend         (ubuntu-24.04)  \
 desktop-acceptance-contract (ubuntu-24.04) +--> CI / Required (ubuntu-24.04, always)
 backend-linux    (ubuntu-24.04)   /
 backend-windows  (windows-2022)  /
+windows-msi-query (windows-2022 x64 + windows-11-arm ARM64) /
 backend-macos    (macos-15)     /
 ```
 
-The six dependency job IDs are an exact machine-readable contract:
+The seven dependency job IDs are an exact machine-readable contract:
 
 ```text
 contracts
@@ -61,11 +62,12 @@ frontend
 desktop-acceptance-contract
 backend-linux
 backend-windows
+windows-msi-query
 backend-macos
 ```
 
 `scripts/ci/required-gate.mjs` is the single evaluator used by the workflow and
-its unit tests. It accepts a JSON object with exactly those six keys and accepts
+its unit tests. It accepts a JSON object with exactly those seven keys and accepts
 only `result: success` for every key. Missing, extra, malformed, `failure`,
 `cancelled`, `skipped`, and unknown results fail the gate. The stable displayed
 check name is `CI / Required`; dependency job display names may evolve without
@@ -96,7 +98,7 @@ the development-hook behavior tests invoke the real Python harness.
 
 ### Events, dependencies, and fail-closed aggregation
 
-- Every trigger reaches the same six unconditional dependency jobs and the
+- Every trigger reaches the same seven unconditional dependency jobs and the
   same `CI / Required` aggregate job. A top-level path filter, conditional
   omission of a dependency job, or event-specific weaker gate is prohibited.
 - `CI / Required` uses `if: always()` and receives all dependency results via
@@ -111,8 +113,22 @@ the development-hook behavior tests invoke the real Python harness.
 
 ### Runners and toolchains
 
-- Required CI uses only `ubuntu-24.04`, `windows-2022`, and `macos-15`; no
-  `*-latest` runner is allowed.
+- Required CI uses only `ubuntu-24.04`, `windows-2022`, `windows-11-arm`, and
+  `macos-15`; no `*-latest` runner is allowed.
+- `windows-msi-query` is one unconditional required job with a two-entry
+  native matrix: `windows-2022`/`X64` and
+  `windows-11-arm`/`Arm64`, with `fail-fast: false`. It checks out the
+  repository read-only and runs only
+  `tests/windowsInstallerQuery.integration.ps1`; it does not install Node,
+  pnpm, Rust, frontend, application, packaging, or signing dependencies. The
+  test creates a temporary MSI from checked-in `.idt` source and exercises the
+  production query module on the runner's actual Windows Installer Automation
+  boundary. A job-level `timeout-minutes: 15` bounds COM/fixture hangs instead
+  of inheriting GitHub's six-hour default.
+- `windows-11-arm` is a public-preview hosted runner. Scheduling or image
+  unavailability is a retryable infrastructure failure, but it still fails
+  `CI / Required`; x64 substitution, cross-build, local Windows bridging, job
+  omission, or a skipped ARM64 conclusion cannot satisfy this gate.
 - CI never installs or invokes mise. GitHub Actions consume the repository's
   standard version files directly, and the verification helper compares the
   active runtime with those files.
@@ -236,6 +252,7 @@ job conclusion, and any failure log in one ordered evidence chain.
 | Condition                                                                                    | Required result                                                                                                                   |
 | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | Any required dependency is missing, extra, malformed, failed, cancelled, skipped, or unknown | `CI / Required` fails and prints a machine-readable summary.                                                                      |
+| Either native Windows Installer query matrix leg cannot schedule or its fixture fails        | `windows-msi-query` fails; Required remains red with no architecture fallback or conditional omission.                            |
 | A dependency job is conditional or a workflow-level path filter hides the workflow           | Static contract fails; do not merge the workflow change.                                                                          |
 | A Required runner uses `*-latest` or an unapproved label                                     | Static contract fails before remote execution.                                                                                    |
 | A third-party Action is not a reviewed full SHA with a version note                          | Static contract fails.                                                                                                            |
@@ -251,7 +268,7 @@ job conclusion, and any failure log in one ordered evidence chain.
 
 ## 5. Good / Base / Bad Cases
 
-- Good: A pull request starts all six jobs, every result is `success`, and the
+- Good: A pull request starts all seven jobs, every result is `success`, and the
   pure-Node evaluator completes the stable `CI / Required` context.
 - Good: A fork pull request triggers Labeler from the base workflow, fetches
   the base configuration without checkout, and applies only existing labels
@@ -276,7 +293,8 @@ mise run format:check
 ```
 
 `tests/githubWorkflowTriggers.test.ts`, `tests/ciWorkflow.test.ts`,
-`tests/requiredCiGate.test.ts`, and `tests/ciToolchainContract.test.ts` enforce
+`tests/requiredCiGate.test.ts`, `tests/windowsInstallerQueryContract.test.ts`,
+and `tests/ciToolchainContract.test.ts` enforce
 the event, runner, Action, permission, dependency-result, and toolchain-source
 contracts. They also ensure the CI commands cannot rediscover the five
 mise-dependent host suites on a fresh runner. Run Prettier against the changed
@@ -324,6 +342,7 @@ jobs:
       - desktop-acceptance-contract
       - backend-linux
       - backend-windows
+      - windows-msi-query
       - backend-macos
 ```
 

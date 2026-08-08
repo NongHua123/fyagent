@@ -108,22 +108,24 @@ D113 确认上述 post-merge exact-main/workflow-SHA preflight 顺序；该接�
 
 ## 5. Runner 与平台构建
 
-| Target group    | Runner             | 用户空间                          | 原生/结构门禁                                                                 |
-| --------------- | ------------------ | --------------------------------- | ----------------------------------------------------------------------------- |
-| Windows x64     | `windows-2022`     | 原生 x64                          | release manifest、helper PE、MSI tables/payload/protocol、EXE/MSI `NotSigned` |
-| Windows ARM64   | `windows-11-arm`   | 原生 ARM64                        | 同上；禁止用 x64 代构建                                                       |
-| macOS Universal | `macos-15`         | macOS + 两个 Apple Rust targets   | Universal slices、Info.plist、ZIP/DMG 同源、无 Developer ID/Team/ticket       |
-| Linux x64       | `ubuntu-24.04`     | `ubuntu:22.04` amd64 child digest | 原生 uname、AppImage/DEB/RPM 版本与架构                                       |
-| Linux ARM64     | `ubuntu-24.04-arm` | `ubuntu:22.04` arm64 child digest | 原生 uname、无 QEMU、三格式完整                                               |
+| Target group    | Runner             | 用户空间                                   | 原生/结构门禁                                                                 |
+| --------------- | ------------------ | ------------------------------------------ | ----------------------------------------------------------------------------- |
+| Windows x64     | `windows-2022`     | 原生 x64                                   | release manifest、helper PE、MSI tables/payload/protocol、EXE/MSI `NotSigned` |
+| Windows ARM64   | `windows-11-arm`   | 原生 ARM64                                 | 同上；禁止用 x64 代构建                                                       |
+| macOS Universal | `macos-15`         | 原生 ARM64 macOS + 两个 Apple Rust targets | Universal slices、Info.plist、ZIP/DMG 同源、无 Developer ID/Team/ticket       |
+| Linux x64       | `ubuntu-24.04`     | `ubuntu:22.04` amd64 child digest          | 原生 uname、AppImage/DEB/RPM 版本与架构                                       |
+| Linux ARM64     | `ubuntu-24.04-arm` | `ubuntu:22.04` arm64 child digest          | 原生 uname、无 QEMU、三格式完整                                               |
 
-Linux 容器使用 child manifest digest，而不是只固定 multi-arch index：
+Linux 容器使用 fully-qualified child manifest reference，而不是只固定 multi-arch index：
 
 ```text
-amd64 sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e
-arm64 sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149
+amd64 docker.io/library/ubuntu:22.04@sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e
+arm64 docker.io/library/ubuntu:22.04@sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149
 ```
 
-job 开始即验证 Ubuntu 22.04 和 `uname -m`。ARM runner 暂时不可用时允许对同一 SHA 重跑，但不得切回 QEMU、本地 cross-build 或少资产发布。
+job 开始即验证 Ubuntu 22.04 和 `uname -m`，写 metadata 前再次读取 `/etc/os-release` 并测量 `uname -m`，保证序列化的是 emission-time observation。ARM runner 暂时不可用时允许对同一 SHA 重跑，但不得切回 QEMU、本地 cross-build 或少资产发布。
+
+runner context 必须按本次受审标签映射精确匹配：`windows-2022`=`Windows`/`X64`、`windows-11-arm`=`Windows`/`ARM64`、`macos-15`=`macOS`/`ARM64`、`ubuntu-24.04`=`Linux`/`X64`、`ubuntu-24.04-arm`=`Linux`/`ARM64`。macOS 产物的 `universal` 只描述输出切片，不放宽其来源 runner 的 ARM64 事实。
 
 本地不得提前执行或复刻表中任一非宿主 package/verify gate。当前 Linux x64 环境中的 Windows、macOS 与 ARM64 都必须保持远程；子系统桥接、foreign executable、emulator、copied toolchain 或 staged artifact 均不能改变这一证据归属。
 
@@ -176,7 +178,10 @@ artifact-attestation.sigstore.json
 ```
 
 - `download-manifest.json` 是 SHA-256 manifest，schema 为 `fyagent-download-manifest/v2`；覆盖 exact-10 的 filename/platform/architecture/format/sizeBytes/sha256/final URL；
-- `build-metadata.json` 覆盖五 target group、runner image/toolchain、Linux host `RUNNER_ARCH`/child digest、repository/workflow ref+SHA/run/source；formal 记录 Required CI run/attempt，preflight 明确为 `null`；
+- `build-metadata.json` 覆盖五 target group、实际 toolchain 与 repository/workflow ref+SHA/run/source。每个 target 以 `runner.requestedLabel` 记录 matrix 的路由请求，以 `runner.context.os/arch` 记录 `${{ runner.os }}` / `${{ runner.arch }}` 映射的 documented runtime context；Windows/macOS 明确使用 `container: null`。Linux 另以 `container.configuredImage.reference/manifestDigest` 记录 workflow 配置的 fully-qualified child reference，以 `container.observed.osRelease.id/versionId` 和 `.unameMachine` 记录 metadata emission 前实际观察到的 `ubuntu` / `22.04` / `x86_64|aarch64`；
+- 平台 record 在 root、runner、context、container、configured image、observation、OS release、toolchain 和 identity 各层都只接受 exact keys；aggregate 验证后按 allowlist 重新构造 target，不 spread 原始 JSON。`ImageOS` / `ImageVersion` 被移除而不是改成 nullable，writer 也不读取 ambient `RUNNER_OS` / `RUNNER_ARCH`；
+- configured digest 是受审 workflow 配置，不是容器内独立测得的 digest。`/etc/os-release`、`uname -m` 与 artifact attestation 分别提供用户空间、machine、bytes/workflow provenance 证据，但都不能独立证明该 OCI digest 或保证自定义 JSON 语义真实；metadata 不写 `verified`、伪造的 actual-image digest 或猜测的 hosted-image version；
+- 本地只读证据确认 draft v1 未发布、未被消费，因此本轮原位定稿 `fyagent-platform-build/v1` 与 `fyagent-build-metadata/v1`。若首次发布前发现任何 public v1 consumer，两个 schema 及 writer/validator/types/tests/docs 必须原子切换到 v2，formal 只接受 v2；不增加兼容 reader、默认值或缺失事实合成。formal 记录 Required CI run/attempt，preflight 明确为 `null`；
 - attestation subjects 精确为 10 installer + 2 JSON = 12；
 - `actions/attest` v4.2.2 输出独立 Sigstore bundle，形成第 13 个 Release attachment；
 - attestation bundle 不计入 10 个安装资产。
@@ -213,7 +218,7 @@ GitHub 对该 unsafe PATCH 不提供通用条件请求，管理员仍可能在�
 
 ## 12. 当前验证状态与治理例外
 
-- `[Verified Locally]` Release 定向 Vitest、Prettier、version contract 与 actionlint 已通过；
+- `[Verified Locally]` 当前 metadata revision 的 writer/aggregate/静态 workflow 定向 Vitest、Prettier、typecheck 与 version contract 已通过；`actionlint` 当前未安装，较早 revision 的 actionlint 1.7.12 结果不能替代本次 workflow diff，仍需在后续本地/CI gate 补验；
 - `[Pending Remote Verification]` Windows ARM64、Linux ARM64、macOS Universal、full-matrix preflight、正式 tag 和公开资产尚须真实 Actions 证据；
 - `[Pending Remote Verification]` 自动 Labeler 需 workflow 进入 default branch 后通过真实 PR 验证；
 - `[Accepted Governance Exception]` D114 确认：当前仓库属于个人账户且明确不启用 ruleset/branch protection，GitHub Merge Queue 无法启用，因而真实 `merge_group` 运行在当前治理下为 N/A，而不是成功。接受的替代证据为 YAML trigger、失败关闭合同/静态测试和真实 PR/main/manual 运行；这些远程运行仍待验证。

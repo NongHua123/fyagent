@@ -8,10 +8,16 @@
 5. implement strict toolchain/workflow contract checks
 6. split platform Release jobs and Linux containers
 7. implement workflow-only formal eligibility, exact allowlists, manifest, metadata, mandatory attestations, and final publish gate
-8. for every authorized remote run, keep observation in the initiating main
+8. after repeated full-preflight failures, replace compatibility candidates
+   with a schema-owned Windows Installer query module, a native x64/ARM64
+   temporary-MSI fixture in Required CI, and a source-explicit runner/container
+   metadata writer with direct process tests
+9. for every authorized remote run, keep observation in the initiating main
    flow: synchronously wait for the whole run to become `completed`, read the
    final run/job result once, and fetch failed-job logs only after failure
-9. run unsigned full-matrix preflight; after PR merge, publish only immutable `v0.3.0` from the exact passing main SHA and independently reverify it
+10. only after the shifted-left gates pass in both PR and exact-main CI, run
+    unsigned full-matrix preflight; publish only immutable `v0.3.0` from the
+    exact passing main SHA and independently reverify it
 
 ## Completion Evidence
 
@@ -24,3 +30,7 @@ temporary directories, and build outputs. Local Windows Light/MSI diagnostics
 are never acceptance. Do not trigger or monitor Actions as part of this local
 implementation pass; all remote evidence remains Pending/NO-GO until separately
 authorized and completed under the synchronous observation contract.
+The full five-target preflight is not a low-level debugging loop: an unknown COM
+projection result or undocumented hosted-image variable must return to its
+smallest authoritative production/test boundary, not gain a compatibility
+fallback or another expensive trial run.

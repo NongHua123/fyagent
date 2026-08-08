@@ -9,6 +9,7 @@ export const REQUIRED_CI_JOBS = Object.freeze([
   "desktop-acceptance-contract",
   "backend-linux",
   "backend-windows",
+  "windows-msi-query",
   "backend-macos",
 ]);
 

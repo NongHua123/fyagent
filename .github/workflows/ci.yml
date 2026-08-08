@@ -270,6 +270,30 @@ jobs:
       - name: Run Rust tests
         run: cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml
 
+  windows-msi-query:
+    name: Windows Installer Query (${{ matrix.architecture }})
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            architecture: X64
+          - runner: windows-11-arm
+            architecture: Arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Exercise native Windows Installer query boundary
+        shell: pwsh
+        run: >-
+          ./tests/windowsInstallerQuery.integration.ps1
+          -ExpectedArchitecture '${{ matrix.architecture }}'
+
   backend-macos:
     name: Backend Checks (macOS)
     runs-on: macos-15
@@ -319,6 +343,7 @@ jobs:
       - desktop-acceptance-contract
       - backend-linux
       - backend-windows
+      - windows-msi-query
       - backend-macos
     runs-on: ubuntu-24.04
     steps:

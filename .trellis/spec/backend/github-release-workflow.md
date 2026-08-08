@@ -138,11 +138,11 @@ omitted, so absence of the field is not evidence that Release caching is off.
 | `linux-arm64`     | `ubuntu-24.04-arm` | native Ubuntu 22.04 arm64 child digest | AppImage, DEB, RPM                 |
 | `macos-universal` | `macos-15`         | macOS with both Apple targets          | DMG and ZIP from one universal app |
 
-Linux uses the reviewed Ubuntu 22.04 image children directly:
+Linux uses the reviewed, fully qualified Ubuntu 22.04 image children directly:
 
 ```text
-amd64 sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e
-arm64 sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149
+amd64 docker.io/library/ubuntu:22.04@sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e
+arm64 docker.io/library/ubuntu:22.04@sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149
 ```
 
 The workflow verifies `RUNNER_ARCH`, `/etc/os-release`, and `uname -m` before
@@ -159,9 +159,45 @@ effective configuration scopes, and immediately proves its HEAD equals the
 frozen source SHA. Wildcard or additional safe-directory trust, recursive
 ownership changes, or disabling Git's ownership check are forbidden.
 
-Each target proves Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1 at runtime. Its
-metadata records the actual runner image variables and tool versions; an absent
-image/tool value fails metadata generation.
+Each target proves Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1 at runtime. Every
+`fyagent-platform-build/v1` record uses one source-explicit shape:
+
+- `runner.requestedLabel` is the exact matrix routing request; it is not a
+  runtime-discovered host label or immutable hosted-image identity.
+- `runner.context.os` and `runner.context.arch` come only from documented
+  `${{ runner.os }}` and `${{ runner.arch }}` values mapped into the
+  workflow-owned `ACTUAL_RUNNER_OS` and `ACTUAL_RUNNER_ARCH` variables.
+  `windows-x64` requires `Windows` / `X64`, `windows-arm64` requires `Windows`
+  / `ARM64`, `macos-universal` requires `macOS` / `ARM64`, and both Linux
+  targets use the exact pairs below. The macOS output architecture remains
+  `universal`; that output fact is distinct from, and does not weaken, the
+  current `macos-15` hosted-runner architecture contract.
+- Windows and macOS record exactly `container: null` and reject any supplied
+  container evidence.
+- Linux records the configured
+  `container.configuredImage.reference` and `.manifestDigest` from the exact
+  matrix image request, plus emission-time observations in
+  `container.observed.osRelease.id`, `.versionId`, and `.unameMachine`.
+  `linux-x64` requires `ubuntu` / `22.04` / `x86_64` with the amd64 reference
+  above; `linux-arm64` requires `ubuntu` / `22.04` / `aarch64` with the arm64
+  reference above.
+
+The Linux metadata step repeats the runner-context, `/etc/os-release`, and
+`uname -m` gates immediately before invoking the writer. This late measurement
+is distinct from the early bootstrap gate: the first prevents expensive work
+in the wrong environment, while the second supplies the observations that are
+actually serialized. The writer never reads ambient `RUNNER_OS`,
+`RUNNER_ARCH`, `ImageOS`, or `ImageVersion`; the latter two implementation
+details are removed rather than retained as nullable compatibility fields.
+Missing, blank, partial, contradictory, or malformed owned evidence fails.
+
+The configured image reference is reviewed workflow configuration, not a
+digest independently measured from inside the container. `/etc/os-release`,
+`uname -m`, and the artifact attestation corroborate user-space, machine, bytes,
+and workflow provenance, but none independently proves the configured OCI
+digest or certifies the semantic truth of arbitrary custom JSON. The metadata
+therefore contains no `verified` boolean, fabricated actual-image digest, or
+guessed hosted-image version.
 
 The locked `@tauri-apps/cli` 2.8.1 embeds `tauri-bundler` 2.6.1, before the
 nested AppImage-plugin propagation fixed by `tauri-apps/tauri#14241`. The Linux
@@ -278,9 +314,21 @@ size, SHA-256, and final URL.
 
 `generate-build-metadata.mjs` requires exactly five platform metadata records.
 It validates target/runner/container identity, repository ID, trusted workflow
-ref/SHA/run, release mode, source, and exact toolchain/image evidence before
-emitting `build-metadata.json`. `requiredCi` is `null` for preflight and the
-unique bound path/run/attempt object for formal mode.
+ref/SHA/run, release mode, source, and exact runner/toolchain evidence before
+emitting `build-metadata.json`. Every input object uses an exact key allowlist
+at the record, runner, runner-context, container, configured-image,
+observation, OS-release, toolchain, and identity levels. Unknown or retired
+keys fail; after validation the aggregate reconstructs each target from the
+allowlist instead of spreading parsed input. `requiredCi` is `null` for
+preflight and the unique bound path/run/attempt object for formal mode.
+
+Local and read-only release evidence shows that neither draft metadata schema
+has been publicly released or consumed, so this change finalizes
+`fyagent-platform-build/v1` and `fyagent-build-metadata/v1` in place before
+their first publication. If any public v1 consumer is discovered before that
+publication, both identifiers and all writers/validators/types/tests/docs must
+move atomically to v2; the formal path then accepts only v2. There is no v1
+compatibility reader, defaulting path, or synthesized equivalence.
 
 The attestation subjects are exactly the ten installers plus those two JSON
 files (12 subjects). `actions/attest` v4.2.2 is mandatory and receives only
@@ -348,14 +396,18 @@ rulesets and is not described as atomic administrator protection.
 ## 9. Validation and Evidence Boundary
 
 Local checks include Prettier, actionlint, version contract tests, the release
-workflow/static Windows boundary suite, download-manifest behavior tests, and
-asset/metadata collector tests. Local execution is restricted to the current
-host OS and architecture. A subsystem bridge, foreign executable, cross target,
-emulator, or locally copied non-host toolchain cannot establish native release
-evidence. PowerShell runtime, Windows Candle/Light/MSI, Linux package, macOS
-bundle, and every non-host architecture check run only in their matching native
-GitHub Actions jobs. No local cross-OS or cross-architecture result counts
-toward acceptance.
+workflow/static Windows boundary suite, download-manifest behavior tests,
+asset/metadata collector tests, and `tests/writePlatformMetadata.test.ts`. The
+writer suite invokes the real CLI for all five targets and covers missing,
+blank, partial, extra, contradictory, malformed, existing-output, hostile
+ambient-variable, and writer-to-aggregate cases. Aggregate tests reject unknown
+keys at every nested input level and prove canonical output reconstruction.
+Local execution is restricted to the current host OS and architecture. A
+subsystem bridge, foreign executable, cross target, emulator, or locally copied
+non-host toolchain cannot establish native release evidence. PowerShell
+runtime, Windows Candle/Light/MSI, Linux package, macOS bundle, and every
+non-host architecture check run only in their matching native GitHub Actions
+jobs. No local cross-OS or cross-architecture result counts toward acceptance.
 
 A green local suite proves the implementation contract, not publication.
 Closure requires the exact source's main `CI / Required`, one successful

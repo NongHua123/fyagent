@@ -479,8 +479,11 @@ describe("local build boundary", () => {
     }
 
     expect(release).toContain(
-      "image: ubuntu:22.04@${{ matrix.container_digest }}",
+      "image: ${{ matrix.container_image }}@${{ matrix.container_digest }}",
     );
+    expect(
+      release.match(/container_image: docker\.io\/library\/ubuntu:22\.04/g),
+    ).toHaveLength(2);
     expect(release).toContain(
       "sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e",
     );
