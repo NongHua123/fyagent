@@ -74,7 +74,7 @@ D116 收口时已停止本地 Windows cargo/rustc 诊断进程，删除显式诊
 
 ### CI/Release
 
-PR、main、manual 事件；聚合 gate 失败/取消/跳过模拟；post-merge exact-main-SHA unsigned 全矩阵预演；10 安装器/13 附件和 attestation 验证。每次已授权触发都由发起主流程同步等待整次 run 到 `completed`，随后一次读取最终 run/job 结果，仅失败时抓取失败 job 日志；不派后台/异步监控代理，不重复轮询。`merge_group` 静态合同已实现，但真实事件因个人账户且禁止 ruleset/branch protection 而无法产生。D114 已接受其为当前治理下 N/A 的验证例外；不得记为成功，替代验收仍需真实 PR/main/manual 运行。
+PR、main、manual 事件；聚合 gate 失败/取消/跳过模拟；post-merge exact-main-SHA unsigned 全矩阵预演；10 安装器/13 附件和 attestation 验证。连续完整预演暴露低层接口缺口后，先完成 D118 的 shift-left 收敛：Windows Installer 生产查询模块必须由 native x64/ARM64 临时 MSI fixture 在 Required CI 执行，runner/container metadata writer 必须有直接进程级、精确键集与 hostile-env 行为测试；禁止用 `FieldCount`/反射回退、nullable/sentinel hosted-image 字段或另一轮完整预演代替这些门禁。只有实现 PR 与 exact-main Required CI 都通过，才允许下一次全矩阵预演。每次已授权触发都由发起主流程同步等待整次 run 到 `completed`，随后一次读取最终 run/job 结果，仅失败时抓取失败 job 日志；不派后台/异步监控代理，不重复轮询。`merge_group` 静态合同已实现，但真实事件因个人账户且禁止 ruleset/branch protection 而无法产生。D114 已接受其为当前治理下 N/A 的验证例外；不得记为成功，替代验收仍需真实 PR/main/manual 运行。
 
 ### DEP0040
 

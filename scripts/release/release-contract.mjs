@@ -20,7 +20,15 @@ export const BUILD_METADATA_NAME = "build-metadata.json";
 export const ATTESTATION_BUNDLE_NAME = "artifact-attestation.sigstore.json";
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
+const SHA256_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 const STABLE_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+
+export const GITHUB_RUNNER_ARCHITECTURES = Object.freeze([
+  "X86",
+  "X64",
+  "ARM",
+  "ARM64",
+]);
 
 export const INSTALLER_RULES = Object.freeze([
   {
@@ -90,43 +98,62 @@ export const EXPECTED_TARGETS = Object.freeze([
     targetGroup: "macos-universal",
     platform: "macos",
     architecture: "universal",
-    runnerLabel: "macos-15",
-    expectedRunnerArch: null,
-    containerDigest: null,
+    requestedRunnerLabel: "macos-15",
+    expectedRunnerOs: "macOS",
+    expectedRunnerArch: "ARM64",
+    expectedContainer: null,
   },
   {
     targetGroup: "windows-x64",
     platform: "windows",
     architecture: "x64",
-    runnerLabel: "windows-2022",
+    requestedRunnerLabel: "windows-2022",
+    expectedRunnerOs: "Windows",
     expectedRunnerArch: "X64",
-    containerDigest: null,
+    expectedContainer: null,
   },
   {
     targetGroup: "windows-arm64",
     platform: "windows",
     architecture: "arm64",
-    runnerLabel: "windows-11-arm",
+    requestedRunnerLabel: "windows-11-arm",
+    expectedRunnerOs: "Windows",
     expectedRunnerArch: "ARM64",
-    containerDigest: null,
+    expectedContainer: null,
   },
   {
     targetGroup: "linux-x64",
     platform: "linux",
     architecture: "x64",
-    runnerLabel: "ubuntu-24.04",
+    requestedRunnerLabel: "ubuntu-24.04",
+    expectedRunnerOs: "Linux",
     expectedRunnerArch: "X64",
-    containerDigest:
-      "sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e",
+    expectedContainer: {
+      imageReference:
+        "docker.io/library/ubuntu:22.04@sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e",
+      manifestDigest:
+        "sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e",
+      osReleaseId: "ubuntu",
+      osReleaseVersionId: "22.04",
+      unameMachine: "x86_64",
+    },
   },
   {
     targetGroup: "linux-arm64",
     platform: "linux",
     architecture: "arm64",
-    runnerLabel: "ubuntu-24.04-arm",
+    requestedRunnerLabel: "ubuntu-24.04-arm",
+    expectedRunnerOs: "Linux",
     expectedRunnerArch: "ARM64",
-    containerDigest:
-      "sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149",
+    expectedContainer: {
+      imageReference:
+        "docker.io/library/ubuntu:22.04@sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149",
+      manifestDigest:
+        "sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149",
+      osReleaseId: "ubuntu",
+      osReleaseVersionId: "22.04",
+      unameMachine: "aarch64",
+    },
   },
 ]);
 
@@ -319,61 +346,205 @@ function requireNonEmptyString(value, label) {
   );
 }
 
+const PLATFORM_METADATA_KEYS = Object.freeze([
+  "schema",
+  "targetGroup",
+  "platform",
+  "architecture",
+  "runner",
+  "container",
+  "toolchain",
+  "identity",
+]);
+const RUNNER_KEYS = Object.freeze(["requestedLabel", "context"]);
+const RUNNER_CONTEXT_KEYS = Object.freeze(["os", "arch"]);
+const CONTAINER_KEYS = Object.freeze(["configuredImage", "observed"]);
+const CONFIGURED_IMAGE_KEYS = Object.freeze(["reference", "manifestDigest"]);
+const CONTAINER_OBSERVED_KEYS = Object.freeze(["osRelease", "unameMachine"]);
+const OS_RELEASE_KEYS = Object.freeze(["id", "versionId"]);
+const TOOLCHAIN_KEYS = Object.freeze(["node", "pnpm", "rustc"]);
+const IDENTITY_KEYS = Object.freeze([
+  "productVersion",
+  "tag",
+  "sourceSha",
+  "repository",
+  "repositoryId",
+  "workflowPath",
+  "workflowRef",
+  "workflowSha",
+  "runId",
+  "runAttempt",
+  "event",
+  "mode",
+  "ciWorkflowPath",
+  "ciRunId",
+  "ciRunAttempt",
+]);
+
+function assertExactKeys(value, expectedKeys, label) {
+  assert(
+    value !== null && typeof value === "object" && !Array.isArray(value),
+    `${label} must be an object`,
+  );
+  const actualKeys = Object.keys(value).sort();
+  const sortedExpectedKeys = [...expectedKeys].sort();
+  assert(
+    actualKeys.length === sortedExpectedKeys.length &&
+      actualKeys.every((key, index) => key === sortedExpectedKeys[index]),
+    `${label} must contain exactly these keys: ${sortedExpectedKeys.join(", ")}; received ${actualKeys.join(", ")}`,
+  );
+}
+
 function validatePlatformMetadata(metadata, expected, identity) {
+  assertExactKeys(
+    metadata,
+    PLATFORM_METADATA_KEYS,
+    `${expected.targetGroup} platform metadata`,
+  );
   assert(
     metadata.schema === "fyagent-platform-build/v1",
     `Invalid platform metadata schema for ${expected.targetGroup}`,
   );
-  for (const key of [
-    "targetGroup",
-    "platform",
-    "architecture",
-    "runnerLabel",
-  ]) {
+  for (const key of ["targetGroup", "platform", "architecture"]) {
     assert(
       metadata[key] === expected[key],
       `${expected.targetGroup} ${key} must be ${expected[key]}; received ${metadata[key]}`,
     );
   }
-  assert(
-    metadata.containerDigest === expected.containerDigest,
-    `${expected.targetGroup} container digest drifted`,
+
+  assertExactKeys(
+    metadata.runner,
+    RUNNER_KEYS,
+    `${expected.targetGroup} runner`,
   );
-  for (const key of [
-    "productVersion",
-    "tag",
-    "sourceSha",
-    "repository",
-    "repositoryId",
-    "workflowPath",
-    "workflowRef",
-    "workflowSha",
-    "runId",
-    "runAttempt",
-    "event",
-    "mode",
-    "ciWorkflowPath",
-    "ciRunId",
-    "ciRunAttempt",
-  ]) {
+  assert(
+    metadata.runner.requestedLabel === expected.requestedRunnerLabel,
+    `${expected.targetGroup} requested runner label drifted`,
+  );
+  assertExactKeys(
+    metadata.runner.context,
+    RUNNER_CONTEXT_KEYS,
+    `${expected.targetGroup} runner.context`,
+  );
+  requireNonEmptyString(
+    metadata.runner.context.os,
+    `${expected.targetGroup} runner.context.os`,
+  );
+  requireNonEmptyString(
+    metadata.runner.context.arch,
+    `${expected.targetGroup} runner.context.arch`,
+  );
+  assert(
+    metadata.runner.context.os === expected.expectedRunnerOs,
+    `${expected.targetGroup} runner context OS drifted`,
+  );
+  assert(
+    GITHUB_RUNNER_ARCHITECTURES.includes(metadata.runner.context.arch),
+    `${expected.targetGroup} runner context architecture is not a documented GitHub value`,
+  );
+  assert(
+    metadata.runner.context.arch === expected.expectedRunnerArch,
+    `${expected.targetGroup} runner context architecture drifted`,
+  );
+
+  if (expected.expectedContainer === null) {
+    assert(
+      metadata.container === null,
+      `${expected.targetGroup} must record container as null`,
+    );
+  } else {
+    assertExactKeys(
+      metadata.container,
+      CONTAINER_KEYS,
+      `${expected.targetGroup} container`,
+    );
+    assertExactKeys(
+      metadata.container.configuredImage,
+      CONFIGURED_IMAGE_KEYS,
+      `${expected.targetGroup} container.configuredImage`,
+    );
+    const { reference, manifestDigest } = metadata.container.configuredImage;
+    requireNonEmptyString(
+      reference,
+      `${expected.targetGroup} container.configuredImage.reference`,
+    );
+    requireNonEmptyString(
+      manifestDigest,
+      `${expected.targetGroup} container.configuredImage.manifestDigest`,
+    );
+    assert(
+      SHA256_DIGEST_PATTERN.test(manifestDigest),
+      `${expected.targetGroup} container manifest digest must be lowercase SHA-256`,
+    );
+    assert(
+      reference.endsWith(`@${manifestDigest}`),
+      `${expected.targetGroup} container image reference must end with its manifest digest`,
+    );
+    assert(
+      reference === expected.expectedContainer.imageReference,
+      `${expected.targetGroup} configured container image reference drifted`,
+    );
+    assert(
+      manifestDigest === expected.expectedContainer.manifestDigest,
+      `${expected.targetGroup} container manifest digest drifted`,
+    );
+
+    assertExactKeys(
+      metadata.container.observed,
+      CONTAINER_OBSERVED_KEYS,
+      `${expected.targetGroup} container.observed`,
+    );
+    assertExactKeys(
+      metadata.container.observed.osRelease,
+      OS_RELEASE_KEYS,
+      `${expected.targetGroup} container.observed.osRelease`,
+    );
+    const { id, versionId } = metadata.container.observed.osRelease;
+    const { unameMachine } = metadata.container.observed;
+    requireNonEmptyString(
+      id,
+      `${expected.targetGroup} container.observed.osRelease.id`,
+    );
+    requireNonEmptyString(
+      versionId,
+      `${expected.targetGroup} container.observed.osRelease.versionId`,
+    );
+    requireNonEmptyString(
+      unameMachine,
+      `${expected.targetGroup} container.observed.unameMachine`,
+    );
+    assert(
+      id === expected.expectedContainer.osReleaseId,
+      `${expected.targetGroup} observed container OS ID drifted`,
+    );
+    assert(
+      versionId === expected.expectedContainer.osReleaseVersionId,
+      `${expected.targetGroup} observed container OS version drifted`,
+    );
+    assert(
+      unameMachine === expected.expectedContainer.unameMachine,
+      `${expected.targetGroup} observed container machine drifted`,
+    );
+  }
+
+  assertExactKeys(
+    metadata.identity,
+    IDENTITY_KEYS,
+    `${expected.targetGroup} identity`,
+  );
+  for (const key of IDENTITY_KEYS) {
     assert(
       metadata.identity?.[key] === identity[key],
       `${expected.targetGroup} identity ${key} drifted`,
     );
   }
-  for (const key of ["runnerOs", "runnerArch", "imageOs", "imageVersion"]) {
-    requireNonEmptyString(
-      metadata.runner?.[key],
-      `${expected.targetGroup} runner.${key}`,
-    );
-  }
-  if (expected.expectedRunnerArch !== null) {
-    assert(
-      metadata.runner.runnerArch === expected.expectedRunnerArch,
-      `${expected.targetGroup} runner architecture drifted`,
-    );
-  }
-  for (const key of ["node", "pnpm", "rustc"]) {
+
+  assertExactKeys(
+    metadata.toolchain,
+    TOOLCHAIN_KEYS,
+    `${expected.targetGroup} toolchain`,
+  );
+  for (const key of TOOLCHAIN_KEYS) {
     requireNonEmptyString(
       metadata.toolchain?.[key],
       `${expected.targetGroup} toolchain.${key}`,
@@ -391,7 +562,41 @@ function validatePlatformMetadata(metadata, expected, identity) {
     metadata.toolchain.rustc.startsWith("rustc 1.97.1 "),
     `${expected.targetGroup} Rust version drifted`,
   );
-  return metadata;
+
+  return {
+    schema: "fyagent-platform-build/v1",
+    targetGroup: expected.targetGroup,
+    platform: expected.platform,
+    architecture: expected.architecture,
+    runner: {
+      requestedLabel: expected.requestedRunnerLabel,
+      context: {
+        os: metadata.runner.context.os,
+        arch: metadata.runner.context.arch,
+      },
+    },
+    container:
+      expected.expectedContainer === null
+        ? null
+        : {
+            configuredImage: {
+              reference: metadata.container.configuredImage.reference,
+              manifestDigest: metadata.container.configuredImage.manifestDigest,
+            },
+            observed: {
+              osRelease: {
+                id: metadata.container.observed.osRelease.id,
+                versionId: metadata.container.observed.osRelease.versionId,
+              },
+              unameMachine: metadata.container.observed.unameMachine,
+            },
+          },
+    toolchain: {
+      node: metadata.toolchain.node,
+      pnpm: metadata.toolchain.pnpm,
+      rustc: metadata.toolchain.rustc,
+    },
+  };
 }
 
 export function buildBuildMetadata({
@@ -399,6 +604,7 @@ export function buildBuildMetadata({
   identity,
   generatedAt,
 }) {
+  assertExactKeys(identity, IDENTITY_KEYS, "release identity");
   assertReleaseIdentity({
     version: identity.productVersion,
     tag: identity.tag,
@@ -498,7 +704,7 @@ export function buildBuildMetadata({
       expected,
       identity,
     ),
-  ).map(({ identity: _identity, ...target }) => target);
+  );
 
   return {
     schema: "fyagent-build-metadata/v1",

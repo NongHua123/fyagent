@@ -1,0 +1,8 @@
+Id	GroupKey	TextValue	NumberValue	SmallNumber	NullableValue	EmptyValue
+s72	s72	s255	i4	i2	S255	s255
+_FyAgentQueryFixture	Id
+single	unique	one-column	7	0		EMPTY_PLACEHOLDER
+apostrophe	unique	O'Brien	0	1	present	filled
+duplicate-a	duplicate	first	10	2	alpha	filled
+duplicate-b	duplicate	second	11	3	beta	filled
+long	limits	0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ	12	4	gamma	filled

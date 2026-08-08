@@ -208,6 +208,36 @@ or an unbounded argv payload.
   fallback, opposite-architecture fallback, or downloading a verifier is
   forbidden. The tool reads `RT_MANIFEST` resource ID 1 and never executes the
   application.
+- `scripts/release/WindowsInstallerQuery.psm1` is the sole Automation query
+  owner for the structure verifier. Its module-owned table/column allowlist and
+  ordered column descriptors construct every `SELECT` projection. Equality
+  filters construct only `?` markers; every runtime string or Int32 value is
+  placed into an `Installer.CreateRecord` parameter and never enters SQL text.
+  Empty string predicates and stream keys are rejected because Automation binds
+  an empty `StringData` setter as database null. The verifier has no raw SQL,
+  `OpenView`, `Execute`, `Fetch`, metadata-record, or COM-release path.
+- The module validates projection names and MSI type/nullability through known
+  `View.ColumnInfo` ordinals without consulting result-count metadata. For each
+  known result ordinal it calls `IsNull`, enforces declared nullability, checks
+  `DataSize` before materialization, then uses only the declared
+  `StringData` or `IntegerData` accessor. Returned rows contain copied
+  string/Int32/null values only, preserving null, empty string, and integer zero
+  as distinct states.
+- Every query has a finite maximum of 16 columns plus explicit per-field,
+  row, aggregate-cell, and aggregate-unit limits. The Directory and Component
+  scans retain their 4096/32768 row policies and 1024-UTF-16-unit field policy.
+  Stream export is a separate unique-row operation with an explicit positive
+  total-byte ceiling checked before output creation, bounded chunk reads, exact
+  declared-size enforcement, and partial-output removal on failure. Stream
+  metadata is also schema-owned: the standard `_Streams.Data` column must
+  report nullable `V0`, while the non-null fixture stream reports `v0`; a
+  selected row must still contain a non-null payload before export.
+- A caller receives only an opaque session token. The module exclusively owns
+  every Installer, Database, View, parameter/metadata/fetched Record, and
+  SummaryInformation RCW, closes and final-releases them in deterministic
+  reverse order, and never uses global garbage collection as lifecycle control.
+  A cleanup-only failure rejects verification; a primary query/package failure
+  remains the inner diagnostic when cleanup details must also be reported.
 - Final MSI payload admission is read-only: the verifier resolves the unique
   File key `Path`, reads its embedded cabinet through `_Streams`, asks system
   `expand.exe` to extract only that fixed key into a fresh temporary root, and
@@ -322,12 +352,13 @@ or an unbounded argv payload.
   Feature, the two exact Type 51 property-enforcement actions in both sequences
   before `CostInitialize`, `RemoveShortcuts < RemoveFiles`, and the one
   product-subdirectory cleanup row. Shortcut Feature identifiers are validated
-  before entering an MSI SQL query. Directory and Component scans mirror the
-  helper's 4096/32768 row caps and 1024-UTF-16-unit field cap, return only
-  primitive copies, and close/final-release every COM view and record in
-  `finally`. Advertised-shortcut Feature keys use the MSI Identifier grammar
-  and its 38-character primary-key limit before entering SQL. Static tests also
-  reject null-buffer MSI string probes. Both
+  before entering an MSI query descriptor. Directory and Component scans
+  mirror the helper's 4096/32768 row caps and 1024-UTF-16-unit field cap,
+  declare exact string/Int32/nullability schemas, and consume only copied
+  primitive rows from `WindowsInstallerQuery.psm1`. Advertised-shortcut Feature
+  keys use the MSI Identifier grammar and its 38-character primary-key limit
+  before becoming parameter values. Static tests also reject null-buffer MSI
+  string probes. Both
   shortcuts are machine-wide Path-component rows that become ordinary
   shortcuts, standard roots are not removed, and the retired script/WMI
   validator is absent.
@@ -338,6 +369,20 @@ or an unbounded argv payload.
   `Binary.FyAgentInstallerActions` PE machine, length, and SHA-256. Static
   workflow checks and non-Windows workspace checks do not replace that native
   execution.
+- Regular Required CI also runs the production query module against a small
+  temporary MSI generated from checked-in `.idt` fixtures on native
+  `windows-2022` x64 and `windows-11-arm` ARM64. The integration script records
+  PowerShell, OS/process architecture, runner-image context when present, and
+  `msi.dll` versions; covers schema/type/null/empty/zero, apostrophe parameters,
+  cardinality, row/field/aggregate/stream limits, primitive-only results, and
+  success/failure cleanup; and immediately moves/deletes the MSI after sessions
+  close. Native MSI rows cover database null and integer zero. Because the
+  Automation `StringData` setter maps an empty string to database null, the same
+  native test exercises the module's non-null/zero-length copy branch with a
+  record-shaped non-COM test double instead of pretending it can author that
+  state through the setter. This job builds no FyAgent application, Rust crate,
+  frontend, package, or installer. ARM preview unavailability fails Required
+  rather than enabling an x64 or cross-build substitute.
 - Run the declared safe checks through mise, including Rust format/clippy and
   the targeted/unit frontend suite. Native UAC, registry, MSI, PackageManager,
   unsigned Authenticode status, and live named-pipe validation are separate

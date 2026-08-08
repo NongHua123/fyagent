@@ -96,10 +96,49 @@ generator 在读取摘要前再次验证 exact-10 且每个文件非空，以流
 - repository path 与不可变 repository ID；
 - Release workflow path/ref/run ID/run attempt/event/mode；
 - trusted workflow ref/SHA；formal 的 `.github/workflows/ci.yml` 与选定 Required CI run ID/attempt；preflight 的 `requiredCi=null`；
-- 五 target group 的 platform/architecture/runner label；
-- 实际 runner OS/arch/image OS/image version；
+- 五 target group 的 platform/architecture；
+- `runner.requestedLabel`：matrix 请求的 runner 路由 label，不表述为运行时发现的 host label 或固定 hosted image；
+- `runner.context.os/arch`：只来自 workflow 显式映射的 `${{ runner.os }}` / `${{ runner.arch }}`；
 - 实际 Node/pnpm/rustc；
-- Linux 对应 Ubuntu 22.04 child digest。
+- Windows/macOS 的 `container` 精确为 `null`；
+- Linux 的 `container.configuredImage.reference/manifestDigest` 绑定 workflow 配置的 fully-qualified Ubuntu 22.04 child，`container.observed.osRelease.id/versionId` 与 `.unameMachine` 绑定 metadata emission 前实际观察。
+
+native target 的 runner context 映射为：`windows-x64 = windows-2022 / Windows / X64`，`windows-arm64 = windows-11-arm / Windows / ARM64`；`macos-universal = macos-15 / macOS / ARM64`。macOS 的 output architecture 仍是 `universal`，该产物事实不能覆盖或放宽当前 hosted-runner label 的 ARM64 来源合同。Linux 精确映射为：
+
+```text
+linux-x64:
+  runner = ubuntu-24.04 / Linux / X64
+  configured image = docker.io/library/ubuntu:22.04@sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e
+  observed = ubuntu / 22.04 / x86_64
+
+linux-arm64:
+  runner = ubuntu-24.04-arm / Linux / ARM64
+  configured image = docker.io/library/ubuntu:22.04@sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149
+  observed = ubuntu / 22.04 / aarch64
+```
+
+每个 input record 的唯一形状为：
+
+```text
+schema, targetGroup, platform, architecture,
+runner {
+  requestedLabel,
+  context { os, arch }
+},
+container = null | {
+  configuredImage { reference, manifestDigest },
+  observed {
+    osRelease { id, versionId },
+    unameMachine
+  }
+},
+toolchain { node, pnpm, rustc },
+identity { exact release/workflow/CI fields }
+```
+
+root 与每个 nested object 都拒绝 missing/extra/retired keys；aggregate 验证后从 allowlist 重建 target，不把 input `identity` 或任意原始字段 spread 到受 attestation 的 `targets`。`ImageOS` / `ImageVersion` 不属于 schema，也不以 `null` 保留；不写 `verified`、伪造 actual-image digest 或猜测 hosted-image version。配置 reference 是 workflow configuration evidence；`/etc/os-release`、`uname -m` 与 attestation 都不能独立证明 OCI digest 或自定义字段语义。
+
+2026-08-08 本地只读证据确认此前失败的 preflight 未进入 aggregation/attestation/publication，且没有已发布或已消费的 v1 record，因此这两个 v1 schema 在首次发布前原位定稿。若首次发布前发现任何 public v1 consumer，`fyagent-platform-build/v1` 与 `fyagent-build-metadata/v1` 必须连同所有 writer、validator、type、test 和文档原子升级为 v2，formal 只接受 v2；禁止兼容 reader、默认值或将缺失事实合成为等价 v2。
 
 任何 target 缺失、附加 JSON、runner/digest/source/workflow/CI identity 不一致都阻止 attestation 和 publish。
 
@@ -155,9 +194,9 @@ publish 先用认证的全分页 Release 列表排除同 tag draft/published Rel
 本地合同检查包括：
 
 ```bash
-pnpm exec prettier --check .github/workflows/release.yml scripts/release tests/releaseWorkflow.test.ts tests/downloadManifest.test.ts tests/releaseAssets.test.ts
+pnpm exec prettier --check .github/workflows/release.yml scripts/release tests/writePlatformMetadata.test.ts tests/releaseWorkflow.test.ts tests/downloadManifest.test.ts tests/releaseAssets.test.ts
 actionlint .github/workflows/release.yml
-pnpm exec vitest run tests/releaseWorkflow.test.ts tests/downloadManifest.test.ts tests/releaseAssets.test.ts
+pnpm exec vitest run tests/writePlatformMetadata.test.ts tests/releaseWorkflow.test.ts tests/downloadManifest.test.ts tests/releaseAssets.test.ts
 pnpm run version:check -- --tag v0.3.0
 ```
 

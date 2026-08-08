@@ -21,6 +21,8 @@ import {
   expectedInstallerNames,
   expectedReleaseAttachmentNames,
   assertExactFileSet,
+  type ExpectedTarget,
+  type PlatformBuildMetadataRecord,
   type ReleaseIdentity,
 } from "../scripts/release/release-contract.mjs";
 
@@ -64,32 +66,69 @@ function writePlatformMetadata(
   for (const expected of EXPECTED_TARGETS) {
     writeFileSync(
       path.join(directory, `${expected.targetGroup}.json`),
-      `${JSON.stringify(
-        {
-          schema: "fyagent-platform-build/v1",
-          targetGroup: expected.targetGroup,
-          platform: expected.platform,
-          architecture: expected.architecture,
-          runnerLabel: expected.runnerLabel,
-          runner: {
-            runnerOs: expected.platform,
-            runnerArch: expected.expectedRunnerArch ?? "X64",
-            imageOs: "reviewed-image",
-            imageVersion: "20260808.1",
-          },
-          containerDigest: expected.containerDigest,
-          toolchain: {
-            node: "v24.19.0",
-            pnpm: "10.12.3",
-            rustc: "rustc 1.97.1 (reviewed 2026-08-08)",
-          },
-          identity: metadataIdentity,
-        },
-        null,
-        2,
-      )}\n`,
+      `${JSON.stringify(platformMetadataRecord(expected, metadataIdentity), null, 2)}\n`,
     );
   }
+}
+
+function platformMetadataRecord(
+  expected: ExpectedTarget,
+  metadataIdentity: ReleaseIdentity = identity,
+): PlatformBuildMetadataRecord {
+  return {
+    schema: "fyagent-platform-build/v1",
+    targetGroup: expected.targetGroup,
+    platform: expected.platform,
+    architecture: expected.architecture,
+    runner: {
+      requestedLabel: expected.requestedRunnerLabel,
+      context: {
+        os: expected.expectedRunnerOs,
+        arch: expected.expectedRunnerArch,
+      },
+    },
+    container:
+      expected.expectedContainer === null
+        ? null
+        : {
+            configuredImage: {
+              reference: expected.expectedContainer.imageReference,
+              manifestDigest: expected.expectedContainer.manifestDigest,
+            },
+            observed: {
+              osRelease: {
+                id: expected.expectedContainer.osReleaseId,
+                versionId: expected.expectedContainer.osReleaseVersionId,
+              },
+              unameMachine: expected.expectedContainer.unameMachine,
+            },
+          },
+    toolchain: {
+      node: "v24.19.0",
+      pnpm: "10.12.3",
+      rustc: "rustc 1.97.1 (reviewed 2026-08-08)",
+    },
+    identity: metadataIdentity,
+  };
+}
+
+type MutableRecord = Record<string, unknown>;
+
+function mutatePlatformRecord(
+  directory: string,
+  targetGroup: string,
+  mutate: (record: MutableRecord) => void,
+): void {
+  const metadataPath = path.join(directory, `${targetGroup}.json`);
+  const record = JSON.parse(
+    readFileSync(metadataPath, "utf8"),
+  ) as MutableRecord;
+  mutate(record);
+  writeFileSync(metadataPath, `${JSON.stringify(record, null, 2)}\n`);
+}
+
+function nestedRecord(record: MutableRecord, key: string): MutableRecord {
+  return record[key] as MutableRecord;
 }
 
 function writeInstallerArtifacts(directory: string): void {
@@ -109,7 +148,261 @@ afterEach(() => {
   }
 });
 
+const UNKNOWN_METADATA_KEY_CASES: Array<
+  [string, (record: MutableRecord) => void]
+> = [
+  ["record root", (record) => (record.unexpected = true)],
+  [
+    "retired root runnerLabel",
+    (record) => (record.runnerLabel = "ubuntu-24.04"),
+  ],
+  ["retired root containerDigest", (record) => (record.containerDigest = null)],
+  ["runner", (record) => (nestedRecord(record, "runner").unexpected = true)],
+  [
+    "retired runnerOs",
+    (record) => (nestedRecord(record, "runner").runnerOs = "Linux"),
+  ],
+  [
+    "retired runnerArch",
+    (record) => (nestedRecord(record, "runner").runnerArch = "X64"),
+  ],
+  [
+    "runner context",
+    (record) =>
+      (nestedRecord(nestedRecord(record, "runner"), "context").unexpected =
+        true),
+  ],
+  [
+    "container",
+    (record) => (nestedRecord(record, "container").unexpected = true),
+  ],
+  [
+    "configured image",
+    (record) =>
+      (nestedRecord(
+        nestedRecord(record, "container"),
+        "configuredImage",
+      ).unexpected = true),
+  ],
+  [
+    "container observations",
+    (record) =>
+      (nestedRecord(nestedRecord(record, "container"), "observed").unexpected =
+        true),
+  ],
+  [
+    "OS release observations",
+    (record) =>
+      (nestedRecord(
+        nestedRecord(nestedRecord(record, "container"), "observed"),
+        "osRelease",
+      ).unexpected = true),
+  ],
+  [
+    "toolchain",
+    (record) => (nestedRecord(record, "toolchain").unexpected = true),
+  ],
+  [
+    "identity",
+    (record) => (nestedRecord(record, "identity").unexpected = true),
+  ],
+  [
+    "retired imageOs",
+    (record) => (nestedRecord(record, "runner").imageOs = "retired"),
+  ],
+  [
+    "retired imageVersion",
+    (record) => (nestedRecord(record, "runner").imageVersion = "retired"),
+  ],
+];
+
+const INVALID_METADATA_CASES: Array<
+  [string, string, (record: MutableRecord) => void, RegExp]
+> = [
+  [
+    "runner OS drift",
+    "linux-x64",
+    (record) =>
+      (nestedRecord(nestedRecord(record, "runner"), "context").os = "Windows"),
+    /runner context OS drifted/,
+  ],
+  [
+    "runner architecture drift",
+    "linux-x64",
+    (record) =>
+      (nestedRecord(nestedRecord(record, "runner"), "context").arch = "ARM64"),
+    /runner context architecture drifted/,
+  ],
+  [
+    "macOS hosted-runner architecture drift",
+    "macos-universal",
+    (record) =>
+      (nestedRecord(nestedRecord(record, "runner"), "context").arch = "X64"),
+    /runner context architecture drifted/,
+  ],
+  [
+    "undocumented runner architecture",
+    "macos-universal",
+    (record) =>
+      (nestedRecord(nestedRecord(record, "runner"), "context").arch =
+        "UNIVERSAL"),
+    /not a documented GitHub value/,
+  ],
+  [
+    "requested runner label drift",
+    "linux-x64",
+    (record) => (nestedRecord(record, "runner").requestedLabel = "latest"),
+    /requested runner label drifted/,
+  ],
+  [
+    "null Linux container",
+    "linux-x64",
+    (record) => (record.container = null),
+    /container must be an object/,
+  ],
+  [
+    "partial Linux container",
+    "linux-x64",
+    (record) => delete nestedRecord(record, "container").observed,
+    /container must contain exactly these keys/,
+  ],
+  [
+    "native-platform container claim",
+    "windows-x64",
+    (record) => {
+      const linuxTarget = EXPECTED_TARGETS.find(
+        ({ targetGroup }) => targetGroup === "linux-x64",
+      )!;
+      record.container = platformMetadataRecord(linuxTarget).container;
+    },
+    /must record container as null/,
+  ],
+  [
+    "image reference and digest mismatch",
+    "linux-x64",
+    (record) =>
+      (nestedRecord(
+        nestedRecord(record, "container"),
+        "configuredImage",
+      ).reference = "docker.io/library/ubuntu:22.04@sha256:" + "0".repeat(64)),
+    /must end with its manifest digest/,
+  ],
+  [
+    "configured image drift",
+    "linux-x64",
+    (record) => {
+      const armTarget = EXPECTED_TARGETS.find(
+        ({ targetGroup }) => targetGroup === "linux-arm64",
+      )!;
+      const configuredImage = nestedRecord(
+        nestedRecord(record, "container"),
+        "configuredImage",
+      );
+      configuredImage.reference = armTarget.expectedContainer!.imageReference;
+      configuredImage.manifestDigest =
+        armTarget.expectedContainer!.manifestDigest;
+    },
+    /configured container image reference drifted|container manifest digest drifted/,
+  ],
+  [
+    "container OS ID drift",
+    "linux-x64",
+    (record) =>
+      (nestedRecord(
+        nestedRecord(nestedRecord(record, "container"), "observed"),
+        "osRelease",
+      ).id = "debian"),
+    /observed container OS ID drifted/,
+  ],
+  [
+    "container OS version drift",
+    "linux-x64",
+    (record) =>
+      (nestedRecord(
+        nestedRecord(nestedRecord(record, "container"), "observed"),
+        "osRelease",
+      ).versionId = "24.04"),
+    /observed container OS version drifted/,
+  ],
+  [
+    "container uname drift",
+    "linux-x64",
+    (record) =>
+      (nestedRecord(
+        nestedRecord(record, "container"),
+        "observed",
+      ).unameMachine = "aarch64"),
+    /observed container machine drifted/,
+  ],
+];
+
 describe("release asset and metadata contract", () => {
+  it("freezes the exact runner and container acceptance map", () => {
+    expect(EXPECTED_TARGETS).toEqual([
+      {
+        targetGroup: "macos-universal",
+        platform: "macos",
+        architecture: "universal",
+        requestedRunnerLabel: "macos-15",
+        expectedRunnerOs: "macOS",
+        expectedRunnerArch: "ARM64",
+        expectedContainer: null,
+      },
+      {
+        targetGroup: "windows-x64",
+        platform: "windows",
+        architecture: "x64",
+        requestedRunnerLabel: "windows-2022",
+        expectedRunnerOs: "Windows",
+        expectedRunnerArch: "X64",
+        expectedContainer: null,
+      },
+      {
+        targetGroup: "windows-arm64",
+        platform: "windows",
+        architecture: "arm64",
+        requestedRunnerLabel: "windows-11-arm",
+        expectedRunnerOs: "Windows",
+        expectedRunnerArch: "ARM64",
+        expectedContainer: null,
+      },
+      {
+        targetGroup: "linux-x64",
+        platform: "linux",
+        architecture: "x64",
+        requestedRunnerLabel: "ubuntu-24.04",
+        expectedRunnerOs: "Linux",
+        expectedRunnerArch: "X64",
+        expectedContainer: {
+          imageReference:
+            "docker.io/library/ubuntu:22.04@sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e",
+          manifestDigest:
+            "sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e",
+          osReleaseId: "ubuntu",
+          osReleaseVersionId: "22.04",
+          unameMachine: "x86_64",
+        },
+      },
+      {
+        targetGroup: "linux-arm64",
+        platform: "linux",
+        architecture: "arm64",
+        requestedRunnerLabel: "ubuntu-24.04-arm",
+        expectedRunnerOs: "Linux",
+        expectedRunnerArch: "ARM64",
+        expectedContainer: {
+          imageReference:
+            "docker.io/library/ubuntu:22.04@sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149",
+          manifestDigest:
+            "sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149",
+          osReleaseId: "ubuntu",
+          osReleaseVersionId: "22.04",
+          unameMachine: "aarch64",
+        },
+      },
+    ]);
+  });
+
   it("freezes ten installers, twelve attestation subjects, and thirteen attachments", () => {
     expect(expectedInstallerNames("0.3.0")).toHaveLength(10);
     expect(expectedAttestationSubjectNames("0.3.0")).toEqual([
@@ -210,6 +503,60 @@ describe("release asset and metadata contract", () => {
     expect(metadata.targets.map(({ targetGroup }) => targetGroup)).toEqual(
       EXPECTED_TARGETS.map(({ targetGroup }) => targetGroup),
     );
+    expect(Object.keys(metadata).sort()).toEqual(
+      [
+        "schema",
+        "product",
+        "version",
+        "tag",
+        "sourceSha",
+        "repository",
+        "workflow",
+        "requiredCi",
+        "generatedAt",
+        "targets",
+      ].sort(),
+    );
+    for (const target of metadata.targets) {
+      expect(Object.keys(target).sort()).toEqual(
+        [
+          "schema",
+          "targetGroup",
+          "platform",
+          "architecture",
+          "runner",
+          "container",
+          "toolchain",
+        ].sort(),
+      );
+      expect(Object.keys(target.runner).sort()).toEqual(
+        ["requestedLabel", "context"].sort(),
+      );
+      expect(Object.keys(target.runner.context).sort()).toEqual(["arch", "os"]);
+      expect(Object.keys(target.toolchain).sort()).toEqual([
+        "node",
+        "pnpm",
+        "rustc",
+      ]);
+      expect("identity" in target).toBe(false);
+      if (target.container === null) continue;
+      expect(Object.keys(target.container).sort()).toEqual([
+        "configuredImage",
+        "observed",
+      ]);
+      expect(Object.keys(target.container.configuredImage).sort()).toEqual([
+        "manifestDigest",
+        "reference",
+      ]);
+      expect(Object.keys(target.container.observed).sort()).toEqual([
+        "osRelease",
+        "unameMachine",
+      ]);
+      expect(Object.keys(target.container.observed.osRelease).sort()).toEqual([
+        "id",
+        "versionId",
+      ]);
+    }
   });
 
   it("requires a unique Required CI binding only for formal metadata", () => {
@@ -285,24 +632,53 @@ describe("release asset and metadata contract", () => {
     ).toThrow(error);
   });
 
-  it("rejects target runner and Linux child-digest drift", () => {
+  it.each(UNKNOWN_METADATA_KEY_CASES)(
+    "rejects unknown keys at the %s level",
+    (_label, mutate) => {
+      const directory = temporaryDirectory();
+      writePlatformMetadata(directory);
+      mutatePlatformRecord(directory, "linux-x64", mutate);
+      expect(() =>
+        buildBuildMetadata({
+          metadataDirectory: directory,
+          identity,
+          generatedAt: "2026-08-08T00:00:00.000Z",
+        }),
+      ).toThrow(/must contain exactly these keys/);
+    },
+  );
+
+  it.each(INVALID_METADATA_CASES)(
+    "rejects %s",
+    (_label, targetGroup, mutate, error) => {
+      const directory = temporaryDirectory();
+      writePlatformMetadata(directory);
+      mutatePlatformRecord(directory, targetGroup, mutate);
+      expect(() =>
+        buildBuildMetadata({
+          metadataDirectory: directory,
+          identity,
+          generatedAt: "2026-08-08T00:00:00.000Z",
+        }),
+      ).toThrow(error);
+    },
+  );
+
+  it("rejects malformed container digest syntax", () => {
     const directory = temporaryDirectory();
     writePlatformMetadata(directory);
-    const linuxArmPath = path.join(directory, "linux-arm64.json");
-    // The fixture is controlled JSON and intentionally rewritten to prove drift rejection.
-    const record = JSON.parse(readFileSync(linuxArmPath, "utf8")) as Record<
-      string,
-      unknown
-    >;
-    record.containerDigest =
-      "sha256:3b06811b2afd352be909dd088a004166d665dc76d38b13eada33522a9d915c6f";
-    writeFileSync(linuxArmPath, `${JSON.stringify(record)}\n`);
+    mutatePlatformRecord(directory, "linux-arm64", (record) => {
+      nestedRecord(
+        nestedRecord(record, "container"),
+        "configuredImage",
+      ).manifestDigest = "sha256:ABC";
+    });
     expect(() =>
       buildBuildMetadata({
         metadataDirectory: directory,
         identity,
         generatedAt: "2026-08-08T00:00:00.000Z",
       }),
-    ).toThrow(/linux-arm64 container digest drifted/);
+    ).toThrow(/manifest digest must be lowercase SHA-256/);
   });
 });

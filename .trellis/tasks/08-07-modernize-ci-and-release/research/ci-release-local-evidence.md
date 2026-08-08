@@ -1,7 +1,7 @@
 # CI and unsigned Release local evidence
 
 Date: 2026-08-08
-Branch: `codex/fyagent-v0.3.0`
+Branch: `codex/fyagent-v0.3.0-preflight-engineering`
 
 ## Implemented commits
 
@@ -13,6 +13,10 @@ Branch: `codex/fyagent-v0.3.0`
 - `a1c1238c` — enforce D116 host-native-only local execution and D117
   synchronous whole-run Actions waiting across the canonical task API and
   active contracts.
+- `387f7fb8` — integrate the packaging and host-native remediation through PR
+  #6 after its PR and exact-main Required CI passed. The third unsigned
+  preflight then failed closed at the Windows Installer query adapter and
+  Linux runner/container metadata boundary, before aggregation or publication.
 
 The public repository label prerequisite was also verified out of band: all nine labels referenced by `.github/labeler.yml` exist in `NongHua123/fyagent`; the previously missing `i18n` label was created with color `ededed` and description `Internationalization and localization`. The workflow retains only `pull-requests: write` and does not receive `issues: write`.
 
@@ -36,10 +40,33 @@ The public repository label prerequisite was also verified out of band: all nine
   14 contract files / 144 tests and the Native Fetch 4/4 probe. Exact
   `v0.3.0` version checking and the active Child 4 Trellis validation also
   passed.
-- `actionlint` was not installed for the latest remediation revision, so its
-  GitHub Actions semantic result remains a remote CI gate. Earlier workflow
-  revisions passed actionlint 1.7.12, but that is not reported as evidence for
-  the current revision.
+- The D118 engineering candidate passed `mise run release:check`: 16 contract
+  files / 231 tests plus the Native Fetch 4/4 probe. This includes 49 direct
+  writer CLI cases, 40 aggregate metadata cases, seven Windows Installer query
+  static-contract cases, the Release workflow suite, the Required dependency
+  gate, and the host-native boundary suite.
+- The focused D118 matrix passed 132/132 tests. The final Linux x64
+  `mise run check` completed with exit 0 after the metadata and sequence
+  hardening, covering the full frontend, Rust, task, lock, hook, version, and
+  Release aggregate without running a non-host target.
+- Independent code-quality review found three concrete gaps: nullable MSI
+  sequence rows could be coerced to zero, `macos-15` architecture was not exact,
+  and the native COM fixture inherited GitHub's six-hour job timeout. The
+  candidate now requires a positive integer sequence, freezes `macos-15` to
+  `ARM64`, and limits each fixture job to 15 minutes; the focused suites and
+  full local gate passed after those corrections.
+- A separate read-only security review of the final D118 worktree found no new
+  high-confidence finding in SQL parameterization, COM ownership, bounded
+  stream handling, MSI business gates, Required topology, metadata allowlists,
+  or Release permission separation. It did not substitute for the pending
+  native Windows x64/ARM64 fixture evidence.
+- `mise run typecheck`, targeted Prettier, task metadata/docs validation, and
+  explicit parent/Child 4/Child 6 Trellis validation passed for the D118
+  candidate. `actionlint` 1.7.12 also passed both changed workflows; the retained
+  archive still matches the previously recorded official release checksum file.
+- No local PowerShell, Windows Installer Automation, WiX, foreign target, or
+  GitHub Actions command was used for D118. The x64/ARM64 temporary-MSI suite is
+  intentionally a new Required CI gate, not a local or full-preflight claim.
 
 ## Security and provenance decisions realized in code
 
@@ -59,25 +86,47 @@ The public repository label prerequisite was also verified out of band: all nine
   `31240006190`; merge commit
   `6ed291b6c3e908d59a6b91cdd45714b5a34c7280` passed main CI run
   `31240470955`.
+- PR #6 integrated the packaging and D116/D117 remediation as merge commit
+  `387f7fb8a04b216b70590b37dfc8e0d034402588`; that exact main SHA passed CI
+  run `31251170235`.
 - Automatic Labeler run `31240006243` completed successfully with only
   `contents: read`, metadata read, and `pull-requests: write`; it applied the
   expected `frontend` and `actions` labels to PR #5.
 - Exact-main unsigned preflight `31238817378` failed closed on Linux bootstrap
   and Windows SDK tool discovery; preflight `31241064177` failed closed on
-  Linux AppImage packaging and Windows WiX Light. Neither run reached asset
-  aggregation, attestation, or publication, and neither created a tag or
-  Release.
-- The next remediation PR/main CI and preflight have not run. D117 requires the
-  initiating flow to wait synchronously for each whole run to complete, then
-  read the final state once; failed job logs may be fetched only after a final
-  failure.
+  Linux AppImage packaging and Windows WiX Light.
+- Exact-main unsigned preflight `31251654600` used
+  `387f7fb8a04b216b70590b37dfc8e0d034402588`. macOS Universal succeeded.
+  Windows x64 and ARM64 both completed application/helper/MSI builds and then
+  failed at the first MSI structure query because the inline Automation reader
+  reported `FieldCount=0`. Linux x64 and ARM64 both completed package builds
+  and then failed because the metadata writer required undocumented `ImageOS`
+  job-container state. Aggregate verification, attestation, and publication
+  were skipped.
+- D118 PR #7 first CI run `31258303784` waited synchronously to `completed`
+  before one final result/log read. Repository contracts, frontend, all three
+  backend jobs, and desktop acceptance succeeded. The new x64 and ARM64 MSI
+  query fixture legs both failed immediately with the same PowerShell binder
+  error: the typed cleanup-list parameter did not declare an empty collection
+  as valid, so the first deterministic release call was skipped and the
+  temporary MSI remained locked. `CI / Required` failed closed. The correction
+  explicitly permits an empty cleanup accumulator on the three production
+  cleanup helpers and the fixture owner; it does not ignore cleanup failures or
+  add a compatibility fallback. No Release preflight was triggered.
+- All three preflights failed before asset aggregation, attestation, or
+  publication; none created the immutable tag or public Release. D118 therefore
+  blocks another full preflight until the query and metadata interfaces have
+  engineering abstractions, behavior-level tests, and native Required evidence.
+  D117 still requires the initiating flow to wait synchronously for each whole
+  run to complete, then read the final state once; failed job logs may be
+  fetched only after a final failure.
 
 ## Evidence still required before task completion
 
 The child remains `in_progress`. The following are not satisfied by local/static evidence:
 
-- a successful remediation PR and main `CI / Required` run for `6efdd6ad` and
-  `a1c1238c`;
+- a successful D118 engineering-remediation PR and exact-main `CI / Required`
+  run, including the native Windows Installer query fixture on x64 and ARM64;
 - a successful unsigned full-matrix preflight for the exact final main SHA;
 - Windows x64/ARM64, Linux x64/ARM64, and macOS Universal native runner/package evidence;
 - mandatory GitHub artifact attestations and Sigstore bundle verification;

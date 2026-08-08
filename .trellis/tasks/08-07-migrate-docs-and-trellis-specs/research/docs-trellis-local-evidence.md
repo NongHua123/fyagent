@@ -55,7 +55,7 @@ The following completed successfully on Linux x64:
 - `mise run check:contracts`;
 - 39 internal files / 49 relative links and 56 combined live Markdown files /
   178 relative links, with no missing local target;
-- decision IDs D1–D117 are continuous and unique, with historical D1–D104
+- decision IDs D1–D118 are continuous and unique, with historical D1–D104
   semantics preserved;
 - repository overlay accounting is 111 total files: 108 frozen payload files
   and three central freeze declarations; only those declarations changed;
@@ -82,11 +82,15 @@ archive.
   non-host evidence must come from matching native Actions runners. D117
   requires synchronous whole-run waiting followed by one final result read,
   with failed logs fetched only after final failure.
-- PR #4/#5 Required CI, their main CI runs, and automatic Labeler run
-  `31240006243` succeeded. Exact-main preflights `31238817378` and
-  `31241064177` failed closed before aggregation, attestation, or publication;
-  they created no tag or Release.
-- A successful remediation PR/main cycle, all five native release groups, a
+- D118 has moved the low-level Windows Installer and runner/container metadata
+  contracts behind engineering abstractions, behavior tests, and a native
+  x64/ARM64 Required CI fixture. Local contracts are verified; the native
+  Required CI evidence remains pending before another full preflight.
+- PR #4/#5/#6 Required CI, their main CI runs, and automatic Labeler run
+  `31240006243` succeeded. Exact-main preflights `31238817378`,
+  `31241064177`, and `31251654600` failed closed before aggregation,
+  attestation, or publication; they created no tag or Release.
+- A successful D118 remediation PR/main cycle, all five native release groups, a
   successful exact-main unsigned preflight, immutable `v0.3.0`, the stable
   13-attachment Release,
   digest/attestation verification, Windows `NotSigned`, macOS Developer ID and

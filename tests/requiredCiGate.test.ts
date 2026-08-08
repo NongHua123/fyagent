@@ -14,6 +14,15 @@ type GateReport = {
 const ROOT = path.resolve(__dirname, "..");
 const REQUIRED_JOB_IDS =
   requiredGateModule.REQUIRED_CI_JOBS as readonly string[];
+const EXPECTED_REQUIRED_JOB_IDS = [
+  "contracts",
+  "frontend",
+  "desktop-acceptance-contract",
+  "backend-linux",
+  "backend-windows",
+  "windows-msi-query",
+  "backend-macos",
+] as const;
 const evaluateRequiredCiResults =
   requiredGateModule.evaluateRequiredCiResults as (
     value: unknown,
@@ -26,7 +35,8 @@ function needs(result = "success"): Record<string, { result: string }> {
 }
 
 describe("CI / Required gate", () => {
-  it("accepts only the exact six successful dependency jobs", () => {
+  it("accepts only the exact seven successful dependency jobs", () => {
+    expect(REQUIRED_JOB_IDS).toEqual(EXPECTED_REQUIRED_JOB_IDS);
     const report = evaluateRequiredCiResults(needs());
     expect(report).toEqual({
       ok: true,
