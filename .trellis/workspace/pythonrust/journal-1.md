@@ -319,3 +319,41 @@ Implemented Cargo version SSOT, native MSI directory policy, dual-architecture h
 ### Next Steps
 
 - Run Windows x64 and ARM64 installer lifecycle HIL, signing, notarization, and real release-workflow verification before release.
+
+
+## Session 11: Close FyAgent v0.3.0 modernization
+
+**Date**: 2026-08-09
+**Task**: Close FyAgent v0.3.0 modernization
+**Branch**: `codex/fyagent-v0.3.0-closeout`
+
+### Summary
+
+Record PR #8 native closeout evidence, freeze the final design-package manifest, and archive Child 3, Child 4, Child 6, and the modernization parent in dependency order.
+
+### Main Changes
+
+- Verified Windows x64 and ARM64 uv-managed Python, Trellis, and MSI native contracts in PR #8 run 31265504901.
+- Regenerated and verified the 134-file v0.3.0 design-package manifest.
+- Archived the remaining task tree in Child 3, Child 4, Child 6, then parent order.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `623b6924e3b8682321b26aa69c15dc6f0b9f6f09` | (see git log) |
+| `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` | (see git log) |
+| `9e86dbb67d76a736da163a6099d794d2eb903bb6` | (see git log) |
+
+### Testing
+
+- [OK] Release contracts: 16 files and 231 tests plus four Native Fetch tests passed.
+- [OK] Tasks, generated docs, task contexts, formatting, typecheck, manifest, JSON, decision, and diff gates passed.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Require final PR CI, merge PR #8, require exact-main CI, then delete every writable non-main local and origin branch.
