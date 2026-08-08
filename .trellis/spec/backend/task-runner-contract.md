@@ -74,6 +74,15 @@ read those values, parse variadic shell-escaped lists into argv arrays, validate
 SemVer/package/tag/enum/path inputs, and spawn a command without a shell.
 Arguments must never be concatenated into a command string.
 
+On native Windows, local mise tasks resolve only the actually used `pnpm`
+command to `pnpm.exe`. This matches the audited `mise.lock` assets
+`pnpm-win-x64.exe` and `pnpm-win-arm64.exe`; both carry required SHA-256
+checksums. The task runner does not synthesize `.cmd` names for pnpm, npm, npx,
+or pnpx and does not introduce `cmd.exe`, `shell: true`, or command-string
+quoting. Non-Windows commands remain direct. This local mise boundary is
+distinct from GitHub Actions, which does not install mise and uses its own
+reviewed `pnpm.cmd` batch-shim bridge in the CI toolchain verifier.
+
 Contract tests execute real `mise run` calls for a positional value, a flag,
 and a filtered test. Metadata inspection alone is not sufficient proof that
 values reach the wrapper.
@@ -111,18 +120,19 @@ Retired local cross-build tasks have no alias or deprecation forwarder.
 
 ## 7. Validation / Error Matrix
 
-| Condition                                                           | Required result                      |
-| ------------------------------------------------------------------- | ------------------------------------ |
-| Missing description/effect/usage                                    | `tasks:validate` fails               |
-| Missing task reference or DAG cycle                                 | mise/task contract fails             |
-| `check` reaches a non-read-only effect                              | Fail closed                          |
-| A parameter is interpolated into a shell command                    | Reject; spawn validated argv instead |
-| A Rust filter begins with `-` or contains `--target`                | Reject before Cargo starts           |
-| Mutation task has neither preview default nor explicit confirmation | Reject                               |
-| Clean path resolves outside the repository                          | Reject without deletion              |
-| Upstream safety/remotes/worktree do not match                       | Reject before fetch/merge            |
-| Generated task reference differs by one byte                        | `tasks:docs:check` fails             |
-| New active doc uses a legacy entrypoint                             | `docs-contract-check.mjs` fails      |
+| Condition                                                            | Required result                        |
+| -------------------------------------------------------------------- | -------------------------------------- |
+| Missing description/effect/usage                                     | `tasks:validate` fails                 |
+| Missing task reference or DAG cycle                                  | mise/task contract fails               |
+| `check` reaches a non-read-only effect                               | Fail closed                            |
+| A parameter is interpolated into a shell command                     | Reject; spawn validated argv instead   |
+| A Windows task forces a pnpm batch shim instead of locked `pnpm.exe` | Task-runner and DEP0040 contracts fail |
+| A Rust filter begins with `-` or contains `--target`                 | Reject before Cargo starts             |
+| Mutation task has neither preview default nor explicit confirmation  | Reject                                 |
+| Clean path resolves outside the repository                           | Reject without deletion                |
+| Upstream safety/remotes/worktree do not match                        | Reject before fetch/merge              |
+| Generated task reference differs by one byte                         | `tasks:docs:check` fails               |
+| New active doc uses a legacy entrypoint                              | `docs-contract-check.mjs` fails        |
 
 ## 8. Tests Required
 
@@ -131,6 +141,10 @@ Retired local cross-build tasks have no alias or deprecation forwarder.
   Rust order, retired task, and forbidden command scans.
 - Real parameter/flag transport smoke tests, including dry-run `version:set`,
   a test filter, Python preview input, and upstream tag validation.
+- Pure executable-resolution tests must require `pnpm.exe` only on Win32,
+  preserve direct non-Windows commands, bind both native Windows pnpm lock
+  assets and checksums, and prove the DEP0040 checker uses the shared resolver
+  without a `pnpm.cmd` fallback.
 - Negative Rust `--target` smuggling tests through normal and double-dash
   invocation paths.
 - Clean preview tests proving canonical repository-only targets and zero writes.

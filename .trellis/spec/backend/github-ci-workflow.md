@@ -128,6 +128,12 @@ the development-hook behavior tests invoke the real Python harness.
 - `actions/setup-node` uses `node-version-file: .node-version`.
   `pnpm/action-setup` omits `version` and reads `packageManager`; it does not
   install dependencies implicitly.
+- On Windows, the toolchain verifier launches the `pnpm.cmd` batch shim through
+  `ComSpec` (falling back to `cmd.exe`) with explicit `/d /s /c` arguments and
+  `shell: false`. Only its strict internal token character allowlist may enter
+  the command string; whitespace, quoting, expansion, control, and shell
+  metacharacters fail closed. Other tools and non-Windows invocation remain
+  direct process launches.
 - `actions-rust-lang/setup-rust-toolchain` omits toolchain, component, and
   target inputs so `rust-toolchain.toml` remains authoritative. Its own cache
   is disabled and `rustflags` is empty so it cannot override repository Cargo
@@ -213,6 +219,7 @@ automatic event.
 | A Required runner uses `*-latest` or an unapproved label                                     | Static contract fails before remote execution.                                                                                    |
 | A third-party Action is not a reviewed full SHA with a version note                          | Static contract fails.                                                                                                            |
 | Node, pnpm, Rust, uv, or Python differs from its repository fact                             | The affected job fails before its tests.                                                                                          |
+| Windows batch invocation contains a token outside the internal allowlist                     | Toolchain verification fails before `cmd.exe`; it never falls back to an implicit shell.                                          |
 | `mise.lock` has no unique uv entry or setup-uv receives an independent literal               | Toolchain resolution fails; do not fall back to `latest`.                                                                         |
 | Full unit tests run without `uv sync --locked` and the managed `.venv`                       | Frontend CI fails; do not weaken the real hook harness.                                                                           |
 | Labeler checks out or executes PR code, reads secrets, or gains another write permission     | Reject the workflow as unsafe.                                                                                                    |

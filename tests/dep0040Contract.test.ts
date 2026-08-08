@@ -267,4 +267,16 @@ describe("DEP0040 dependency and deprecation contract", () => {
       "joined-fixture.mjs: NODE_NO_WARNINGS",
     ]);
   });
+
+  it("reuses the task runner's native pnpm resolver without a batch shim", () => {
+    const source = read("scripts/tasks/dep0040-check.mjs");
+    expect(source).toContain(
+      'import { resolveTaskExecutable } from "./lib.mjs";',
+    );
+    expect(source).toContain(
+      'spawnSync(resolveTaskExecutable("pnpm"), args, {',
+    );
+    expect(source).not.toContain("pnpm.cmd");
+    expect(source).not.toContain("function pnpmExecutable");
+  });
 });

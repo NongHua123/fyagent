@@ -167,16 +167,12 @@ pub(crate) enum RuntimeInspection {
 /// It is never serialized to the renderer because scope can reveal an
 /// installation arrangement that is irrelevant to the user-facing dialog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(
-    not(any(target_os = "windows", target_os = "macos", test)),
-    expect(
-        dead_code,
-        reason = "system scope is constructed by supported platform adapters and fake tests"
-    )
-)]
 pub(crate) enum RestartInstallationScope {
     // The comparator retains system scope as an explicit ordering input even
     // though current platform adapters report current-user installations.
+    // Production macOS builds omit this Windows-only scope; platform-neutral
+    // tests retain it to exercise the deterministic ordering contract.
+    #[cfg(any(target_os = "windows", test))]
     #[cfg_attr(all(target_os = "windows", not(test)), allow(dead_code))]
     System,
     CurrentUser,
@@ -185,6 +181,7 @@ pub(crate) enum RestartInstallationScope {
 impl RestartInstallationScope {
     pub(crate) const fn priority(self) -> u8 {
         match self {
+            #[cfg(any(target_os = "windows", test))]
             Self::System => 0,
             Self::CurrentUser => 1,
         }

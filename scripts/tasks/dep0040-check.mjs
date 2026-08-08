@@ -6,6 +6,7 @@ import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
+import { resolveTaskExecutable } from "./lib.mjs";
 
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(SCRIPT_DIRECTORY, "..", "..");
@@ -562,12 +563,8 @@ export function analyzeWhyGraph(document) {
   return records.map(({ ancestors: _ancestors, ...entry }) => entry);
 }
 
-function pnpmExecutable() {
-  return process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-}
-
 function spawnPnpm(root, args) {
-  const result = spawnSync(pnpmExecutable(), args, {
+  const result = spawnSync(resolveTaskExecutable("pnpm"), args, {
     cwd: root,
     env: process.env,
     encoding: "utf8",

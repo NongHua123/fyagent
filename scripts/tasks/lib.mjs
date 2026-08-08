@@ -20,17 +20,12 @@ export const SUPPORTED_PLATFORMS = Object.freeze([
 ]);
 export const STABLE_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
-const WINDOWS_COMMANDS = new Set(["npm", "npx", "pnpm", "pnpx"]);
-
-function executable(command) {
-  if (process.platform === "win32" && WINDOWS_COMMANDS.has(command)) {
-    return `${command}.cmd`;
-  }
-  return command;
+export function resolveTaskExecutable(command, platform = process.platform) {
+  return platform === "win32" && command === "pnpm" ? "pnpm.exe" : command;
 }
 
 export function run(command, args = [], options = {}) {
-  const result = spawnSync(executable(command), args, {
+  const result = spawnSync(resolveTaskExecutable(command), args, {
     cwd: ROOT,
     env: { ...process.env, ...(options.env ?? {}) },
     encoding: "utf8",

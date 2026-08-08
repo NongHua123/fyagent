@@ -4,6 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
+// @ts-expect-error The task runner executes this JavaScript helper directly.
+import * as taskLibModule from "../scripts/tasks/lib.mjs";
 
 const ROOT = path.resolve(__dirname, "..");
 
@@ -20,6 +22,17 @@ type ContractModule = {
   RAW_TASKS: readonly string[];
   loadTaskDefinitions(): Record<string, TaskDefinition>;
 };
+
+type LockAsset = {
+  checksum: string;
+  url: string;
+};
+
+const readToml = taskLibModule.readToml as (relativePath: string) => unknown;
+const resolveTaskExecutable = taskLibModule.resolveTaskExecutable as (
+  command: string,
+  platform?: NodeJS.Platform,
+) => string;
 
 function mise(...args: string[]) {
   return spawnSync("mise", ["run", ...args], {
@@ -40,6 +53,34 @@ function digest(relativePath: string): string {
 }
 
 describe("canonical mise task API", () => {
+  it("uses mise's native Windows pnpm executable without changing other commands", () => {
+    expect(resolveTaskExecutable("pnpm", "win32")).toBe("pnpm.exe");
+    expect(resolveTaskExecutable("pnpm", "linux")).toBe("pnpm");
+    expect(resolveTaskExecutable("pnpm", "darwin")).toBe("pnpm");
+
+    for (const command of ["npm", "npx", "pnpx", "node", "cargo"]) {
+      expect(resolveTaskExecutable(command, "win32"), command).toBe(command);
+    }
+  });
+
+  it("locks native pnpm executables and checksums for both Windows architectures", () => {
+    const lock = readToml("mise.lock") as {
+      tools: {
+        pnpm: Array<Record<string, LockAsset>>;
+      };
+    };
+    expect(lock.tools.pnpm).toHaveLength(1);
+    const [pnpm] = lock.tools.pnpm;
+    for (const [platform, assetName] of [
+      ["windows-x64", "pnpm-win-x64.exe"],
+      ["windows-arm64", "pnpm-win-arm64.exe"],
+    ] as const) {
+      const asset = pnpm[`platforms.${platform}`];
+      expect(asset.url.endsWith(`/${assetName}`), platform).toBe(true);
+      expect(asset.checksum, platform).toMatch(/^sha256:[0-9a-f]{64}$/);
+    }
+  });
+
   it("loads a complete and extensible catalog with valid metadata", () => {
     const validation = spawnSync(
       "mise",
@@ -161,7 +202,9 @@ describe("canonical mise task API", () => {
     const result = mise("trellis:validate");
     expect(result.status, output(result)).toBe(0);
     expect(output(result)).toMatch(/Validated \d+ active Trellis task\(s\)/);
-    expect(output(result)).not.toContain("the following arguments are required");
+    expect(output(result)).not.toContain(
+      "the following arguments are required",
+    );
   }, 60_000);
 
   it("forwards the task CLI help flag through the canonical wrapper", () => {

@@ -13,6 +13,7 @@ const ROOT = path.resolve(
 );
 const STABLE_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const TOOL_NAMES = new Set(["node", "pnpm", "rust", "uv", "python"]);
+const WINDOWS_BATCH_TOKEN = /^[A-Za-z0-9._-]+$/;
 
 function read(root, relativePath) {
   return fs
@@ -92,17 +93,38 @@ export function readToolchainContract(root = ROOT) {
   });
 }
 
-function executable(command) {
-  return process.platform === "win32" && command === "pnpm"
-    ? "pnpm.cmd"
-    : command;
+export function resolveToolInvocation(
+  command,
+  args,
+  platform = process.platform,
+  env = process.env,
+) {
+  if (platform !== "win32" || command !== "pnpm") {
+    return { command, args };
+  }
+
+  const tokens = ["pnpm.cmd", ...args];
+  if (
+    tokens.some(
+      (token) => typeof token !== "string" || !WINDOWS_BATCH_TOKEN.test(token),
+    )
+  ) {
+    throw new Error("Windows batch invocation rejected an unsafe token");
+  }
+
+  return {
+    command: env.ComSpec || env.COMSPEC || "cmd.exe",
+    args: ["/d", "/s", "/c", tokens.join(" ")],
+  };
 }
 
 function capture(command, args) {
-  const result = spawnSync(executable(command), args, {
+  const invocation = resolveToolInvocation(command, args);
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd: ROOT,
     encoding: "utf8",
     windowsHide: true,
+    shell: false,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {

@@ -18,6 +18,12 @@ const temporaryRoots: string[] = [];
 const readToolchainContract = toolchainModule.readToolchainContract as (
   root?: string,
 ) => ToolchainContract;
+const resolveToolInvocation = toolchainModule.resolveToolInvocation as (
+  command: string,
+  args: string[],
+  platform?: NodeJS.Platform,
+  env?: Record<string, string | undefined>,
+) => { command: string; args: string[] };
 const writeGithubOutputs = toolchainModule.writeGithubOutputs as (
   contract: ToolchainContract,
   outputPath: string,
@@ -111,5 +117,51 @@ describe("CI toolchain contract", () => {
         "",
       ].join("\n"),
     );
+  });
+
+  it("launches the Windows pnpm batch shim through the selected ComSpec", () => {
+    expect(
+      resolveToolInvocation("pnpm", ["--version"], "win32", {
+        ComSpec: "C:\\Windows\\System32\\cmd.exe",
+      }),
+    ).toEqual({
+      command: "C:\\Windows\\System32\\cmd.exe",
+      args: ["/d", "/s", "/c", "pnpm.cmd --version"],
+    });
+
+    expect(
+      resolveToolInvocation("pnpm", ["--version"], "win32", {
+        COMSPEC: "D:\\Windows\\cmd.exe",
+      }).command,
+    ).toBe("D:\\Windows\\cmd.exe");
+    expect(
+      resolveToolInvocation("pnpm", ["--version"], "win32", {}).command,
+    ).toBe("cmd.exe");
+  });
+
+  it("leaves non-Windows tool invocation unchanged", () => {
+    expect(resolveToolInvocation("pnpm", ["--version"], "linux", {})).toEqual({
+      command: "pnpm",
+      args: ["--version"],
+    });
+  });
+
+  it.each([
+    "--version & whoami",
+    "--version|whoami",
+    "--version>output",
+    "--version<input",
+    "--version^whoami",
+    "%PATH%",
+    "!PATH!",
+    '"--version"',
+    "--version\nwhoami",
+    "(--version)",
+  ])("rejects an unsafe Windows batch token: %j", (token) => {
+    expect(() =>
+      resolveToolInvocation("pnpm", [token], "win32", {
+        ComSpec: "cmd.exe",
+      }),
+    ).toThrow("Windows batch invocation rejected an unsafe token");
   });
 });
