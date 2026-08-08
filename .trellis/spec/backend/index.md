@@ -24,7 +24,10 @@ Before changing Rust/Tauri host code:
    prove it before editing implementation code.
 4. Run local commands through the shared
    [Development Environment Contract](./development-environment.md); do not
-   substitute a machine-global Node, Rust, or pnpm toolchain.
+   substitute a machine-global Node, Rust, or pnpm toolchain, and never select
+   a non-host OS/architecture locally. Native compile/test entrypoints must use
+   their guarded mise task (or the guarded `pnpm dev`/`pnpm build` alias), not
+   the low-level `pnpm tauri` maintenance/Actions leaf.
 5. Keep versioned product documents in their documented ownership boundary;
    record checkout-specific implementation contracts here rather than
    mechanically rewriting historical/reference packages.
@@ -35,10 +38,10 @@ Before changing Rust/Tauri host code:
 | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Codex Desktop Installer](./codex-desktop-installer.md)                        | The fixed-source installer service, IPC DTOs, job events, and platform boundaries.                                                                                                                                              |
 | [FyAgent 0.3.0 Version and Installer](./fyagent-version-contract.md)           | Cargo version single source, version commands, frozen release values, native MSI directory policy, and release gates.                                                                                                           |
-| [GitHub CI Workflow](./github-ci-workflow.md)                                  | Automatic PR/main/manual CI, stable Required aggregation, pinned toolchains/Actions, trusted-base Labeler, and the accepted D114 live-merge-group N/A verification exception.                                                   |
+| [GitHub CI Workflow](./github-ci-workflow.md)                                  | Automatic PR/main/manual CI, stable Required aggregation, pinned toolchains/Actions, trusted-base Labeler, native-runner evidence, synchronous whole-run observation, and the accepted D114 live-merge-group N/A exception.     |
 | [GitHub Release Workflow](./github-release-workflow.md)                        | Implemented trusted-main same-SHA preflight and formal publish contract; [D113](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md) was accepted on 2026-08-08, while every remote release gate remains pending. |
-| [Development Environment](./development-environment.md)                        | mise-first local tool versions, compatibility declarations, platform boundaries, and WSL PATH isolation.                                                                                                                        |
-| [Repository Task Runner](./task-runner-contract.md)                            | Canonical mise task metadata, parameter transport, DAG side effects, maintenance safety, and generated documentation.                                                                                                           |
+| [Development Environment](./development-environment.md)                        | mise-first local tool versions, host-native-only compiler/runner/linker and Cargo-config boundary, compatibility declarations, platform boundaries, and WSL PATH isolation.                                                     |
+| [Repository Task Runner](./task-runner-contract.md)                            | Canonical mise task metadata, host-native compiler/runner composition, no-shell Cargo argv transport, DAG side effects, maintenance safety, and generated documentation.                                                        |
 | [Application Brand Assets](./application-brand-assets.md)                      | Cross-platform app icons, About reuse, macOS tray templates, and validation.                                                                                                                                                    |
 | [Application Identity](./application-identity.md)                              | Cross-layer FyAgent identity, clean-break behavior, and provenance exceptions.                                                                                                                                                  |
 | [CC Switch Upstream Synchronization](./upstream-sync.md)                       | Immutable upstream tag verification, two-parent merge ancestry, conflict precedence, and provenance boundaries.                                                                                                                 |
@@ -57,8 +60,10 @@ mise run rust:clippy
 mise run rust:test
 ```
 
-Add the applicable renderer, version, Windows, macOS, or release
-contract checks rather than reporting an unrelated local command as platform or
-release evidence. A code-spec update that changes a contract must name its
-enforcing test; successful local static checks never prove a native package,
-artifact attestation, or remotely published Release.
+Add the applicable renderer, version, Windows, macOS, or release contract
+checks rather than reporting an unrelated local command as platform or release
+evidence. Canonical local native commands verify and pin the current host
+OS/architecture; matching native Actions jobs own all non-host evidence. A
+code-spec update that changes a contract must name its enforcing test;
+successful local static checks never prove a native package, artifact
+attestation, or remotely published Release.

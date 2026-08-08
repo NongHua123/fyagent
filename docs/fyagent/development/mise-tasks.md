@@ -51,13 +51,13 @@ the approved `uv = latest` resolution is pinned in `mise.lock`.
 
 ## Rust
 
-| Task             | Description                                                       | Usage     | Effect           |
-| ---------------- | ----------------------------------------------------------------- | --------- | ---------------- |
-| `rust:check`     | Run locked Cargo check for the workspace and all host targets     | —         | read-only        |
-| `rust:clippy`    | Run locked Clippy for the workspace and deny every warning        | —         | read-only        |
-| `rust:fmt`       | Apply rustfmt to the complete Cargo workspace                     | —         | source-modifying |
-| `rust:fmt:check` | Verify rustfmt for the complete Cargo workspace                   | —         | read-only        |
-| `rust:test`      | Run locked Cargo workspace tests with optional controlled filters | [filters] | read-only        |
+| Task             | Description                                                             | Usage     | Effect           |
+| ---------------- | ----------------------------------------------------------------------- | --------- | ---------------- |
+| `rust:check`     | Run locked Cargo check for every target kind on the current host        | —         | read-only        |
+| `rust:clippy`    | Run locked current-host Clippy for the workspace and deny every warning | —         | read-only        |
+| `rust:fmt`       | Apply rustfmt to the complete Cargo workspace                           | —         | source-modifying |
+| `rust:fmt:check` | Verify rustfmt for the complete Cargo workspace                         | —         | read-only        |
+| `rust:test`      | Run locked current-host Cargo tests with optional controlled filters    | [filters] | read-only        |
 
 ## Python and uv
 

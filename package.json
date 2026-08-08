@@ -5,8 +5,8 @@
   "type": "module",
   "packageManager": "pnpm@10.12.3",
   "scripts": {
-    "dev": "pnpm tauri dev",
-    "build": "pnpm tauri build",
+    "dev": "node scripts/tasks/host-native.mjs dev",
+    "build": "node scripts/tasks/host-native.mjs build",
     "tauri": "tauri",
     "version:get": "node scripts/version.mjs get",
     "version:check": "node scripts/version.mjs check",

@@ -1,7 +1,7 @@
 # FyAgent 上游同步、工具链与发布现代化设计包
 
 > **交付状态**：Implementation in progress / 实施中
-> **关联决策**：1–115（含历史、执行覆盖与已接受治理例外）
+> **关联决策**：1–117（含历史、执行覆盖与已接受治理例外）
 > **证据边界**：Child 1、2、5 已实施、本地验证并归档；Child 3、4 已实施且本地验证，远程证据待补；Child 6 实施中；parent 与正式 Release closeout 待完成。
 
 ## 1. 目的
@@ -17,6 +17,7 @@
 - v0.3.0 明确不签名、不公证、不 staple，不使用签名 secrets 或 Release environment；
 - 仓库公开，但不配置 branch/tag ruleset、branch protection 或 Release environment；来源资格仅由 workflow 失败关闭检查约束，该残余风险已接受；
 - The project owner accepted D113/D114 on 2026-08-08：D113 确认 post-merge exact-main/workflow-SHA preflight 顺序；D114 确认当前个人仓库/无保护治理下真实 `merge_group` 运行不适用（N/A）的验证例外；
+- D116 已把本地标准 native 入口收紧为运行时验证并显式固定当前宿主 target；任意非宿主平台只能由匹配的 Actions native runner 验证。D117 固定触发后的同步 whole-run 等待与一次性结果读取纪律；
 - 真实 PR/main/full-matrix/preflight/13 附件/attestation/Release URL 证据仍待远程执行，不得从本地测试推断；
 - `merge_group` YAML trigger 与失败关闭合同已实现；个人账户仓库且禁止保护规则使 Merge Queue 无法启用，因此不会有真实事件成功证据。D114 接受以该静态合同加后续真实 PR/main/manual 运行作为替代证据，不得把 N/A 写成成功运行。
 
@@ -60,6 +61,7 @@
 - 完整合并 CC Switch `v3.19.2`，保留 ancestry 与 FyAgent 独立身份；
 - 删除本地 Linux/WSL→Windows/macOS 交叉构建，不削减 Actions Release 矩阵；
 - 本地统一为 `mise run <task>`；mise 管理 uv，uv 独占管理 Python 3.14.7 和 `.venv`；
+- canonical Tauri/Cargo 本地入口核对 process OS/arch 与绝对 rustc/rustdoc 身份，拒绝 caller compiler/wrapper/runner/linker/target、target-specific flags 与 loader/runtime injection，递归扫描 Cargo config/includes，并显式 own 当前宿主工具链环境与 target；Cargo test 使用无 shell TOML argv runner 且核对原生机器架构，聚合 `check` 还会在 `env:check` 前执行无子进程 guard；
 - Node 24.19.0、Rust 1.97.1、pnpm 10.12.3 使用标准文件为事实源；
 - CI/Labeler 已使用明确 runner、固定 Action SHA、最小权限和稳定 Required gate；
 - Linux Release 在新宿主的同架构 Ubuntu 22.04 容器中构建；

@@ -339,10 +339,34 @@ export function validateTaskContract() {
   ) {
     throw new Error("check:backend must preserve fmt/check/clippy/test order");
   }
-  for (const name of ["dev", "build", "build:binary", "build:debug"]) {
-    if (JSON.stringify(tasks[name]).includes("--target")) {
-      throw new Error(`${name} must not accept a cross-platform target`);
+  if (
+    !Array.isArray(tasks.check.run) ||
+    tasks.check.run[0] !== "node scripts/tasks/host-native.mjs guard"
+  ) {
+    throw new Error(
+      "check must reject caller target controls before env:check probes the toolchain",
+    );
+  }
+  const expectedNativeRuns = {
+    dev: "pnpm dev",
+    build: "pnpm build",
+    "build:binary": "node scripts/tasks/host-native.mjs build:binary",
+    "build:debug": "node scripts/tasks/host-native.mjs build:debug",
+    "rust:check": "node scripts/tasks/rust.mjs check",
+    "rust:clippy": "node scripts/tasks/rust.mjs clippy",
+    "rust:test": "node scripts/tasks/rust.mjs test",
+  };
+  for (const [name, expectedRun] of Object.entries(expectedNativeRuns)) {
+    if (tasks[name].run !== expectedRun) {
+      throw new Error(`${name} must use its canonical host-native wrapper`);
     }
+  }
+  const packageScripts = JSON.parse(read("package.json")).scripts;
+  if (
+    packageScripts.dev !== "node scripts/tasks/host-native.mjs dev" ||
+    packageScripts.build !== "node scripts/tasks/host-native.mjs build"
+  ) {
+    throw new Error("pnpm dev/build must use the host-native Tauri wrapper");
   }
   for (const name of ["python:run", "python:tool", "python:with"]) {
     if (tasks[name].env.FYAGENT_TASK_EFFECT !== "user-command") {
@@ -355,9 +379,40 @@ export function validateTaskContract() {
   if (!frontendRunner.includes("Vitest options are forbidden")) {
     throw new Error("test filters must reject write-capable Vitest options");
   }
-  const rustRunner = read("scripts/tasks/rust.mjs");
-  if (!rustRunner.includes("Cargo options and targets are forbidden")) {
-    throw new Error("rust:test filters must reject Cargo options and targets");
+  const hostNativeRunner = read("scripts/tasks/host-native.mjs");
+  for (const contract of [
+    'captureCommand(rustcExecutable, ["-vV"])',
+    'captureCommand(rustdocExecutable, ["-vV"])',
+    'process.argv[2] === "guard"',
+    '"CARGO_BUILD_TARGET"',
+    '"TAURI_ENV_TARGET_TRIPLE"',
+    '"CARGO_BUILD_RUSTC"',
+    '"CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER"',
+    '"CARGO_BUILD_RUSTDOC"',
+    '"CARGO_ENCODED_RUSTFLAGS"',
+    '"CARGO_ENCODED_RUSTDOCFLAGS"',
+    "TARGET_RUNNER_ENVIRONMENT",
+    "TARGET_LINKER_ENVIRONMENT",
+    "TARGET_RUST_FLAG_ENVIRONMENT",
+    "TARGET_RUSTDOC_FLAG_ENVIRONMENT",
+    "PROCESS_INJECTION_ENVIRONMENT",
+    "assertNoCargoToolchainConfig",
+    "buildNativeRunnerConfig",
+    '"--config"',
+    'process.argv[2] === "native-runner"',
+    "shell: false",
+    "Cargo options and targets are forbidden",
+  ]) {
+    if (!hostNativeRunner.includes(contract)) {
+      throw new Error(`Host-native wrapper is missing contract: ${contract}`);
+    }
+  }
+  if (
+    /\bcmd(?:\.exe)?\b|\bpowershell\b|\bpwsh\b|shell:\s*true/i.test(
+      hostNativeRunner,
+    )
+  ) {
+    throw new Error("Host-native wrapper must never use a command shell");
   }
 
   const miseTrustMutation = new RegExp(

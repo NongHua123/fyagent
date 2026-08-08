@@ -1,7 +1,7 @@
 # 逐文件变更矩阵
 
 > **交付状态**：Implementation inventory / 实施清单；remote closeout pending
-> **关联决策**：1–115
+> **关联决策**：1–117
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
 本表由原始目标矩阵迁移为当前实施 inventory。A–E 中已有实现 commit 的行表示已执行；原生 runner、PR/main、Release 和 closeout 仍以各行“未来证据”或当前状态为准，不能从文件存在推断远程完成。
@@ -43,28 +43,28 @@
 
 ## C. 工具链、mise、uv 与任务 API
 
-| 路径                          | Action                   | 所有者      | 关键合同                                                                         |
-| ----------------------------- | ------------------------ | ----------- | -------------------------------------------------------------------------------- |
-| `.node-version`               | 更新为 `24.19.0`         | Child 3     | Node 唯一版本事实源                                                              |
-| `package.json#packageManager` | 保持 `pnpm@10.12.3`      | Child 3     | pnpm 唯一版本事实源                                                              |
-| `rust-toolchain.toml`         | 更新为 `1.97.1`          | Child 3     | `minimal` + rustfmt/clippy；无交叉 target/llvm-tools                             |
-| `mise.toml`                   | 重构                     | Child 3     | 启用标准版本文件、声明 `uv=latest`、include tasks；不重复 Node/pnpm/Rust/Python  |
-| `mise.lock`                   | 用批准 mise 版本重新生成 | Child 3     | Node/pnpm/Rust/uv 按工具/平台/options/checksum 结构化验证；无旧 Rust options     |
-| `.python-version`             | 新增 `3.14.7`            | Child 3     | Python 精确开发基线，仅由 uv 消费                                                |
-| `pyproject.toml`              | 新增                     | Child 3     | 非包型开发环境；`requires-python >=3.14,<3.15`；managed-only Python              |
-| `uv.lock`                     | 新增并由 uv 生成         | Child 3     | Python 依赖锁；普通运行 `--locked`                                               |
-| `.gitignore`                  | 更新                     | Child 3     | `.venv/`、`mise.local.*`、`mise.*.local.*`                                       |
-| `.mise/tasks/core.toml`       | 新增                     | Child 3     | bootstrap/env/system/deps/check 顶层任务                                         |
-| `.mise/tasks/frontend.toml`   | 新增                     | Child 3     | dev/build/type/format/test 映射                                                  |
-| `.mise/tasks/rust.toml`       | 新增                     | Child 3     | fmt/check/clippy/test locked 合同                                                |
-| `.mise/tasks/python.toml`     | 新增                     | Child 3     | uv sync/lock/add/remove/with/tool/run                                            |
-| `.mise/tasks/trellis.toml`    | 新增                     | Child 3     | 薄包装现有 Python CLI，详细参数由 argparse 所有                                  |
-| `.mise/tasks/upstream.toml`   | 新增                     | Child 3     | check/fetch/audit/merge:prepare/abort 安全边界                                   |
-| `.mise/tasks/hooks.toml`      | 新增                     | Child 3     | Codex no-sync/offline wrappers                                                   |
-| `.mise/tasks/contracts.toml`  | 新增                     | Child 3     | task/docs/toolchain/workflow/release 合同                                        |
-| `scripts/tasks/*.mjs`         | 新增                     | Child 3/4/5 | 复杂跨平台逻辑；可单测；不得以 Bash 承担通用核心逻辑                             |
-| `package.json#scripts`        | 保留包级实现并补必要脚本 | Child 3     | mise task 包装而非反向调用；可增加 `build:debug`/contract scripts                |
-| `.codex/hooks.json`           | 已实施                   | Child 3     | 仅引用 `mise run --silent codex:hook:*`；locked/no-sync/offline 与协议测试已通过 |
+| 路径                          | Action                      | 所有者      | 关键合同                                                                                                          |
+| ----------------------------- | --------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------- |
+| `.node-version`               | 更新为 `24.19.0`            | Child 3     | Node 唯一版本事实源                                                                                               |
+| `package.json#packageManager` | 保持 `pnpm@10.12.3`         | Child 3     | pnpm 唯一版本事实源                                                                                               |
+| `rust-toolchain.toml`         | 更新为 `1.97.1`             | Child 3     | `minimal` + rustfmt/clippy；无交叉 target/llvm-tools                                                              |
+| `mise.toml`                   | 重构                        | Child 3     | 启用标准版本文件、声明 `uv=latest`、include tasks；不重复 Node/pnpm/Rust/Python                                   |
+| `mise.lock`                   | 用批准 mise 版本重新生成    | Child 3     | Node/pnpm/Rust/uv 按工具/平台/options/checksum 结构化验证；无旧 Rust options                                      |
+| `.python-version`             | 新增 `3.14.7`               | Child 3     | Python 精确开发基线，仅由 uv 消费                                                                                 |
+| `pyproject.toml`              | 新增                        | Child 3     | 非包型开发环境；`requires-python >=3.14,<3.15`；managed-only Python                                               |
+| `uv.lock`                     | 新增并由 uv 生成            | Child 3     | Python 依赖锁；普通运行 `--locked`                                                                                |
+| `.gitignore`                  | 更新                        | Child 3     | `.venv/`、`mise.local.*`、`mise.*.local.*`                                                                        |
+| `.mise/tasks/core.toml`       | 新增并收紧 native wrapper   | Child 3     | bootstrap/env/system/deps；check 首步 guard；build/dev 固定宿主且拒绝转发                                         |
+| `.mise/tasks/frontend.toml`   | 新增                        | Child 3     | dev/build/type/format/test 映射                                                                                   |
+| `.mise/tasks/rust.toml`       | 新增并收紧 native wrapper   | Child 3     | fmt 不选 target；check/clippy/test locked 且显式固定当前宿主                                                      |
+| `.mise/tasks/python.toml`     | 新增                        | Child 3     | uv sync/lock/add/remove/with/tool/run                                                                             |
+| `.mise/tasks/trellis.toml`    | 新增                        | Child 3     | 薄包装现有 Python CLI，详细参数由 argparse 所有                                                                   |
+| `.mise/tasks/upstream.toml`   | 新增                        | Child 3     | check/fetch/audit/merge:prepare/abort 安全边界                                                                    |
+| `.mise/tasks/hooks.toml`      | 新增                        | Child 3     | Codex no-sync/offline wrappers                                                                                    |
+| `.mise/tasks/contracts.toml`  | 新增                        | Child 3     | task/docs/toolchain/workflow/release 合同                                                                         |
+| `scripts/tasks/*.mjs`         | 新增                        | Child 3/4/5 | `host-native.mjs` 统一六宿主、绝对 rustc/rustdoc、Cargo config 扫描及 compiler/runner/linker/env/argv/target 合同 |
+| `package.json#scripts`        | 保留低层 leaf、收紧标准入口 | Child 3     | `pnpm dev/build` 进入 host-native wrapper；`pnpm tauri` 仅 Actions/维护                                           |
+| `.codex/hooks.json`           | 已实施                      | Child 3     | 仅引用 `mise run --silent codex:hook:*`；locked/no-sync/offline 与协议测试已通过                                  |
 
 ## D. DEP0040
 

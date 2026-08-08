@@ -1,7 +1,7 @@
 # 风险登记与验收门槛
 
 > **交付状态**：Active risk register / 活动风险登记；正式发布当前 NO-GO
-> **关联决策**：19、24、31、39–49、81–87、97–115
+> **关联决策**：19、24、31、39–49、81–87、97–117
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
 ## 1. 风险评分
@@ -28,6 +28,8 @@
 | R-16 | `merge_group` 真实事件无法产生                                          |   5 |   4 | 明确个人账户与 Merge Queue 前提，不以静态合同冒充事件证据                   | 若要 live run，迁移组织仓库并允许保护规则 | Parent         | Accepted D114 verification exception; live run N/A   |
 | R-17 | 无 ruleset/branch protection/tag protection，仅 workflow 验证来源       |   3 |   5 | exact repo/workflow/tag/main ancestry/CI SHA 检查、一次性发布、记录残余风险 | 停止 tag；后续独立治理任务                | Parent/Child 4 | Accepted residual risk, not administrator protection |
 | R-18 | 原 pre-merge preflight 与 merge-commit/标准 attestation provenance 冲突 |   5 |   4 | 使用 merge→main CI→exact-main-SHA preflight→tag 顺序                        | 偏离已接受顺序则不发布                    | Parent/Child 4 | Accepted D113; remote execution pending              |
+| R-19 | 本地跨 OS/架构诊断被误当成原生验收                                      |   4 |   5 | host-native-only entrypoint/target 负向扫描；非宿主只接受 native Actions    | 停止进程、清理明确输出、门禁退回 Pending  | Parent/Child 3 | NO-GO for affected platform claim                    |
+| R-20 | 后台监控或频繁轮询造成 run/job/log 证据碎片化                           |   3 |   4 | 发起主流程同步 whole-run wait；完成后一次读结果；失败后才取日志             | 停止 detached monitor，重新建立单一证据链 | Parent/Child 4 | NO-GO for remote evidence acceptance                 |
 
 ## 2. GO 条件
 
@@ -38,6 +40,8 @@
 - Native Fetch/MSW 与 deprecation 探针通过；
 - post-merge exact-main-SHA unsigned 全矩阵预演生成正确资产、metadata 与 attestation；
 - 文档/任务合同扫描通过。
+- 本地所有标准命令保持当前宿主 OS/架构，非宿主原生门禁具有匹配的 Actions runner 证据；
+- 每次授权 Actions run 由发起主流程同步等待至 `completed`，只记录一次最终结果，失败时才附失败 job 日志。
 
 ## 3. GO WITH CONDITIONS
 
@@ -56,6 +60,8 @@
 - `cross-fetch` 旧链路或 warning suppression 仍存在；
 - Windows ARM64 被声称支持但 bootstrap/env check 未验证；
 - 旧任务被记录为完成而非 superseded。
+- 任一本地 cross-target、subsystem bridge、foreign executable、emulator、copied toolchain 或 staged non-host artifact 被用作原生验收；
+- Actions run 被交给后台/异步监控代理、通过频繁轮询拼接结论，或在成功后无差别抓取 job 日志；
 - D113 的已接受 post-merge 顺序未被遵守，或 D114 的替代证据（YAML/失败关闭静态合同及真实 PR/main/manual 运行）不完整；
 - 任一 installer、manifest、build metadata 或 attestation bundle 缺失；
 - 文档出现伪造 run/Release URL、digest、签名状态或 Released 状态。
@@ -65,9 +71,9 @@
 | 层             | 证据                                                                                                |
 | -------------- | --------------------------------------------------------------------------------------------------- |
 | 静态           | 配置解析、文件扫描、lock 结构、workflow contract、task docs diff。                                  |
-| 本地当前宿主   | `mise run check`、本机原生 build、hooks 模拟。                                                      |
+| 本地当前宿主   | `mise run check`、当前 OS/架构原生 build、hooks 模拟；不得跨 target，也不得证明另一平台。           |
 | Actions 多平台 | Required CI matrix、实际版本和 runner metadata。                                                    |
 | Release 预演   | post-merge exact-main-SHA 的 unsigned 10 安装器、2 个 JSON evidence 与 mandatory attestation。      |
 | 正式 Release   | tag/main/CI/workflow 来源、精确 13 附件、摘要、attestation/manifest、Windows/macOS 无签名负向证据。 |
 
-The project owner accepted D113/D114 on 2026-08-08：D113 确认 post-merge exact-main/workflow-SHA preflight 顺序；D114 确认 live `merge_group` 在当前个人仓库/无保护治理下为 N/A 的验证例外，且不是成功运行。两项决策门禁已解除，但本地实现与合同验证不产生远程 Actions 或正式 Release 证据；真实 PR/main/manual、preflight、tag、Release、资产、attestation 与 closeout 等 pending 项完成前，正式发布与 parent 归档仍保持 NO-GO。
+The project owner accepted D113/D114 on 2026-08-08：D113 确认 post-merge exact-main/workflow-SHA preflight 顺序；D114 确认 live `merge_group` 在当前个人仓库/无保护治理下为 N/A 的验证例外，且不是成功运行。D116/D117 进一步固定宿主原生本地边界和同步 whole-run 取证纪律。四项决策都不产生远程 Actions 或正式 Release 证据；真实 PR/main/manual、preflight、tag、Release、资产、attestation 与 closeout 等 pending 项完成前，正式发布与 parent 归档仍保持 NO-GO。

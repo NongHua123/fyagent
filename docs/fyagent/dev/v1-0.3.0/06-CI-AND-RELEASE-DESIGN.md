@@ -4,7 +4,7 @@
 >
 > **目标版本**：FyAgent `0.3.0` / tag `v0.3.0`
 >
-> **关联决策**：13–19、43、49、70、80，以及本轮公开仓库、无签名发布、workflow-only 来源资格的新决策
+> **关联决策**：13–19、43、49、70、80、105–117
 > **证据等级**：本文区分 `[Implemented / 已实施]`、`[Verified Locally / 本地已验证]`、`[Pending Remote Verification / 远端待验证]`、`[Accepted Governance Exception / 已接受治理例外]`。
 
 ## 1. 已实施的边界
@@ -17,6 +17,8 @@
 - 正式安装资产精确为 10 个；另有 2 个机器证据文件和 1 个 Sigstore attestation bundle；
 - 所有直接第三方 Action 固定完整 40 位 commit SHA，runner 不使用 `*-latest`；
 - Actions 不安装或执行 mise。
+- 本地标准命令只允许当前宿主 OS/架构；所有非宿主原生验证只由匹配的 Actions runner 执行。
+- 授权触发后的 run 由发起主流程同步等待整次完成，再一次读取结果；不使用后台/异步监控代理或重复状态轮询。
 
 ## 2. CI 拓扑
 
@@ -123,6 +125,8 @@ arm64 sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149
 
 job 开始即验证 Ubuntu 22.04 和 `uname -m`。ARM runner 暂时不可用时允许对同一 SHA 重跑，但不得切回 QEMU、本地 cross-build 或少资产发布。
 
+本地不得提前执行或复刻表中任一非宿主 package/verify gate。当前 Linux x64 环境中的 Windows、macOS 与 ARM64 都必须保持远程；子系统桥接、foreign executable、emulator、copied toolchain 或 staged artifact 均不能改变这一证据归属。
+
 ## 6. Windows 无签名安全门禁
 
 两个 Windows job 都在真实 app build 和 MSI bundle 命令上设置 `FYAGENT_WINDOWS_MANIFEST=release`。验证分层如下：
@@ -201,11 +205,18 @@ GitHub 对该 unsafe PATCH 不提供通用条件请求，管理员仍可能在�
 
 [Decision / 已决策] 本版本不配置 branch/tag ruleset、branch protection 或 Release environment。workflow 内的 repo ID、workflow ref、main ancestry、same-SHA CI/check-run 和 exact asset/attestation 验证显著降低误发布风险，但管理员仍可能改写未受保护的 main/tag/workflow。这一残余风险必须出现在验证报告和 Release 决策记录中，不能写成“main/tag 已受保护”。
 
-## 11. 当前验证状态与治理例外
+## 11. 本地边界与远程运行观察
+
+[Decision / 已决策] D116 要求所有本地开发、构建、测试、打包和验证仅针对当前宿主 OS/架构；Windows、macOS、ARM64 及任何非宿主验收必须由匹配的 GitHub Actions native runner 产生。此前本地 Windows cargo/rustc、Light/MSI 路径只用于诊断，相关进程、显式临时目录与 `src-tauri/target/app`、`target/installer-actions` 输出已清理，不能引用为 acceptance。
+
+[Decision / 已决策] D117 要求授权触发后由发起主流程执行一次同步 whole-run wait，直到 run 为 `completed`；随后只读取一次最终 run/job 结果。不得派后台/异步 monitor，也不得反复轮询 run/job/check 状态；仅最终失败才获取失败 job 日志。观察授权不等于 rerun、cancel、tag 或 publish 授权。
+
+## 12. 当前验证状态与治理例外
 
 - `[Verified Locally]` Release 定向 Vitest、Prettier、version contract 与 actionlint 已通过；
 - `[Pending Remote Verification]` Windows ARM64、Linux ARM64、macOS Universal、full-matrix preflight、正式 tag 和公开资产尚须真实 Actions 证据；
 - `[Pending Remote Verification]` 自动 Labeler 需 workflow 进入 default branch 后通过真实 PR 验证；
 - `[Accepted Governance Exception]` D114 确认：当前仓库属于个人账户且明确不启用 ruleset/branch protection，GitHub Merge Queue 无法启用，因而真实 `merge_group` 运行在当前治理下为 N/A，而不是成功。接受的替代证据为 YAML trigger、失败关闭合同/静态测试和真实 PR/main/manual 运行；这些远程运行仍待验证。
+- `[Verified Local Cleanup]` 当前只安装 `x86_64-unknown-linux-gnu` Rust target，两个诊断 build 目录已不存在；该状态不证明 Windows/macOS/ARM64 原生门禁。
 
-本地通过不等于发布完成。Child4 在 main CI、unsigned preflight、tag-triggered workflow、公开 Release、独立下载复核和 attestation URL 全部取得真实证据前保持 `in_progress`。
+本地通过与 D116/D117 文档落地不等于发布完成。Child4 在 main CI、unsigned preflight、tag-triggered workflow、公开 Release、独立下载复核和 attestation URL 全部取得真实证据前保持 `in_progress`；本轮未触发、监控或轮询 Actions。
