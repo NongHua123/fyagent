@@ -195,6 +195,15 @@ describe("Windows Installer query boundary", () => {
   });
 
   it("owns COM deterministically and makes cleanup-only errors rejecting", () => {
+    for (const helper of [
+      "Add-MsiCleanupError",
+      "Release-MsiComObject",
+      "Throw-MsiOperationFailure",
+    ]) {
+      expect(functionBlock(moduleSource, helper), helper).toContain(
+        "[AllowEmptyCollection()]",
+      );
+    }
     expect(moduleSource).toContain("OpenDatabase($resolvedPath, 0)");
     expect(moduleSource).toContain("FinalReleaseComObject($Value)");
     expect(moduleSource).toContain("[void]$view.Close()");
@@ -329,6 +338,9 @@ describe("Windows Installer query boundary", () => {
     expect(integrationSource).toContain(
       "Remove-Item -LiteralPath $msiPath -Force -ErrorAction Stop",
     );
+    expect(
+      functionBlock(integrationSource, "Release-FixtureComObject"),
+    ).toContain("[AllowEmptyCollection()]");
     expect(integrationSource).toContain(
       "Assert-Equal -Actual $env:RUNNER_OS -Expected 'Windows'",
     );

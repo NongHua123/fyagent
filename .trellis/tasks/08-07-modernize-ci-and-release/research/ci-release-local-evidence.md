@@ -103,6 +103,16 @@ The public repository label prerequisite was also verified out of band: all nine
   and then failed because the metadata writer required undocumented `ImageOS`
   job-container state. Aggregate verification, attestation, and publication
   were skipped.
+- D118 PR #7 first CI run `31258303784` waited synchronously to `completed`
+  before one final result/log read. Repository contracts, frontend, all three
+  backend jobs, and desktop acceptance succeeded. The new x64 and ARM64 MSI
+  query fixture legs both failed immediately with the same PowerShell binder
+  error: the typed cleanup-list parameter did not declare an empty collection
+  as valid, so the first deterministic release call was skipped and the
+  temporary MSI remained locked. `CI / Required` failed closed. The correction
+  explicitly permits an empty cleanup accumulator on the three production
+  cleanup helpers and the fixture owner; it does not ignore cleanup failures or
+  add a compatibility fallback. No Release preflight was triggered.
 - All three preflights failed before asset aggregation, attestation, or
   publication; none created the immutable tag or public Release. D118 therefore
   blocks another full preflight until the query and metadata interfaces have

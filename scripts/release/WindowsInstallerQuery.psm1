@@ -117,6 +117,7 @@ $script:MaximumStreamBytes = 1GB
 function Add-MsiCleanupError {
   param(
     [Parameter(Mandatory = $true)]
+    [AllowEmptyCollection()]
     [Collections.Generic.List[string]]$Errors,
 
     [Parameter(Mandatory = $true)]
@@ -138,6 +139,7 @@ function Release-MsiComObject {
     [string]$Description,
 
     [Parameter(Mandatory = $true)]
+    [AllowEmptyCollection()]
     [Collections.Generic.List[string]]$Errors
   )
 
@@ -161,6 +163,7 @@ function Throw-MsiOperationFailure {
     [Exception]$PrimaryError,
 
     [Parameter(Mandatory = $true)]
+    [AllowEmptyCollection()]
     [Collections.Generic.List[string]]$CleanupErrors,
 
     [Parameter(Mandatory = $true)]

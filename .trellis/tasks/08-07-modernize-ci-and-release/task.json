@@ -50,7 +50,7 @@
     "hostNativeDecision": "D-116-local-current-host-only-non-host-actions-only",
     "actionsWaitDecision": "D-117-synchronous-whole-run-wait-then-single-final-read",
     "preflightEngineeringDecision": "D-118-shift-low-level-native-contracts-to-required-ci-before-full-preflight",
-    "remoteCiEvidence": "pr4-31237734427-main-31238303404-pr5-31240006190-main-31240470955-success",
+    "remoteCiEvidence": "pr4-31237734427-main-31238303404-pr5-31240006190-main-31240470955-success-pr7-first-31258303784-native-fixture-failure-fix-pending",
     "labelerEvidence": "31240006243-success-frontend-actions",
     "preflightEvidence": "31238817378-failure-31241064177-failure-31251654600-failure-d118-local-verified-native-ci-pending",
     "latestIntegratedMainCommit": "387f7fb8a04b216b70590b37dfc8e0d034402588",

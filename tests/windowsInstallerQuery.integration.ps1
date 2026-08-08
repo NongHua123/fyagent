@@ -157,7 +157,9 @@ function Release-FixtureComObject {
   param(
     [AllowNull()][object]$Value,
     [Parameter(Mandatory = $true)][string]$Description,
-    [Parameter(Mandatory = $true)][Collections.Generic.List[string]]$Errors
+    [Parameter(Mandatory = $true)]
+    [AllowEmptyCollection()]
+    [Collections.Generic.List[string]]$Errors
   )
 
   if ($null -eq $Value) {

@@ -53,6 +53,7 @@
     "packagingRemediationCommit": "6efdd6ad211689f791a8f53cd64d56d924d086fa",
     "hostNativeBoundaryCommit": "a1c1238c4f7ec8f80238edfb2618823bcedf49f5",
     "latestIntegratedMainCommit": "387f7fb8a04b216b70590b37dfc8e0d034402588",
+    "latestRemediationPrEvidence": "pr7-first-31258303784-native-fixture-failure-fix-pending",
     "preflightEvidence": "31238817378-failure-31241064177-failure-31251654600-failure-d118-local-verified-native-ci-pending",
     "role": "parent",
     "archiveGate": "formal-release-and-closeout-evidence-complete"
