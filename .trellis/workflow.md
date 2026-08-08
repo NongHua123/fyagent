@@ -9,6 +9,8 @@
 3. **Persist everything** — research, decisions, and lessons all go to files; conversations get compacted, files don't
 4. **Incremental development** — one task at a time
 5. **Capture learnings** — after each task, review and write new knowledge back to spec
+6. **Keep local execution host-native** — local build, test, package, and verification commands target only the current OS and architecture; matching native GitHub Actions runners own every non-host gate
+7. **Keep Actions evidence synchronous** — after an authorized trigger, the initiating flow waits for the whole run to complete, inspects the final result once, and fetches failed-job logs only on failure
 
 ---
 
@@ -229,6 +231,7 @@ Tools: `trellis-implement` / `trellis-research` are sub-agent types only (Task/A
 Flow: `trellis-implement` -> `trellis-check` -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
 Main-session default: dispatch implement/check sub-agents. Sub-agent self-exemption: if already running as `trellis-implement`, do NOT spawn another `trellis-implement` or `trellis-check`; if already running as `trellis-check`, do NOT spawn another `trellis-check` or `trellis-implement`. Dispatch is main session only.
 Dispatch prompt starts with `Active task: <task path from task.py current>`. Read context: jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`.
+Execution boundary: local build/test/package/verification stays on the current host OS+architecture. Use matching native Actions runners for non-host evidence. After an authorized trigger, the initiating main flow synchronously waits for the whole run to reach `completed`, reads the final run/job result once, and fetches failed-job logs only on failure; do not delegate monitoring or repeatedly poll status.
 [/workflow-state:in_progress]
 
 <!-- Per-turn breadcrumb: shown while status='in_progress' when
@@ -240,6 +243,7 @@ Dispatch prompt starts with `Active task: <task path from task.py current>`. Rea
 Flow: `trellis-before-dev` -> edit -> `trellis-check` -> validation -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
 Do not dispatch implement/check sub-agents in inline mode.
 Read context: `prd.md` -> `design.md if present` -> `implement.md if present`, plus relevant spec/research loaded by skills.
+Execution boundary: local build/test/package/verification stays on the current host OS+architecture. Use matching native Actions runners for non-host evidence. After an authorized trigger, the initiating main flow synchronously waits for the whole run to reach `completed`, reads the final run/job result once, and fetches failed-job logs only on failure; do not delegate monitoring or repeatedly poll status.
 [/workflow-state:in_progress-inline]
 
 ### Phase 3: Finish
@@ -296,6 +300,8 @@ When a user request matches one of these intents inside an active task, route fi
 - Task creation approval is not implementation approval; implementation waits for `task.py start` after artifact review.
 - PRD-only is valid for lightweight tasks; complex tasks need `design.md` + `implement.md`.
 - Planning must be persisted to task artifacts; checks must run before reporting completion.
+- Standard local commands may compile, test, package, or verify only the current host OS and architecture. A non-host platform gate requires its matching native GitHub Actions runner; subsystem bridges, foreign executables, emulators, copied toolchains, and staged non-host artifacts are not acceptance evidence.
+- Triggering an Actions run does not authorize detached observation. The initiating primary flow performs one synchronous whole-run wait until `completed`, then reads the run/job result once. It does not launch a background/asynchronous monitor or repeatedly poll run state; only a failed final result permits failed-job log retrieval.
 
 ### Loading Step Detail
 

@@ -32,6 +32,10 @@
         <!-- https://docs.microsoft.com/en-us/windows/win32/msi/reinstallmode -->
         <!-- reinstall all files; rewrite all registry entries; reinstall all shortcuts -->
         <Property Id="REINSTALLMODE" Value="amus" />
+        <!-- Author shortcuts as advertised entries so they belong to the
+             INSTALLDIR Path component, then require Windows Installer to emit
+             ordinary shortcuts instead of install-on-demand entry points. -->
+        <Property Id="DISABLEADVTSHORTCUTS" Value="1" />
 
         <!-- Auto launch app after installation, useful for passive mode which usually used in updates -->
         <Property Id="AUTOLAUNCHAPP" Secure="yes" />
@@ -48,6 +52,12 @@
         <Property Id="FYAGENT_PREVIOUS_INSTALLDIR" Secure="yes">
           <RegistrySearch Id="FyAgentPreviousInstallDir" Root="HKLM" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="InstallDir" Type="raw" />
         </Property>
+        <!-- ALLUSERS and DISABLEADVTSHORTCUTS are public MSI properties, so a
+             command line can replace their Property-table defaults. Reassert
+             both in UI and Execute before directory costing so every entry
+             path retains the per-machine ordinary-shortcut contract. -->
+        <SetProperty Id="ALLUSERS" Action="EnforceFyAgentAllUsers" Value="1" Before="CostInitialize" Sequence="both">1</SetProperty>
+        <SetProperty Id="DISABLEADVTSHORTCUTS" Action="EnforceFyAgentDisableAdvertisedShortcuts" Value="1" Before="CostInitialize" Sequence="both">1</SetProperty>
         <!-- AppSearch requires a public property. Clear both public inputs in
              the first sequence before AppSearch reads HKLM: UI installs run
              this once in the UI sequence, while silent installs run it once
@@ -64,7 +74,6 @@
              INSTALLDIR and verifies the existing FyAgent marker before it
              allows a non-empty directory. -->
         <SetProperty Id="INSTALLDIR" Action="RestoreInstallDirFromPrevious" Value="[FYAGENT_PREVIOUS_INSTALLDIR]" Before="CostFinalize" Sequence="both">(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND FYAGENT_PREVIOUS_INSTALLDIR</SetProperty>
-
         {{#if allow_downgrades}}
             <MajorUpgrade Schedule="afterInstallInitialize" AllowDowngrades="yes" />
         {{else}}
@@ -86,11 +95,21 @@
                       DllEntry="ValidateFyAgentInstallDirExecute"
                       Execute="immediate"
                       Return="check" />
-        <!-- Keep subsequent directory resolution, RegistryValue persistence,
-             and file installation on the exact normalized path that the
-             native helper inspected. -->
+        <!-- CostFinalize is the first point where component action states are
+             available. The native classifier clears its private mixed-case
+             marker, queries the rendered Directory and Component tables, and
+             sets the marker only when every INSTALLDIR descendant is absent. -->
+        <CustomAction Id="ClassifyFyAgentPureUninstall"
+                      BinaryKey="FyAgentInstallerActions"
+                      DllEntry="ClassifyFyAgentPureUninstall"
+                      Execute="immediate"
+                      Return="check" />
+        <!-- On first install, keep subsequent directory resolution,
+             RegistryValue persistence, and file installation on the exact
+             normalized path that the native helper inspected. Maintenance
+             keeps the protected HKLM path restored before CostFinalize. -->
         <CustomAction Id="ApplyValidatedFyAgentInstallDir"
-                      Property="INSTALLDIR"
+                      Directory="INSTALLDIR"
                       Value="[FYAGENT_INSTALLDIR_NORMALIZED]"
                       Execute="immediate" />
         <CustomAction Id="AbortUnsafeFyAgentInstallDir"
@@ -106,22 +125,22 @@
             <RemoveShortcuts>Installed AND NOT UPGRADINGPRODUCTCODE</RemoveShortcuts>
             <!-- CostFinalize resolves component action states. Only a true
                  uninstall, where every component rooted at INSTALLDIR is
-                  absent, skips admission. The native Windows release verifier
-                  compares this complete guard list with the
-                 rendered MSI Component/Directory tables, so any template
-                 addition under INSTALLDIR must update this predicate. -->
-            <Custom Action="AbortUntrustedFyAgentMaintenance" Before="ValidateFyAgentInstallDirExecute">(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND NOT FYAGENT_PREVIOUS_INSTALLDIR AND NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2)</Custom>
-            <Custom Action="ValidateFyAgentInstallDirExecute" After="CostFinalize">NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2)</Custom>
-            <Custom Action="ApplyValidatedFyAgentInstallDir" After="ValidateFyAgentInstallDirExecute">NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2) AND FYAGENT_INSTALLDIR_VALID = "1"</Custom>
-            <Custom Action="AbortUnsafeFyAgentInstallDir" After="ApplyValidatedFyAgentInstallDir">NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2) AND FYAGENT_INSTALLDIR_VALID &lt;&gt; "1"</Custom>
+                 absent, skips admission. The classifier fails closed before
+                 any consumer if it cannot derive that complete closure. -->
+            <Custom Action="ClassifyFyAgentPureUninstall" After="CostFinalize">1</Custom>
+            <Custom Action="AbortUntrustedFyAgentMaintenance" After="ClassifyFyAgentPureUninstall">(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND NOT FYAGENT_PREVIOUS_INSTALLDIR AND NOT FyAgentPureUninstall</Custom>
+            <Custom Action="ValidateFyAgentInstallDirExecute" After="AbortUntrustedFyAgentMaintenance">NOT FyAgentPureUninstall</Custom>
+            <Custom Action="ApplyValidatedFyAgentInstallDir" After="ValidateFyAgentInstallDirExecute">NOT Installed AND NOT WIX_UPGRADE_DETECTED AND NOT UPGRADINGPRODUCTCODE AND NOT FyAgentPureUninstall AND FYAGENT_INSTALLDIR_VALID = "1"</Custom>
+            <Custom Action="AbortUnsafeFyAgentInstallDir" After="ApplyValidatedFyAgentInstallDir">NOT FyAgentPureUninstall AND FYAGENT_INSTALLDIR_VALID &lt;&gt; "1"</Custom>
         </InstallExecuteSequence>
 
         <InstallUISequence>
             <!-- Covers maintenance UI flows that do not reach InstallDirDlg;
                  the customized dialog also calls this before VerifyReadyDlg. -->
-            <Custom Action="AbortUntrustedFyAgentMaintenance" Before="ValidateFyAgentInstallDirUi">(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND NOT FYAGENT_PREVIOUS_INSTALLDIR AND NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2)</Custom>
-            <Custom Action="ValidateFyAgentInstallDirUi" After="CostFinalize">NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2)</Custom>
-            <Custom Action="ApplyValidatedFyAgentInstallDir" After="ValidateFyAgentInstallDirUi">NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2) AND FYAGENT_INSTALLDIR_VALID = "1"</Custom>
+            <Custom Action="ClassifyFyAgentPureUninstall" After="CostFinalize">1</Custom>
+            <Custom Action="AbortUntrustedFyAgentMaintenance" After="ClassifyFyAgentPureUninstall">(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND NOT FYAGENT_PREVIOUS_INSTALLDIR AND NOT FyAgentPureUninstall</Custom>
+            <Custom Action="ValidateFyAgentInstallDirUi" After="AbortUntrustedFyAgentMaintenance">NOT FyAgentPureUninstall</Custom>
+            <Custom Action="ApplyValidatedFyAgentInstallDir" After="ValidateFyAgentInstallDirUi">NOT Installed AND NOT WIX_UPGRADE_DETECTED AND NOT UPGRADINGPRODUCTCODE AND NOT FyAgentPureUninstall AND FYAGENT_INSTALLDIR_VALID = "1"</Custom>
         </InstallUISequence>
 
         <Media Id="1" Cabinet="app.cab" EmbedCab="yes" />
@@ -201,20 +220,7 @@
                     <Directory Id="FYAGENTRUNTIME" Name="runtime"/>
                 </Directory>
             </Directory>
-            <Directory Id="DesktopFolder" Name="Desktop">
-                <Component Id="ApplicationShortcutDesktop" Guid="*" Win64="$(var.Win64)">
-                    <Shortcut Id="ApplicationDesktopShortcut"
-                        Name="{{product_name}}"
-                        Description="Runs {{product_name}}"
-                        Target="[!Path]"
-                        Icon="ProductIcon"
-                        WorkingDirectory="INSTALLDIR">
-                        <ShortcutProperty Key="System.AppUserModel.ID" Value="{{bundle_id}}"/>
-                    </Shortcut>
-                    <RemoveFolder Id="DesktopFolder" On="uninstall" />
-                    <RegistryValue Root="HKLM" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
-                </Component>
-            </Directory>
+            <Directory Id="DesktopFolder" Name="Desktop" />
             <Directory Id="ProgramMenuFolder">
                 <Directory Id="ApplicationProgramsFolder" Name="{{product_name}}"/>
             </Directory>
@@ -251,8 +257,26 @@
                 {{/each~}}
             </Component>
             <Component Id="Path" Guid="{{path_component_guid}}" Win64="$(var.Win64)">
-                <File Id="Path" Source="{{main_binary_path}}" KeyPath="no" Checksum="yes"/>
-                <RegistryValue Root="HKLM" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="PathComponent" Type="integer" Value="1" KeyPath="yes" />
+                <File Id="Path" Source="{{main_binary_path}}" KeyPath="yes" Checksum="yes">
+                    <Shortcut Id="ApplicationDesktopShortcut"
+                        Directory="DesktopFolder"
+                        Name="{{product_name}}"
+                        Description="Runs {{product_name}}"
+                        Advertise="yes"
+                        WorkingDirectory="INSTALLDIR">
+                        <ShortcutProperty Key="System.AppUserModel.ID" Value="{{bundle_id}}"/>
+                    </Shortcut>
+                    <Shortcut Id="ApplicationStartMenuShortcut"
+                        Directory="ApplicationProgramsFolder"
+                        Name="{{product_name}}"
+                        Description="Runs {{product_name}}"
+                        Advertise="yes"
+                        WorkingDirectory="INSTALLDIR">
+                        <ShortcutProperty Key="System.AppUserModel.ID" Value="{{bundle_id}}"/>
+                    </Shortcut>
+                </File>
+                <RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall"/>
+                <RegistryValue Root="HKLM" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="PathComponent" Type="integer" Value="1" KeyPath="no" />
                 {{#each file_associations as |association| ~}}
                 {{#each association.ext as |ext| ~}}
                 <ProgId Id="{{../../product_name}}.{{ext}}" Advertise="yes" Description="{{association.description}}">
@@ -319,21 +343,6 @@
             </Component>
         </DirectoryRef>
 
-        <DirectoryRef Id="ApplicationProgramsFolder">
-            <Component Id="ApplicationShortcut" Guid="*" Win64="$(var.Win64)">
-                <Shortcut Id="ApplicationStartMenuShortcut"
-                    Name="{{product_name}}"
-                    Description="Runs {{product_name}}"
-                    Target="[!Path]"
-                    Icon="ProductIcon"
-                    WorkingDirectory="INSTALLDIR">
-                    <ShortcutProperty Key="System.AppUserModel.ID" Value="{{bundle_id}}"/>
-                </Shortcut>
-                <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
-                <RegistryValue Root="HKLM" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes"/>
-           </Component>
-        </DirectoryRef>
-
         {{#each merge_modules as |msm| ~}}
         <DirectoryRef Id="TARGETDIR">
             <Merge Id="{{ msm.name }}" SourceFile="{{ msm.path }}" DiskId="1" Language="!(loc.TauriLanguage)" />
@@ -374,8 +383,6 @@
                 Level="1">
                 <ComponentRef Id="Path"/>
                 <ComponentRef Id="CMP_UninstallShortcut" />
-                <ComponentRef Id="ApplicationShortcut" />
-                <ComponentRef Id="ApplicationShortcutDesktop" />
             </Feature>
 
             <Feature

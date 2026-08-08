@@ -24,6 +24,7 @@ may require elevation.
 FYAGENT_WINDOWS_MANIFEST = release | test | dev
 FYAGENT_INSTALLER_ACTIONS_DLL = target-specific installer-actions DLL
 TAURI_FYAGENT_INSTALLER_ACTIONS_DLL = WiX/Tauri-visible form of that DLL path
+FyAgentPureUninstall = private Type 1-derived INSTALLDIR removal state
 ```
 
 ```powershell
@@ -82,9 +83,21 @@ or an unbounded argv payload.
   on both the actual application build and MSI bundle steps. An earlier check
   is insufficient, and the variable must not be left unset or changed to
   `test` for a distributable candidate.
-- Local development and bundle commands support only the current host. Formal
-  Windows x64 and ARM64 installers come only from their matching GitHub Actions
-  runners; no local cross-OS candidate publication directory exists.
+- Each MSI bundle invocation uses Tauri `--verbose`, captures the native exit
+  code immediately, and stops before MSI enumeration when bundling fails.
+  Candle/Light stderr and normal ICE validation remain enabled; `-sval` and
+  individual ICE suppression are forbidden.
+- Local development, build, bundle, and verification commands may target only
+  the current host OS and architecture. WSL/Windows bridging, foreign
+  executables, cross targets, emulators, copied toolchains, or a locally staged
+  MSI do not provide release evidence. Formal Windows x64 and ARM64 installers,
+  PowerShell runtime checks, Candle/Light output, and MSI table/lifecycle gates
+  come only from their matching native GitHub Actions runners; no local
+  cross-OS or cross-architecture candidate path exists.
+- After an authorized Actions trigger, the initiating main flow waits
+  synchronously for the complete run and reads final status once. Background or
+  asynchronous monitoring agents and frequent polling are forbidden; failed-job
+  logs are fetched only after the completed run reports failure.
 - Application version resolution and the MSI helper's workspace/package
   relationship are defined by
   [FyAgent 0.3.0 Version and Installer Contract](./fyagent-version-contract.md).
@@ -96,6 +109,14 @@ or an unbounded argv payload.
   variables, and verify PE Machine, MSI summary architecture, and embedded
   Binary-stream bytes. Do not make the main application crate a cdylib or add
   Tauri to the helper.
+- Variable-length `MsiGetPropertyW` and `MsiRecordGetStringW` reads use a
+  writable one-`u16` stack probe with input capacity zero. A null output probe,
+  an unexpected success with a nonzero reported length, or any status other
+  than `ERROR_SUCCESS`/`ERROR_MORE_DATA` fails closed. Either accepted status
+  with a zero reported length represents an empty value; only
+  `ERROR_MORE_DATA` with a positive length permits allocation and a second
+  read. Property reads retain their bounded retry and record-table fields
+  remain capped at 1024 UTF-16 units before the second read is accepted.
 - WiX calls the two Type 1 actions above. They share one native, fail-closed
   policy for normalized fixed local paths, reparse traversal, system/user/temp/
   ProgramData exclusions, trusted ancestors, owner/DACL/effective rights, and
@@ -107,12 +128,56 @@ or an unbounded argv payload.
   revalidates the same path and a following Type 19 action blocks file writes
   when invalid. Do not collapse this into a UI-only check or surface expected
   denial as Error 1720.
+- `ApplyValidatedFyAgentInstallDir` is a WiX Type 35 action whose source is
+  directory `INSTALLDIR` and whose target is
+  `[FYAGENT_INSTALLDIR_NORMALIZED]`. It remains after `CostFinalize` only for a
+  first install (`NOT Installed`, no `WIX_UPGRADE_DETECTED`, and no
+  `UPGRADINGPRODUCTCODE`), so using a Type 51 `Property="INSTALLDIR"` action
+  there or rewriting a maintenance target directory is invalid and must fail
+  the structure gate. Repair/upgrade validates the trusted HKLM path restored
+  before `CostFinalize` without applying a post-cost directory rewrite.
 - Repair/upgrade clears public directory inputs, restores only the HKLM
   InstallDir anchor, and fails closed before file writes if that trusted anchor
   is unavailable. Directory validation may be skipped only for a strict pure
-  uninstall whose exact INSTALLDIR component closure is validated from the
-  rendered MSI tables. At this baseline the closure is
-  CMP_UninstallShortcut, InstallDirectoryAcl, Path, and RegistryEntries.
+  uninstall whose exact `INSTALLDIR` component closure is validated from the
+  rendered MSI tables. After `CostFinalize`, the architecture-matched Type 1
+  helper clears private mixed-case marker `FyAgentPureUninstall`, queries the
+  active Directory and Component tables, derives every `INSTALLDIR` descendant,
+  and calls `MsiGetComponentStateW` on each component. It sets the marker only
+  when every action state is `INSTALLSTATE_ABSENT`. The same entry point runs
+  independently in the UI and Execute sequences before any marker consumer;
+  the non-Handlebars UI fragment consumes only that result. The classifier
+  rejects empty, duplicate, over-limit, malformed-parent, or missing-core data,
+  closes database/view/record handles, and aborts closed on every query or API
+  failure. The closure must contain `CMP_UninstallShortcut`,
+  `InstallDirectoryAcl`, `Path`, and `RegistryEntries` and automatically covers
+  every rendered resource, bundled-binary, and conditional update-task
+  component beneath `INSTALLDIR`. The private marker has no Property-table
+  default, and no generated component-state expression is placed in the
+  255-character Sequence Condition column.
+- Desktop and Start Menu shortcuts are genuinely machine-scoped while using
+  the standard MSI directory identifiers. `InstallScope="perMachine"` produces
+  the Property-table default `ALLUSERS=1`, which redirects `DesktopFolder` and
+  `ProgramMenuFolder` to the All Users locations. Because an `msiexec` caller
+  can override public properties, distinct unconditional Type 51 actions
+  `EnforceFyAgentAllUsers` and
+  `EnforceFyAgentDisableAdvertisedShortcuts` reassert `ALLUSERS=1` and
+  `DISABLEADVTSHORTCUTS=1` in both UI and Execute sequences before
+  `CostInitialize`; one sequence, a conditional action, or Property defaults
+  alone are insufficient. Both shortcuts are authored as advertised children of
+  the existing `Path` file/component, with no explicit target and with `Path`
+  as that component's file KeyPath. Neither row authors an explicit Icon; the
+  executable key file supplies it without duplicating the application binary
+  into the Icon stream. Their rendered `Shortcut.Target` values must be the
+  same Feature, and `FeatureComponents` must prove that Feature owns `Path`.
+  `DISABLEADVTSHORTCUTS=1` in the Property table requires Windows Installer to
+  create ordinary shortcuts instead of install-on-demand entry points. This
+  avoids standalone profile-scoped shortcut components and their marker
+  values. `RemoveShortcuts` must precede `RemoveFiles`; uninstall must not
+  attempt to remove either redirected root. The only shortcut-folder cleanup
+  row has no `FileName`, belongs to `Path`, and removes
+  `ApplicationProgramsFolder`, the FyAgent product subdirectory beneath
+  `ProgramMenuFolder`.
 - `mise run` does not auto-install missing tools or provision non-host Rust
   targets. Repository tasks, scripts, and hooks never change mise trust state.
   Release targets are installed explicitly by the matching native Actions job.
@@ -199,7 +264,7 @@ or an unbounded argv payload.
 | Formal release reaches a user CLI command                                                                                           | Return the elevated-boundary message before probing or running the CLI.                                                                  |
 | Target executable manifest inspection or EXE/MSI `NotSigned` validation fails in release workflow                                   | Fail the workflow before publishing the artifact.                                                                                        |
 | Fixed-key cabinet extraction, output containment, built-EXE SHA/size/Machine binding, or extracted unsigned check fails             | Fail the workflow; do not upload the MSI artifact.                                                                                       |
-| Helper architecture, MSI Binary bytes, custom-action table, or INSTALLDIR component closure drifts                                  | Fail native release structure verification before candidate artifact upload.                                                             |
+| Helper architecture, MSI Binary bytes, Type 35 assignment, machine shortcut scope, or native INSTALLDIR classifier drifts           | Fail native release structure verification before candidate artifact upload; never suppress ICE.                                         |
 | UI validator rejects a path                                                                                                         | Show the recoverable policy dialog; do not raise Error 1720.                                                                             |
 | Execute validator rejects a path or repair/upgrade lacks its HKLM anchor                                                            | Type 19 aborts before InstallValidate/InstallFiles.                                                                                      |
 
@@ -210,7 +275,12 @@ or an unbounded argv payload.
   extract its real MSI Binary stream, and prove PE/SHA-256 equality; test
   harnesses receive the generic `asInvoker`/Common Controls v6 linker input,
   application bins receive `/MANIFEST:NO`, and `tauri-build` supplies the
-  selected application resource. Startup proves the elevated process is the
+  selected application resource. Light retains normal ICE validation, the
+  normalized directory is applied by Type 35 only on first install, the native
+  post-cost classifier derives the private pure-uninstall marker, and advertised-authored
+  Path-component rows plus `DISABLEADVTSHORTCUTS=1` create ordinary shortcuts
+  in the machine-context standard folders.
+  Startup proves the elevated process is the
   interactive local administrator, and a second invocation proves the server
   endpoint before forwarding bounded deep-link argv.
 - Base: A normal developer build or test harness uses
@@ -242,9 +312,25 @@ or an unbounded argv payload.
   misses library unit-test harnesses.
 - It must also assert the native helper build precedes bundling, architecture
   bridge variables and MSI Binary checks are present, UI/Execute Type 1 plus
-  Type 19 paths are scheduled, protected HKLM maintenance restoration is
-  present, the rendered INSTALLDIR closure is exact, and the retired
-  script/WMI validator is absent.
+  Type 19 paths are scheduled, the normalized directory assignment is Type 35,
+  protected HKLM maintenance restoration is present, the native classifier
+  derives the complete rendered INSTALLDIR closure with the four required core
+  components and every resource/binary/conditional descendant, has no authored
+  private-marker default or over-limit Sequence condition, and precedes every
+  consumer in both sequences. It also checks exact InstallDir-dialog event
+  order, case-sensitive closure identifiers, the shortcuts' common Path-owning
+  Feature, the two exact Type 51 property-enforcement actions in both sequences
+  before `CostInitialize`, `RemoveShortcuts < RemoveFiles`, and the one
+  product-subdirectory cleanup row. Shortcut Feature identifiers are validated
+  before entering an MSI SQL query. Directory and Component scans mirror the
+  helper's 4096/32768 row caps and 1024-UTF-16-unit field cap, return only
+  primitive copies, and close/final-release every COM view and record in
+  `finally`. Advertised-shortcut Feature keys use the MSI Identifier grammar
+  and its 38-character primary-key limit before entering SQL. Static tests also
+  reject null-buffer MSI string probes. Both
+  shortcuts are machine-wide Path-component rows that become ordinary
+  shortcuts, standard roots are not removed, and the retired script/WMI
+  validator is absent.
 - The native x64 and ARM64 jobs must run the MSI verifier against the real
   bundle and the helper built earlier in that same job. The verifier checks
   ProductName, ProductVersion, ARPNOREPAIR, protocol/payload tables, summary
@@ -259,7 +345,8 @@ or an unbounded argv payload.
   fabricate them from a non-Windows host.
 - Native Windows acceptance additionally covers the default directory, a safe
   custom directory, an unsafe directory, /qn INSTALLDIR, repair, upgrade,
-  uninstall, verbose MSI logging, and ICE validation for x64 and ARM64. The
+  uninstall, verbose MSI logging, and unsuppressed ICE validation for x64 and
+  ARM64. ICE warnings must be recorded separately from ICE errors. The
   native table and Binary-stream checks are necessary structure evidence, not
   an equivalent lifecycle result. The read-only cabinet payload binding is
   mandatory package evidence but still does not replace lifecycle install

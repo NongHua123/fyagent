@@ -5,11 +5,11 @@ Date: `2026-08-08`
 ## Evidence boundary
 
 This record covers local documentation, long-lived specs, Trellis workflow and
-skills, the frozen overlay boundary, public release documentation, and the five
-old superseded task archives. It does not claim any PR/main Actions run, native
-release build, tag, GitHub Release, published digest, attestation, independent
-download verification, final `MANIFEST.sha256`, remaining new-task archive, or
-journal result.
+skills, the frozen overlay boundary, public release documentation, the five old
+superseded task archives, and the observed PR/main/Labeler/preflight outcomes
+listed below. It does not claim a successful five-target preflight, tag, GitHub
+Release, published digest, attestation, independent download verification,
+final `MANIFEST.sha256`, remaining new-task archive, or journal result.
 
 ## Work commits
 
@@ -22,6 +22,9 @@ journal result.
   `superseded` disposition while preserving their original status and history.
 - `580c5efaacc0276ee0650e5778e9b778f506abaa` — prove the no-argument
   `trellis:validate` path against the post-archive active task set.
+- `a1c1238c4f7ec8f80238edfb2618823bcedf49f5` — document and enforce D116
+  host-native-only local execution plus D117 synchronous whole-run Actions
+  waiting across the active task API, specs, and v0.3.0 design package.
 
 ## Independent review
 
@@ -52,7 +55,7 @@ The following completed successfully on Linux x64:
 - `mise run check:contracts`;
 - 39 internal files / 49 relative links and 56 combined live Markdown files /
   178 relative links, with no missing local target;
-- decision IDs D1–D115 are continuous and unique, with historical D1–D104
+- decision IDs D1–D117 are continuous and unique, with historical D1–D104
   semantics preserved;
 - repository overlay accounting is 111 total files: 108 frozen payload files
   and three central freeze declarations; only those declarations changed;
@@ -66,17 +69,32 @@ archive.
 
 - The project owner accepted D113/D114 on 2026-08-08.
 - D113 confirms the implemented post-merge exact-main/workflow-SHA preflight
-  order; the remote preflight itself remains pending.
+  order; successful remote preflight evidence for the current remediation
+  remains pending.
 - D114 accepts a governance verification exception: a real `merge_group` event
   is impossible for the personal-account repository while branch
   protection/rulesets remain forbidden, so the live run is N/A rather than
   successful. Its substitute is the YAML trigger, fail-closed contract/static
-  tests, and real PR/main/manual runs; the remote-run portion remains pending.
-- PR/main CI, automatic Labeler, the five native release groups, exact-main
-  unsigned preflight, immutable `v0.3.0`, the stable 13-attachment Release,
+  tests, and real PR/main/manual runs. PR/main evidence exists; a successful
+  manual preflight remains pending.
+- D116 requires canonical local development, build, test, package, and
+  verification entrypoints to execute only the current host OS/architecture;
+  non-host evidence must come from matching native Actions runners. D117
+  requires synchronous whole-run waiting followed by one final result read,
+  with failed logs fetched only after final failure.
+- PR #4/#5 Required CI, their main CI runs, and automatic Labeler run
+  `31240006243` succeeded. Exact-main preflights `31238817378` and
+  `31241064177` failed closed before aggregation, attestation, or publication;
+  they created no tag or Release.
+- A successful remediation PR/main cycle, all five native release groups, a
+  successful exact-main unsigned preflight, immutable `v0.3.0`, the stable
+  13-attachment Release,
   digest/attestation verification, Windows `NotSigned`, macOS Developer ID and
   notarization absence, independent re-download, final manifest, closeout task
   archives, and journal remain pending.
 
 Child 6 and the parent must remain active until the remaining remote gates are
 resolved and the real closeout evidence is committed.
+
+Formal Release remains **NO-GO** until the current remediation is merged and a
+complete exact-main five-target unsigned preflight succeeds.

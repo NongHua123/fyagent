@@ -1,7 +1,7 @@
 # 需求规格与决策基线
 
 > **交付状态**：Core implementation locally verified / 核心实施已完成本地验证；Child 6 进行中且远程发布验收待完成
-> **关联决策**：1–115（含历史、执行覆盖与已接受治理例外）
+> **关联决策**：1–117（含历史、执行覆盖、已接受治理例外与当前执行纪律）
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
 ## 1. 背景
@@ -15,7 +15,7 @@
 | 需求域 | 目标                                                                      |
 | ------ | ------------------------------------------------------------------------- |
 | UP     | 可审计地完整合并上游稳定标签，保留 Git ancestry、FyAgent 身份和许可边界。 |
-| XB     | 删除维护成本高的本地跨 OS 构建，只保留宿主原生构建和 Actions 正式发布。   |
+| XB     | 删除本地跨 OS/架构执行，只保留宿主原生命令和 Actions 原生验证/正式发布。  |
 | ENV    | 统一 Node/Rust/pnpm/uv/Python 的声明、安装、锁定和诊断。                  |
 | TASK   | 以 `mise run` 建立稳定、跨平台、可生成文档的仓库任务 API。                |
 | CI     | 将 Actions 变成自动、严格、可复现的合并门禁。                             |
@@ -54,6 +54,8 @@
 - **XB-003**：保留本机 `dev`/`build`，但不得通过标准 task 指定其他 OS/架构 target。
 - **XB-004**：保留 Actions 的 Windows x64/ARM64、Linux x64/ARM64、macOS Universal。
 - **XB-005**：任何项目脚本不得替用户执行 `mise trust --yes`。
+- **XB-006**：本地标准开发、构建、测试、打包和验证命令只能针对当前宿主 OS/架构；子系统桥接、外来可执行文件、模拟器、复制工具链和本地暂存的非宿主产物都不能绕过该边界。
+- **XB-007**：Windows、macOS、ARM64 及任何其他非宿主原生验收只能来自匹配的 GitHub Actions native runner；本地诊断结果不计入验收。
 
 ### 4.3 开发环境（ENV/TASK/PY）
 
@@ -76,6 +78,7 @@
 - **CI-003**：默认权限 `contents: read`；写权限仅授予必要 job。
 - **CI-004**：稳定聚合 job 使用 `if: always()` 并明确拒绝 failure/cancelled/异常 skipped。
 - **CI-005**：运行时验证每个平台实际 Node/pnpm/Rust 版本。
+- **CI-006**：授权触发 Actions run 后，发起主流程同步等待整次 run 到 `completed`，随后只读取一次最终 run/job 结果；不得派后台/异步监控代理或重复轮询，且仅失败结果允许获取失败 job 日志。
 - **REL-001**：正式 tag 必须与产品版本一致，属于 `origin/main`，并绑定同 SHA 的成功 `CI / Required`；仓库没有管理员保护规则，workflow-only 检查是已接受的残余风险。
 - **REL-002**：正式发布精确包含 10 个安装资产。
 - **REL-003**：Linux 在同架构 Ubuntu 22.04 容器构建，宿主使用明确的新 runner。
@@ -111,9 +114,10 @@
 
 ## 6. 验收总则
 
-- 所有 `D-001`–`D-115` 可追踪到设计、文件、子任务和证据状态；历史行由覆盖行解释，不篡改原时间线；
+- 所有 `D-001`–`D-117` 可追踪到设计、文件、子任务和证据状态；历史行由覆盖行解释，不篡改原时间线；
 - 合并、配置、依赖和本地 CI/Release 合同已有真实提交证据；远程 Actions、原生包和 Release 结果必须由后续运行产生；
 - 不得用“默认无告警”“编译成功”或“某平台静态检查”替代明确的跨平台、无签名负向状态或依赖图验收；
 - The project owner accepted D113/D114 on 2026-08-08：D113 确认 merge → main CI → exact-main/workflow-SHA preflight 的发布顺序；D114 确认真实 `merge_group` 在当前治理下为 N/A 的验证例外；
+- D116 固化“本地仅宿主原生、非宿主只走 Actions native runner”；D117 固化“主流程同步等待整次 run，再一次读取结果，失败后才取日志”。二者不把任何尚未发生的远程运行变成已验证；
 - `merge_group` 仍无法产生真实事件，且不得把静态 YAML 合同写成事件成功；D114 接受的替代证据是 YAML trigger、失败关闭合同/静态测试以及后续真实 PR/main/manual 运行，后三类远程运行仍待验证；
 - 任一违反身份、许可、远程安全、正式发布来源或 strict 工具链契约的情况均为 NO-GO。

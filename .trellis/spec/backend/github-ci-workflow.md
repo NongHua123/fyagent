@@ -37,7 +37,8 @@ on:
 ```
 
 Local static validation does not prove that GitHub accepted, scheduled, or
-completed any of these remote events.
+completed any of these remote events. Local execution is host-native only;
+every non-host native CI result comes from its matching Actions runner.
 
 ## 2. Signatures
 
@@ -210,6 +211,26 @@ Labeler evidence for the new version therefore begins only after the workflow
 has reached the base branch; local tests and a manual run do not prove the
 automatic event.
 
+### Run observation discipline
+
+Trigger authorization and run observation are separate gates. After an
+Actions run is explicitly triggered, the initiating primary flow remains the
+single owner of its evidence and synchronously waits for the whole run to reach
+`completed`. It uses one blocking whole-run wait instead of delegating to a
+background/asynchronous monitoring agent or issuing repeated `list`, `view`,
+job-status, or check-status polling calls.
+
+This is the active
+[D117](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md)
+observation contract; it does not change trigger, retry, tag, or publication
+authority.
+
+Only after that wait returns does the primary flow read the final run and job
+result once. A successful result needs no log sweep. A failed result permits
+one retrieval of the failed-job logs for diagnosis; it does not authorize a
+rerun, cancellation, workflow change, tag, or publication. This keeps the run,
+job conclusion, and any failure log in one ordered evidence chain.
+
 ## 4. Validation & Error Matrix
 
 | Condition                                                                                    | Required result                                                                                                                   |
@@ -225,6 +246,8 @@ automatic event.
 | Labeler checks out or executes PR code, reads secrets, or gains another write permission     | Reject the workflow as unsafe.                                                                                                    |
 | A configured label does not exist                                                            | Labeler fails without `issues: write`; create the reviewed label out of band, then rerun.                                         |
 | No real merge-group event can be produced under current repository governance                | Record the accepted D114 live-run N/A exception; require YAML/static plus real PR/main/manual evidence, and never report success. |
+| A triggered run is delegated to an asynchronous monitor or sampled repeatedly                | Stop the observation path; the initiating flow must perform one synchronous whole-run wait.                                       |
+| A completed successful run is followed by broad log retrieval                                | Reject the extra collection; fetch failed-job logs only after a failed final result.                                              |
 
 ## 5. Good / Base / Bad Cases
 
@@ -267,7 +290,9 @@ class is N/A only while the approved governance remains unchanged; local
 trigger/static evidence plus those real runs form the accepted substitute, but
 none may be described as a live merge-group success. Likewise, CI does not
 prove native Release installers, asset attestations, publication, or branch
-protection.
+protection. For each authorized run, record the single completed run/job result
+after the synchronous wait and attach failed-job logs only when that result
+failed.
 
 ## 7. Wrong vs Correct
 

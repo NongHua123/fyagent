@@ -41,6 +41,13 @@ Local implementation and static tests do not authorize dispatch, tag creation,
 or publication. Remote preflight, formal Release, and post-publication evidence
 remain required before the owning Trellis task can close.
 
+When a release run is explicitly authorized, the initiating main flow waits
+synchronously for that entire run to reach `completed`. It does not delegate
+monitoring to a background or asynchronous agent and does not repeatedly poll
+run state. After completion it reads the run result once; only a failed result
+authorizes one retrieval of the failed-job logs. This observation contract does
+not itself authorize dispatch, rerun, cancellation, tag creation, or publish.
+
 ## 2. Frozen Values and Job Topology
 
 ```text
@@ -156,21 +163,55 @@ Each target proves Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1 at runtime. Its
 metadata records the actual runner image variables and tool versions; an absent
 image/tool value fails metadata generation.
 
+The locked `@tauri-apps/cli` 2.8.1 embeds `tauri-bundler` 2.6.1, before the
+nested AppImage-plugin propagation fixed by `tauri-apps/tauri#14241`. The Linux
+package step alone therefore exports `APPIMAGE_EXTRACT_AND_RUN=1` and invokes
+Tauri with `--verbose`. This keeps nested `linuxdeploy` execution in extraction
+mode on the unprivileged container; it does not add `SYS_ADMIN`, privileged
+container mode, a `/dev/fuse` device, or any other mount capability. The
+workaround must be removed or revalidated when the locked Tauri CLI/bundler is
+upgraded.
+
 ## 5. Platform Security Gates
 
 ### Windows
 
 - both native jobs set `FYAGENT_WINDOWS_MANIFEST=release` on the application
   build and MSI bundle commands.
+- the MSI bundle command uses `--verbose`, captures `$LASTEXITCODE` immediately,
+  and fails before looking for an MSI when Tauri exits nonzero. Candle/Light
+  stderr remains visible, and Light runs its normal ICE validation without
+  `-sval` or individual ICE suppression.
 - the application executable is inspected before and after bundling for exact
   x64/ARM64 PE Machine, `requireAdministrator`, `uiAccess=false`, bundle
   version, and exactly one `requestedExecutionLevel`.
 - the architecture-matched installer-actions DLL is built separately, checked
   for PE Machine, and supplied through both helper environment variables.
-- `verify-windows-msi-structure.ps1` preserves the Type 1/Type 19, HKLM anchor,
-  protected DACL, complete `INSTALLDIR` component closure, UI/Execute sequence,
+- `verify-windows-msi-structure.ps1` preserves the Type 1/Type 19 actions, the
+  post-`CostFinalize` Type 35 normalized-directory assignment, HKLM anchor,
+  protected DACL, native complete `INSTALLDIR` component classifier,
+  context-redirected machine-wide Desktop/Programs shortcuts, UI/Execute sequence,
   unsafe-directory dialog, and MSI summary architecture gates formerly inlined
-  in the workflow. It also reads the embedded cabinet stream through the
+  in the workflow. After `CostFinalize`, one Type 1 classifier runs independently
+  in each MSI sequence, clears the private mixed-case `FyAgentPureUninstall`
+  marker, queries the active MSI Directory and Component tables, and sets the
+  marker only when every actual `INSTALLDIR` descendant has action state
+  `INSTALLSTATE_ABSENT`. It rejects empty, duplicate, over-limit, malformed, or
+  missing-core closures and fails the transaction closed on any MSI API error.
+  This includes generated resources, bundled binaries, and conditional update
+  components without putting an over-limit component expression in the MSI
+  Sequence Condition column. The verifier independently derives the real table
+  closure, requires the four core components, checks the private marker has no
+  authored default, and proves classifier ordering before every consumer. The
+  per-machine package keeps the standard `DesktopFolder` and
+  `ProgramMenuFolder` identifiers, which `ALLUSERS=1` redirects to All Users.
+  Both shortcut rows are advertised-authored children of the existing `Path`
+  file component, while `DISABLEADVTSHORTCUTS=1` makes Windows Installer emit
+  ordinary shortcuts; no profile-scoped shortcut component, marker KeyPath, or
+  explicit shortcut Icon exists. The verifier requires both rendered targets
+  to use the same Feature, proves `FeatureComponents` binds it to `Path`, and
+  keeps `RemoveShortcuts` before the one product-folder `RemoveFiles` cleanup.
+  It also reads the embedded cabinet stream through the
   read-only MSI database, extracts only fixed File key `Path` with system
   `expand.exe` into a fresh root, and binds the final MSI executable to the
   already verified built executable by size, SHA-256, PE Machine, and
@@ -199,6 +240,8 @@ image/tool value fails metadata generation.
 ### Linux
 
 - each native container must produce exactly one raw AppImage, DEB, and RPM.
+- the package step uses the step-scoped extraction-mode compatibility variable
+  and `--verbose`; later validation/normalization steps do not inherit it.
 - AppImage ELF architecture, DEB version/architecture, and RPM
   version/architecture must match the frozen target before normalization.
 - missing formats are failures; no format is optional in the formal or
@@ -285,29 +328,34 @@ rulesets and is not described as atomic administrator protection.
 
 ## 8. Failure Matrix
 
-| Condition                                                                                                         | Required result                                                                                                     |
-| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Dispatch SHA is not full/lowercase or differs from trusted main workflow/event provenance                         | Fail eligibility before any platform build.                                                                         |
-| Formal ref, workflow ref, tag commit, event commit, product version, or source differ                             | Fail eligibility; do not build or publish.                                                                          |
-| Latest same-SHA main CI attempt is absent, running, failed, cancelled, or lacks the unique Required job/check     | Fail eligibility; an older success is not accepted.                                                                 |
-| A native runner/architecture, Ubuntu child digest, or tool version drifts                                         | Fail that platform job; no fallback target is allowed.                                                              |
-| Node is not established before pnpm, a Linux container lacks exact workspace trust, or a Release cache is enabled | Fail platform bootstrap; do not rely on runner-preinstalled tools, wildcard Git trust, or implicit Action defaults. |
-| Windows manifest/helper/MSI structure/payload/unsigned assertion fails                                            | Fail Windows output before artifact upload.                                                                         |
-| macOS app is not universal, identity differs, distribution identity/ticket exists, or ZIP/DMG copies differ       | Fail macOS output before artifact upload.                                                                           |
-| Linux package count/version/architecture differs                                                                  | Fail Linux output before artifact upload.                                                                           |
-| Artifact tree or exact ten/twelve/thirteen allowlist differs                                                      | Fail verification/attestation/publish.                                                                              |
-| Mandatory attestation or bundle is absent                                                                         | Fail; do not characterize hashes alone as v0.3.0 provenance success.                                                |
-| Dispatch reaches publish                                                                                          | Static workflow test fails; remote preflight must create no Release.                                                |
-| A draft or published Release already exists                                                                       | Refuse to update, replace, or delete it.                                                                            |
-| Upload/re-download fails before final PATCH                                                                       | Leave the draft untouched, report ID/URL, and require manual decision.                                              |
-| Final PATCH has a failed or ambiguous outcome                                                                     | Read state by ID, report draft/published/unknown, and never retry or delete.                                        |
+| Condition                                                                                                                     | Required result                                                                                                     |
+| ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Dispatch SHA is not full/lowercase or differs from trusted main workflow/event provenance                                     | Fail eligibility before any platform build.                                                                         |
+| Formal ref, workflow ref, tag commit, event commit, product version, or source differ                                         | Fail eligibility; do not build or publish.                                                                          |
+| Latest same-SHA main CI attempt is absent, running, failed, cancelled, or lacks the unique Required job/check                 | Fail eligibility; an older success is not accepted.                                                                 |
+| A native runner/architecture, Ubuntu child digest, or tool version drifts                                                     | Fail that platform job; no fallback target is allowed.                                                              |
+| Node is not established before pnpm, a Linux container lacks exact workspace trust, or a Release cache is enabled             | Fail platform bootstrap; do not rely on runner-preinstalled tools, wildcard Git trust, or implicit Action defaults. |
+| Windows bundle exits nonzero, Light reports an ICE error, or a manifest/helper/MSI structure/payload/unsigned assertion fails | Preserve verbose stderr and fail Windows output before MSI enumeration or artifact upload.                          |
+| macOS app is not universal, identity differs, distribution identity/ticket exists, or ZIP/DMG copies differ                   | Fail macOS output before artifact upload.                                                                           |
+| Linux nested AppImage execution or package count/version/architecture differs                                                 | Fail Linux output with verbose downstream stderr before artifact upload; do not add mount privileges.               |
+| Artifact tree or exact ten/twelve/thirteen allowlist differs                                                                  | Fail verification/attestation/publish.                                                                              |
+| Mandatory attestation or bundle is absent                                                                                     | Fail; do not characterize hashes alone as v0.3.0 provenance success.                                                |
+| Dispatch reaches publish                                                                                                      | Static workflow test fails; remote preflight must create no Release.                                                |
+| A draft or published Release already exists                                                                                   | Refuse to update, replace, or delete it.                                                                            |
+| Upload/re-download fails before final PATCH                                                                                   | Leave the draft untouched, report ID/URL, and require manual decision.                                              |
+| Final PATCH has a failed or ambiguous outcome                                                                                 | Read state by ID, report draft/published/unknown, and never retry or delete.                                        |
 
 ## 9. Validation and Evidence Boundary
 
 Local checks include Prettier, actionlint, version contract tests, the release
 workflow/static Windows boundary suite, download-manifest behavior tests, and
-asset/metadata collector tests. PowerShell parser/runtime checks and native
-bundle behavior require their matching runners.
+asset/metadata collector tests. Local execution is restricted to the current
+host OS and architecture. A subsystem bridge, foreign executable, cross target,
+emulator, or locally copied non-host toolchain cannot establish native release
+evidence. PowerShell runtime, Windows Candle/Light/MSI, Linux package, macOS
+bundle, and every non-host architecture check run only in their matching native
+GitHub Actions jobs. No local cross-OS or cross-architecture result counts
+toward acceptance.
 
 A green local suite proves the implementation contract, not publication.
 Closure requires the exact source's main `CI / Required`, one successful

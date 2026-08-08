@@ -54,6 +54,30 @@ const INSTALLER_ACTIONS_LIB = path.resolve(
   "src",
   "lib.rs",
 );
+const INSTALLER_ACTIONS_MSI = path.resolve(
+  __dirname,
+  "..",
+  "src-tauri",
+  "installer-actions",
+  "src",
+  "msi.rs",
+);
+const INSTALLER_ACTIONS_COMPONENT_CLOSURE = path.resolve(
+  __dirname,
+  "..",
+  "src-tauri",
+  "installer-actions",
+  "src",
+  "component_closure.rs",
+);
+const INSTALLER_ACTIONS_MSI_PROBE = path.resolve(
+  __dirname,
+  "..",
+  "src-tauri",
+  "installer-actions",
+  "src",
+  "msi_probe.rs",
+);
 const TAURI_CONFIG = path.resolve(
   __dirname,
   "..",
@@ -156,6 +180,27 @@ describe("FyAgent release workflow", () => {
     expect(source).not.toContain("gh release create");
     expect(source).toContain("draft:true,prerelease:false");
     expect(source).toContain("draft:false,prerelease:false");
+  });
+
+  it("keeps authorized run observation synchronous and completion-scoped", () => {
+    expect(source).toContain(
+      "Authorized callers wait synchronously for this whole run to complete",
+    );
+    expect(source).toContain("read its final state once");
+    expect(source).toContain(
+      "fetch failed-job logs only after the completed run reports failure",
+    );
+    for (const forbiddenMonitor of [
+      "gh run watch",
+      "gh run view",
+      "Start-Job",
+      "Start-ThreadJob",
+      "Start-Process",
+      "nohup",
+      "disown",
+    ]) {
+      expect(source).not.toContain(forbiddenMonitor);
+    }
   });
 
   it("pins every third-party Action and every runner without latest labels", () => {
@@ -322,6 +367,17 @@ describe("FyAgent release workflow", () => {
     expect(source).toContain("Expected exactly one raw AppImage, DEB, and RPM");
     expect(source).toContain("dpkg-deb -f");
     expect(source).toContain("rpm -qp --qf");
+    const linuxJob = workflowJobBlock(source, "build-linux", "build-macos");
+    const packageStep = namedStepBlock(linuxJob, "Build native Linux packages");
+    expectExactLine(packageStep, '          APPIMAGE_EXTRACT_AND_RUN: "1"');
+    expectExactLine(
+      packageStep,
+      "        run: pnpm tauri build --bundles appimage,deb,rpm --verbose",
+    );
+    expect(source.match(/APPIMAGE_EXTRACT_AND_RUN:/g)).toHaveLength(1);
+    expect(packageStep).not.toContain("privileged:");
+    expect(source).not.toContain("SYS_ADMIN");
+    expect(source).not.toContain("/dev/fuse");
   });
 
   it("preserves Windows elevation, helper, MSI table, payload, and unsigned gates", () => {
@@ -336,6 +392,30 @@ describe("FyAgent release workflow", () => {
     expect(source).toContain("verify-windows-unsigned.ps1");
     expect(source).not.toContain("${{ secrets.");
     expect(source).not.toContain("signtool.exe sign");
+    expect(source).not.toContain("-sval");
+
+    const windowsJob = workflowJobBlock(source, "build-windows", "build-linux");
+    const bundleStep = namedStepBlock(
+      windowsJob,
+      "Bundle unsigned Windows MSI",
+    );
+    const bundleLines = bundleStep.split(/\r?\n/);
+    const bundleCommandIndexes = bundleLines
+      .map((line, index) => ({ line: line.trim(), index }))
+      .filter(({ line }) => line.startsWith("pnpm tauri bundle"));
+    expect(bundleCommandIndexes.map(({ line }) => line)).toEqual([
+      "pnpm tauri bundle --target '${{ matrix.rust_target }}' --bundles msi --verbose",
+      "pnpm tauri bundle --bundles msi --verbose",
+    ]);
+    for (const { index } of bundleCommandIndexes) {
+      expect(bundleLines[index + 1]?.trim()).toBe(
+        "$bundleExitCode = $LASTEXITCODE",
+      );
+    }
+    expect(bundleStep).toContain("if ($bundleExitCode -ne 0)");
+    expect(bundleStep.indexOf("if ($bundleExitCode -ne 0)")).toBeLessThan(
+      bundleStep.indexOf("Get-ChildItem"),
+    );
 
     expect(windowsManifestVerifier).toContain("Resolve-WindowsSdkManifestTool");
     expect(windowsManifestVerifier).toContain("ProgramFiles(x86)");
@@ -378,15 +458,27 @@ describe("FyAgent release workflow", () => {
       "AbortUntrustedFyAgentMaintenance",
     );
     expect(windowsMsiStructureVerifier).toContain(
-      "MSI INSTALLDIR component guard drifted",
+      "ClassifyFyAgentPureUninstall",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "private pure-uninstall classifier marker",
+    );
+    expect(windowsMsiStructureVerifier).toContain("required core component");
+    expect(windowsMsiStructureVerifier).toContain(
+      "context-redirected DesktopFolder",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "context-redirected ProgramMenuFolder",
     );
     expect(windowsMsiStructureVerifier).toContain("MSI sequence order failed");
     expect(windowsMsiStructureVerifier).toContain(
       "SELECT ``Data`` FROM ``_Streams``",
     );
     expect(windowsMsiStructureVerifier).toContain(
-      "& expand.exe $cabinetPath '-F:Path'",
+      "Start-Process -FilePath $expandCommand.Source",
     );
+    expect(windowsMsiStructureVerifier).toContain("'-F:Path'");
+    expect(windowsMsiStructureVerifier).toContain("$expandProcess.ExitCode");
     expect(windowsMsiStructureVerifier).toContain(
       "Extracted MSI fyagent.exe SHA-256 differs",
     );
@@ -509,6 +601,15 @@ describe("FyAgent Windows elevation and installer boundary", () => {
     "utf8",
   );
   const installerActionsLib = fs.readFileSync(INSTALLER_ACTIONS_LIB, "utf8");
+  const installerActionsMsi = fs.readFileSync(INSTALLER_ACTIONS_MSI, "utf8");
+  const installerActionsComponentClosure = fs.readFileSync(
+    INSTALLER_ACTIONS_COMPONENT_CLOSURE,
+    "utf8",
+  );
+  const installerActionsMsiProbe = fs.readFileSync(
+    INSTALLER_ACTIONS_MSI_PROBE,
+    "utf8",
+  );
   const buildRs = fs.readFileSync(BUILD_RS, "utf8");
   const testManifest = fs.readFileSync(TEST_MANIFEST, "utf8");
   const releaseManifest = fs.readFileSync(RELEASE_MANIFEST, "utf8");
@@ -572,6 +673,42 @@ describe("FyAgent Windows elevation and installer boundary", () => {
     expect(source).not.toContain('InstallScope="perUser"');
     expect(source).not.toContain("TauriLocalAppDataPrograms");
     expect(source).not.toContain("per-user-main.wxs");
+    expect(source).toContain('<Directory Id="DesktopFolder" Name="Desktop" />');
+    expect(source).toContain('<Directory Id="ProgramMenuFolder">');
+    expect(source).toContain(
+      '<Directory Id="ApplicationProgramsFolder" Name="{{product_name}}"/>',
+    );
+    expect(source).toContain(
+      '<Property Id="DISABLEADVTSHORTCUTS" Value="1" />',
+    );
+    expectExactLine(
+      source,
+      '        <SetProperty Id="ALLUSERS" Action="EnforceFyAgentAllUsers" Value="1" Before="CostInitialize" Sequence="both">1</SetProperty>',
+    );
+    expectExactLine(
+      source,
+      '        <SetProperty Id="DISABLEADVTSHORTCUTS" Action="EnforceFyAgentDisableAdvertisedShortcuts" Value="1" Before="CostInitialize" Sequence="both">1</SetProperty>',
+    );
+    expect(source.match(/<Shortcut\b[^>]*\bAdvertise="yes"/g)).toHaveLength(2);
+    expect(source).toContain('Directory="DesktopFolder"');
+    expect(source).toContain('Directory="ApplicationProgramsFolder"');
+    expect(source).not.toContain('Target="[!Path]"');
+    expect(source).not.toContain('Icon="ProductIcon"');
+    expect(source).not.toContain('Name="DesktopShortcut"');
+    expect(source).not.toContain('Name="StartMenuShortcut"');
+    expect(source).not.toContain('<Component Id="ApplicationShortcut"');
+    expect(source).not.toContain('<Component Id="ApplicationShortcutDesktop"');
+    expect(source).toContain(
+      '<File Id="Path" Source="{{main_binary_path}}" KeyPath="yes" Checksum="yes">',
+    );
+    expect(source).toContain(
+      'Name="PathComponent" Type="integer" Value="1" KeyPath="no"',
+    );
+    expect(source).not.toContain('<RemoveFolder Id="DesktopFolder"');
+    expect(source).not.toContain('<RemoveFolder Id="ProgramMenuFolder"');
+    expect(source).toContain(
+      '<RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall"/>',
+    );
     expect(
       fs.existsSync(
         path.resolve(__dirname, "..", "src-tauri", "wix", "per-user-main.wxs"),
@@ -597,7 +734,7 @@ describe("FyAgent Windows elevation and installer boundary", () => {
     expect(windowsMsiStructureVerifier).toContain("WindowsInstaller.Installer");
   });
 
-  it("uses an architecture-matched native Type 1 validator in UI and execute paths", () => {
+  it("uses architecture-matched Type 1 validation and fail-closed uninstall classification", () => {
     expect(source).toContain(
       '<Binary Id="FyAgentInstallerActions" SourceFile="$(env.TAURI_FYAGENT_INSTALLER_ACTIONS_DLL)" />',
     );
@@ -605,17 +742,33 @@ describe("FyAgent Windows elevation and installer boundary", () => {
     expect(source).toContain('DllEntry="ValidateFyAgentInstallDirUi"');
     expect(source).toContain('Id="ValidateFyAgentInstallDirExecute"');
     expect(source).toContain('DllEntry="ValidateFyAgentInstallDirExecute"');
+    expect(source).toContain('Id="ClassifyFyAgentPureUninstall"');
+    expect(source).toContain('DllEntry="ClassifyFyAgentPureUninstall"');
+    expect(
+      source.match(
+        /<Custom Action="ClassifyFyAgentPureUninstall" After="CostFinalize">1<\/Custom>/g,
+      ),
+    ).toHaveLength(2);
     expect(source).toContain('Id="ApplyValidatedFyAgentInstallDir"');
-    expect(source).toContain('Property="INSTALLDIR"');
+    const applyActionStart = source.indexOf(
+      '<CustomAction Id="ApplyValidatedFyAgentInstallDir"',
+    );
+    const applyActionEnd = source.indexOf("/>", applyActionStart);
+    const applyAction = source.slice(applyActionStart, applyActionEnd + 2);
+    expect(applyAction).toContain('Directory="INSTALLDIR"');
+    expect(applyAction).not.toContain('Property="INSTALLDIR"');
     expect(source).toContain('Value="[FYAGENT_INSTALLDIR_NORMALIZED]"');
     expect(source).toContain('Id="AbortUnsafeFyAgentInstallDir"');
     expect(source).toContain('Error="[FYAGENT_INSTALLDIR_ERROR_MESSAGE]"');
     expect(source).toContain("ValidateFyAgentInstallDirUi");
     expect(source).toContain("ValidateFyAgentInstallDirExecute");
     expect(source).toContain("AbortUnsafeFyAgentInstallDir");
-    expect(source).toContain(
-      "NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2)",
-    );
+    expect(source).toContain("NOT FyAgentPureUninstall");
+    expect(source).not.toContain("FYAGENT_PURE_UNINSTALL");
+    expect(source).not.toContain("ClearFyAgentPureUninstall");
+    expect(source).not.toContain("SetFyAgentPureUninstall");
+    expect(source).not.toMatch(/\$[A-Za-z_][A-Za-z0-9_.]*\s*=\s*2/);
+    expect(source).not.toContain('<Property Id="FyAgentPureUninstall"');
     expect(source).not.toContain('REMOVE~="ALL" AND NOT REINSTALL');
     expect(source).toContain('Property Id="FYAGENT_PREVIOUS_INSTALLDIR"');
     expect(source).toContain(
@@ -632,10 +785,13 @@ describe("FyAgent Windows elevation and installer boundary", () => {
     expect(source).toContain('Id="AbortUntrustedFyAgentMaintenance"');
     expect(source).toContain('Value="URL:FyAgent protocol"');
     expect(source).toContain(
-      "(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND NOT FYAGENT_PREVIOUS_INSTALLDIR AND NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2)",
+      "(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND NOT FYAGENT_PREVIOUS_INSTALLDIR AND NOT FyAgentPureUninstall",
     );
     expect(source).toContain(
-      'Action="AbortUntrustedFyAgentMaintenance" Before="ValidateFyAgentInstallDirExecute"',
+      'Action="AbortUntrustedFyAgentMaintenance" After="ClassifyFyAgentPureUninstall"',
+    );
+    expect(source).toContain(
+      'Action="ApplyValidatedFyAgentInstallDir" After="ValidateFyAgentInstallDirExecute">NOT Installed AND NOT WIX_UPGRADE_DETECTED AND NOT UPGRADINGPRODUCTCODE AND NOT FyAgentPureUninstall AND FYAGENT_INSTALLDIR_VALID = "1"',
     );
 
     for (const property of [
@@ -670,8 +826,121 @@ describe("FyAgent Windows elevation and installer boundary", () => {
     expect(installerActionsLib).toContain(
       "ValidateFyAgentInstallDirExecute(install: MSIHANDLE)",
     );
+    expect(installerActionsLib).toContain(
+      "ClassifyFyAgentPureUninstall(install: MSIHANDLE)",
+    );
+    expect(installerActionsLib).toContain("session.clear_pure_uninstall()");
+    expect(installerActionsLib).toContain(
+      "session.install_dir_component_ids()",
+    );
+    expect(installerActionsLib).toContain(
+      "session.components_all_absent(&components)",
+    );
+    expect(installerActionsMsi).toContain(
+      'const PURE_UNINSTALL: &str = "FyAgentPureUninstall";',
+    );
+    expect(installerActionsMsi).toContain("MsiGetActiveDatabase");
+    expect(installerActionsMsi).toContain("MsiDatabaseOpenViewW");
+    expect(installerActionsMsi).toContain(
+      "SELECT `Directory`, `Directory_Parent` FROM `Directory`",
+    );
+    expect(installerActionsMsi).toContain(
+      "SELECT `Component`, `Directory_` FROM `Component`",
+    );
+    expect(installerActionsMsi).toContain("MsiGetComponentStateW");
+    expect(installerActionsMsi).toContain("INSTALLSTATE_ABSENT");
+    expect(installerActionsMsi).toContain("MsiViewClose");
+    expect(installerActionsMsi).toContain("MAX_MSI_FIELD_UNITS");
+    for (const coreComponent of [
+      "CMP_UninstallShortcut",
+      "InstallDirectoryAcl",
+      "Path",
+      "RegistryEntries",
+    ]) {
+      expect(installerActionsComponentClosure).toContain(`"${coreComponent}"`);
+    }
+    expect(installerActionsComponentClosure).toContain("DuplicateComponent");
+    expect(installerActionsComponentClosure).toContain("MissingCoreComponent");
     expect(installerActionsLib).toContain("ERROR_SUCCESS");
     expect(installerActionsLib).toContain("ERROR_INSTALL_FAILURE");
+  });
+
+  it("uses writable zero-capacity probes for variable-length MSI strings", () => {
+    expect(installerActionsLib).toContain("mod msi_probe;");
+    const getPropertyStart = installerActionsMsi.indexOf(
+      "pub(crate) fn get_property",
+    );
+    const getPropertyEnd = installerActionsMsi.indexOf(
+      "pub(crate) fn validation_context",
+      getPropertyStart,
+    );
+    const recordStringStart = installerActionsMsi.indexOf("fn record_string");
+    const recordStringEnd = installerActionsMsi.indexOf(
+      "fn wide_null",
+      recordStringStart,
+    );
+    expect(getPropertyStart).toBeGreaterThanOrEqual(0);
+    expect(getPropertyEnd).toBeGreaterThan(getPropertyStart);
+    expect(recordStringStart).toBeGreaterThanOrEqual(0);
+    expect(recordStringEnd).toBeGreaterThan(recordStringStart);
+
+    const getProperty = installerActionsMsi.slice(
+      getPropertyStart,
+      getPropertyEnd,
+    );
+    const recordString = installerActionsMsi.slice(
+      recordStringStart,
+      recordStringEnd,
+    );
+    expect(installerActionsMsi.match(/let mut probe = 0_u16;/g)).toHaveLength(
+      2,
+    );
+    expect(getProperty).toMatch(
+      /MsiGetPropertyW\(\s*self\.handle,\s*name\.as_ptr\(\),\s*&mut probe,\s*&mut reported_length,?\s*\)/,
+    );
+    expect(recordString).toMatch(
+      /MsiRecordGetStringW\(\s*record,\s*field,\s*&mut probe,\s*&mut reported_length\s*\)/,
+    );
+    for (const probeSource of [getProperty, recordString]) {
+      expect(probeSource).toContain("let mut reported_length = 0_u32;");
+      expect(probeSource).toContain(
+        "msi_string_probe_disposition(first_status, reported_length)?",
+      );
+      expect(probeSource).not.toContain("std::ptr::null_mut()");
+    }
+    expect(installerActionsMsi).not.toContain("std::ptr::null_mut()");
+    expect(
+      installerActionsMsi.match(
+        /msi_string_probe_disposition\(first_status, reported_length\)\?/g,
+      ),
+    ).toHaveLength(2);
+    expect(installerActionsMsi).toContain(
+      "ERROR_SUCCESS => MsiStringProbeStatus::Success",
+    );
+    expect(installerActionsMsi).toContain(
+      "ERROR_MORE_DATA => MsiStringProbeStatus::MoreData",
+    );
+    expect(installerActionsMsiProbe).toContain(
+      "(MsiStringProbeStatus::Success, 0) | (MsiStringProbeStatus::MoreData, 0)",
+    );
+    expect(installerActionsMsiProbe).toContain(
+      "(MsiStringProbeStatus::MoreData, length)",
+    );
+    expect(installerActionsMsiProbe).toContain(
+      "(MsiStringProbeStatus::Success, _) => Err(UnexpectedSuccessLength)",
+    );
+    expect(installerActionsMsiProbe).toContain(
+      "accepts_both_documented_empty_probe_results",
+    );
+    expect(installerActionsMsiProbe).toContain(
+      "requests_a_second_read_only_for_positive_more_data_lengths",
+    );
+    expect(installerActionsMsiProbe).toContain(
+      "rejects_success_that_claims_unwritten_data",
+    );
+    expect(getProperty).toContain("*length <= 32_768");
+    expect(recordString).toContain("reported_length > MAX_MSI_FIELD_UNITS");
+    expect(recordString).toContain("length > reported_length");
   });
 
   it("orders native validation after standard path validation and keeps policy denial recoverable", () => {
@@ -704,15 +973,135 @@ describe("FyAgent Windows elevation and installer boundary", () => {
     expect(installDirUi).toContain("[FYAGENT_INSTALLDIR_ERROR_MESSAGE]");
     expect(installDirUi).toContain('Event="EndDialog" Value="Return"');
     expect(installDirUi).toContain("WIX_UPGRADE_DETECTED");
+    expect(installDirUi.match(/NOT FyAgentPureUninstall/g)).toHaveLength(4);
+    expect(installDirUi).not.toContain("FYAGENT_PURE_UNINSTALL");
     expect(installDirUi).toContain(
-      "NOT ($CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2)",
+      'NOT Installed AND NOT WIX_UPGRADE_DETECTED AND NOT UPGRADINGPRODUCTCODE AND FYAGENT_INSTALLDIR_VALID="1"',
     );
+    expect(installDirUi).not.toMatch(/\$[A-Za-z_][A-Za-z0-9_.]*\s*=\s*2/);
     expect(releaseSource).toContain("FYAGENT_INSTALLER_ACTIONS_DLL");
     expect(releaseSource).toContain("TAURI_FYAGENT_INSTALLER_ACTIONS_DLL");
     expect(releaseSource).toContain("fyagent_installer_actions.dll");
     expect(windowsMsiStructureVerifier).toContain("MsiLockPermissionsEx");
     expect(windowsMsiStructureVerifier).toContain("Test-InstallDirDescendant");
     expect(windowsMsiStructureVerifier).toContain("Assert-MsiCustomAction");
+    expect(windowsMsiStructureVerifier).toContain(
+      "'ApplyValidatedFyAgentInstallDir' 35 'INSTALLDIR' '[FYAGENT_INSTALLDIR_NORMALIZED]'",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "'ClassifyFyAgentPureUninstall' 1 'FyAgentInstallerActions' 'ClassifyFyAgentPureUninstall'",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "'EnforceFyAgentAllUsers' 51 'ALLUSERS' '1'",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "'EnforceFyAgentDisableAdvertisedShortcuts' 51 'DISABLEADVTSHORTCUTS' '1'",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "Assert-MsiSequenceCondition $table 'EnforceFyAgentAllUsers' '1'",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "Assert-MsiSequenceCondition $table 'EnforceFyAgentDisableAdvertisedShortcuts' '1'",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "enforce ALLUSERS before CostInitialize",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "enforce DISABLEADVTSHORTCUTS before CostInitialize",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "requires exactly one sequence action",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "Assert-MsiPropertyValue 'ALLUSERS' '1'",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "Assert-MsiPropertyValue 'DISABLEADVTSHORTCUTS' '1'",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "$targetFeature -cnotmatch '^[A-Za-z_][A-Za-z0-9_.]{0,37}$'",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "CostFinalize before native pure-uninstall classifier",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "must not author a default for the private pure-uninstall classifier marker",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "condition exceeds the 255-character table limit",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "ControlEvent condition exceeds the 255-character table limit",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "'NOT Installed AND NOT WIX_UPGRADE_DETECTED AND NOT UPGRADINGPRODUCTCODE'",
+    );
+    expect(windowsMsiStructureVerifier).toContain("advertised feature target");
+    expect(windowsMsiStructureVerifier).toContain("FeatureComponents");
+    expect(windowsMsiStructureVerifier).toContain(
+      "desktop and Start Menu shortcuts must target the same Path-owning feature",
+    );
+    expect(windowsMsiStructureVerifier).toContain("DISABLEADVTSHORTCUTS");
+    expect(windowsMsiStructureVerifier).toContain(
+      "installed executable as its file KeyPath",
+    );
+    expect(windowsMsiStructureVerifier).toContain("[StringComparer]::Ordinal");
+    expect(windowsMsiStructureVerifier).toContain(
+      "InstallExecuteSequence RemoveShortcuts before RemoveFiles",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "MSI product Start Menu directory cleanup row drifted",
+    );
+    expect(windowsMsiStructureVerifier).toContain("$maxDirectoryRows = 4096");
+    expect(windowsMsiStructureVerifier).toContain("$maxComponentRows = 32768");
+    expect(windowsMsiStructureVerifier).toContain(
+      "$maxMsiFieldUtf16Units = 1024",
+    );
+    expect(windowsMsiStructureVerifier).toContain("-MaxRows $maxDirectoryRows");
+    expect(windowsMsiStructureVerifier).toContain("-MaxRows $maxComponentRows");
+    expect(windowsMsiStructureVerifier).toContain(
+      "$value.Length -gt $maxMsiFieldUtf16Units",
+    );
+    expect(windowsMsiStructureVerifier).toContain(
+      "[void]$rows.Add([PSCustomObject]@{ Values = $values })",
+    );
+    expect(windowsMsiStructureVerifier).toContain("return $rows.ToArray()");
+    expect(
+      windowsMsiStructureVerifier.match(/Release-ComObject \$record/g),
+    ).toHaveLength(2);
+    expect(
+      windowsMsiStructureVerifier.match(/Release-ComObject \$view/g),
+    ).toHaveLength(1);
+    expect(windowsMsiStructureVerifier).toContain(
+      "FinalReleaseComObject($Value)",
+    );
+    expect(
+      windowsMsiStructureVerifier.match(/\$record\.StringData\(/g),
+    ).toHaveLength(1);
+    expect(windowsMsiStructureVerifier).not.toContain(".IntegerData(");
+    expect(
+      windowsMsiStructureVerifier.match(/\[void\]\$view\.Execute\(\)/g),
+    ).toHaveLength(2);
+    expect(
+      windowsMsiStructureVerifier.match(/\[void\]\$view\.Close\(\)/g),
+    ).toHaveLength(2);
+    expect(windowsMsiStructureVerifier).not.toMatch(/^\s*\$view\.Execute\(\)/m);
+    expect(
+      windowsMsiVerifier.match(/\[void\]\$(?:view|binaryView)\.Execute\(\)/g),
+    ).toHaveLength(2);
+    expect(
+      windowsMsiVerifier.match(/\[void\]\$(?:view|binaryView)\.Close\(\)/g),
+    ).toHaveLength(2);
+    expect(
+      windowsMsiVerifier.match(/\[void\]\$[A-Za-z]+\.Add\(/g),
+    ).toHaveLength(2);
+    expect(windowsMsiVerifier).not.toMatch(
+      /^\s*\$(?:view|binaryView)\.Execute\(\)/m,
+    );
+    expect(windowsMsiVerifier).not.toMatch(/^\s*\$[A-Za-z]+\.Add\(/m);
+    expect(windowsMsiVerifier).not.toMatch(
+      /^\s*\$(?:view|binaryView)\.Close\(\)/m,
+    );
     expect(windowsMsiStructureVerifier).toContain(
       "ValidateFyAgentInstallDirExecute",
     );

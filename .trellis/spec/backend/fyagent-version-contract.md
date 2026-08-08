@@ -149,6 +149,10 @@ FYAGENT_INSTALLDIR_NORMALIZED
 FYAGENT_INSTALLDIR_CHECK_ID
 ```
 
+The native helper separately owns the derived private admission state
+`FyAgentPureUninstall`. It is not authored in the MSI Property table and is
+cleared before every classification.
+
 ## 3. Contracts
 
 ### Canonical metadata and version updates
@@ -225,20 +229,46 @@ FYAGENT_INSTALLDIR_CHECK_ID
 - The UI Type 1 action records a policy rejection in the stable properties and
   returns MSI success so the directory dialog can stay recoverable and show its
   short user message. The Execute Type 1 action repeats the same policy;
-  ApplyValidatedFyAgentInstallDir applies the normalized value only when valid,
-  and a following Type 19 action stops the transaction before InstallValidate
-  or InstallFiles when invalid.
+  ApplyValidatedFyAgentInstallDir is Type 35 (`Directory="INSTALLDIR"`) and
+  applies the normalized value only for a valid first install after
+  `CostFinalize`; a Type 51 `Property="INSTALLDIR"` action at that position or
+  a post-cost repair/upgrade rewrite is forbidden. Maintenance validates the
+  protected HKLM path restored before costing and leaves that directory value
+  in place. A following Type 19 action stops the transaction before
+  InstallValidate or InstallFiles when invalid.
 - Maintenance clears caller-provided public INSTALLDIR and the previous-anchor
   property before AppSearch, restores only the protected HKLM InstallDir
   anchor before CostFinalize, then revalidates it. A repair or upgrade without
   that anchor must fail before file writes; it must not trust a command-line
   INSTALLDIR.
-- Pure uninstall is the only directory-validation exemption. Its condition
-  must exactly represent every component rooted at INSTALLDIR in the rendered
-  MSI Directory and Component tables. At this baseline the closure is
-  CMP_UninstallShortcut, InstallDirectoryAcl, Path, and RegistryEntries.
-  Adding a direct or indirect INSTALLDIR component requires changing the WiX
-  predicate and the Linux/Windows structure gates together.
+- Pure uninstall is the only directory-validation exemption. After
+  `CostFinalize`, the architecture-matched Type 1 helper clears private marker
+  `FyAgentPureUninstall`, queries the active MSI Directory and Component tables,
+  derives every component rooted at INSTALLDIR, and calls
+  `MsiGetComponentStateW` for each. It sets the marker only when every action
+  state is `INSTALLSTATE_ABSENT`; query, API, size-limit, empty, duplicate,
+  malformed-parent, or missing-core failures abort closed. The closure requires
+  `CMP_UninstallShortcut`, `InstallDirectoryAcl`, `Path`, and `RegistryEntries`
+  and automatically includes all rendered resources, bundled binaries, and
+  conditional update-task components beneath INSTALLDIR. The same classifier
+  entry point runs independently in UI and Execute sequences before any marker
+  consumer, while the non-Handlebars UI fragment consumes only that private
+  result. No rendered component-state expression is stored in the 255-character
+  MSI Sequence Condition column, and generated component IDs are never copied
+  into source as constants. The verifier independently recomputes the real MSI
+  closure and checks the Type 1 action, private marker, and ordering.
+- Per-machine shortcuts retain standard MSI `DesktopFolder` and a
+  FyAgent product directory beneath `ProgramMenuFolder`. `ALLUSERS=1` redirects
+  both roots to All Users. The shortcut rows are advertised-authored children
+  of the existing `Path` file component, have no explicit target, and use the
+  executable `Path` file as the component KeyPath. They omit an explicit Icon,
+  render the same target Feature, and require a `FeatureComponents` row proving
+  that Feature owns `Path`;
+  `DISABLEADVTSHORTCUTS=1` makes Windows Installer create ordinary shortcuts.
+  No standalone profile component or shortcut marker value remains. Pure
+  uninstall does not remove either redirected root. `RemoveShortcuts` precedes
+  `RemoveFiles`, and only the product Start Menu subdirectory has a no-FileName
+  shortcut-folder `RemoveFolder` row owned by `Path`.
 
 ### Architecture and MSI-table contract
 
@@ -255,20 +285,20 @@ FYAGENT_INSTALLDIR_CHECK_ID
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                                                       | Required result                                                                                                               |
-| --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Workspace member, resolver, inherited package version, package private flag, or duplicate metadata field drifts | version:check fails before a release or version write.                                                                        |
-| Version is not stable X.Y.Z or exceeds the MSI ProductVersion bounds                                            | get, set, bump, or check fails; no release tag is accepted.                                                                   |
-| Local Cargo.lock package block is missing, duplicated, sourced, or mismatched                                   | version:check fails; set may repair only the local version value after all other preflight checks pass.                       |
-| A ref is not the exact v0.3.0 tag push or immutable dispatch SHA                                                | eligibility fails before the platform matrix.                                                                                 |
-| A platform asset has a v-prefixed version or differs from APP_VERSION                                           | platform/release manifest validation fails; it is not published.                                                              |
-| Manifest tag, source SHA, exact ten installers, or five metadata records are invalid                            | evidence generation fails and publication stops.                                                                              |
-| Helper DLL PE machine, MSI summary architecture, or embedded Binary bytes differ                                | Native release structure verification fails before candidate artifact upload.                                                 |
-| UI policy denial                                                                                                | Set valid=0 and stable error properties, show the policy dialog, and leave the user at the directory step without Error 1720. |
-| Silent install or Execute policy denial                                                                         | The Execute action records the same rejection and Type 19 aborts before file installation.                                    |
-| Repair/upgrade has no trusted HKLM InstallDir anchor                                                            | Type 19 stops maintenance before validation/file writes.                                                                      |
-| Transaction is a true pure uninstall                                                                            | Skip directory admission only for the complete rendered INSTALLDIR component closure.                                         |
-| A v1-0.3.0 package edit is untracked, or the final regenerated manifest does not match                          | Traceability/closeout fails; preserve the edit history and regenerate MANIFEST.sha256 only with final evidence.               |
+| Condition                                                                                                                                                 | Required result                                                                                                               |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Workspace member, resolver, inherited package version, package private flag, or duplicate metadata field drifts                                           | version:check fails before a release or version write.                                                                        |
+| Version is not stable X.Y.Z or exceeds the MSI ProductVersion bounds                                                                                      | get, set, bump, or check fails; no release tag is accepted.                                                                   |
+| Local Cargo.lock package block is missing, duplicated, sourced, or mismatched                                                                             | version:check fails; set may repair only the local version value after all other preflight checks pass.                       |
+| A ref is not the exact v0.3.0 tag push or immutable dispatch SHA                                                                                          | eligibility fails before the platform matrix.                                                                                 |
+| A platform asset has a v-prefixed version or differs from APP_VERSION                                                                                     | platform/release manifest validation fails; it is not published.                                                              |
+| Manifest tag, source SHA, exact ten installers, or five metadata records are invalid                                                                      | evidence generation fails and publication stops.                                                                              |
+| Helper DLL PE machine, MSI summary architecture, embedded Binary bytes, Type 35 directory assignment, shortcut scope, or native closure classifier differ | Native release structure verification fails before candidate artifact upload.                                                 |
+| UI policy denial                                                                                                                                          | Set valid=0 and stable error properties, show the policy dialog, and leave the user at the directory step without Error 1720. |
+| Silent install or Execute policy denial                                                                                                                   | The Execute action records the same rejection and Type 19 aborts before file installation.                                    |
+| Repair/upgrade has no trusted HKLM InstallDir anchor                                                                                                      | Type 19 stops maintenance before validation/file writes.                                                                      |
+| Transaction is a true pure uninstall                                                                                                                      | Skip directory admission only for the complete rendered INSTALLDIR component closure.                                         |
+| A v1-0.3.0 package edit is untracked, or the final regenerated manifest does not match                                                                    | Traceability/closeout fails; preserve the edit history and regenerate MANIFEST.sha256 only with final evidence.               |
 
 ## 5. Good / Base / Bad Cases
 
@@ -277,8 +307,11 @@ FYAGENT_INSTALLDIR_CHECK_ID
   app_version=0.3.0, release_tag=v0.3.0, and one source SHA before all
   platform jobs use those exact outputs.
 - Good: The x64 MSI embeds the x64 helper and the ARM64 MSI embeds the ARM64
-  helper. Both tables run the native policy in UI and Execute, and both fail
-  maintenance safely when the HKLM anchor is absent.
+  helper. Both tables run the native policy and private post-cost component
+  classifier in UI and Execute, apply the normalized path with Type 35, derive
+  the exact resource-aware pure-uninstall closure, use machine-context standard
+  shortcut directories, and fail maintenance safely when the HKLM anchor is
+  absent.
 - Base: `mise run version:set -- X.Y.Z` reports only Cargo.toml and local
   Cargo.lock changes without writing. An authorized
   workflow_dispatch for the exact trusted main/workflow SHA produces all ten unsigned
@@ -305,8 +338,9 @@ FYAGENT_INSTALLDIR_CHECK_ID
 - tests/releaseWorkflow.test.ts must assert the eligibility job, downstream
   frozen output consumption, exact tag/dispatch modes, repository/workflow/CI
   identity checks, five native groups, helper build ordering, Type 1/Type 19
-  actions, MSI component closure protection, unsigned gates, exact evidence
-  stages, and the formal-only one-time publish.
+  actions, Type 35 normalized-directory assignment, dynamic MSI component
+  closure protection, machine shortcut scope, unsuppressed packaging output,
+  unsigned gates, exact evidence stages, and the formal-only one-time publish.
 - The helper unit tests must cover portable policy cases. Windows-only policy
   and ACL integration tests run on Windows and must not be represented as
   passing on another host.
@@ -327,13 +361,23 @@ FYAGENT_INSTALLDIR_CHECK_ID
   (cd docs/fyagent/dev/v1-0.3.0 && sha256sum -c MANIFEST.sha256)
   ```
 
+  Each command may execute only for the current host OS and architecture.
+  WSL/Windows bridging, foreign executables, cross targets, emulators, and
+  locally copied non-host toolchains are not validation evidence. Any command
+  whose native prerequisites do not match the host is skipped locally and
+  remains required on its matching GitHub Actions runner.
+
 - Native release evidence remains separate: Windows x64 and ARM64 must cover
   default, safe custom, unsafe custom, /qn INSTALLDIR, upgrade, repair,
-  uninstall, verbose MSI log, and ICE behavior. Signing/timestamping, macOS
+  uninstall, verbose MSI log, and unsuppressed ICE behavior. Signing/timestamping, macOS
   notarization, and staple are deliberately absent; native `NotSigned`/absence
   checks, final multi-platform metadata, mandatory attestation, published
   manifest, exact tag, and source SHA require an explicitly authorized release
   run.
+- For an explicitly authorized Actions run, the initiating main flow waits
+  synchronously until the whole run is `completed`, then reads its result once.
+  It does not spawn a background/asynchronous monitoring agent or frequently
+  poll status; failed-job logs are retrieved only after a failed final result.
 
 ## 7. Wrong vs Correct
 

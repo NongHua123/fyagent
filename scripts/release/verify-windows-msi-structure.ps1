@@ -19,23 +19,85 @@ $resolvedBuiltExe = (Resolve-Path -LiteralPath $BuiltExePath).Path
 $payloadRoot = Join-Path $env:RUNNER_TEMP "fyagent-msi-payload-$([Guid]::NewGuid().ToString('N'))"
 $installer = $null
 $database = $null
+$maxDirectoryRows = 4096
+$maxComponentRows = 32768
+$maxMsiFieldUtf16Units = 1024
+
+function Release-ComObject {
+  param([object]$Value)
+
+  if ($null -ne $Value -and [Runtime.InteropServices.Marshal]::IsComObject($Value)) {
+    [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($Value)
+  }
+}
 
 try {
   $installer = New-Object -ComObject WindowsInstaller.Installer
   $database = $installer.OpenDatabase($resolvedMsi, 0)
 
   function Get-MsiRecord([string]$query) {
-    $view = $database.OpenView($query)
-    $view.Execute()
-    return $view.Fetch()
+    $records = @(Get-MsiRecords -Query $query -MaxRows 2)
+    if ($records.Count -gt 1) {
+      throw "MSI query expected at most one row; found $($records.Count): $query"
+    }
+    if ($records.Count -eq 0) {
+      return $null
+    }
+    return $records[0]
   }
 
-  function Get-MsiRecords([string]$query) {
-    $view = $database.OpenView($query)
-    $view.Execute()
-    while ($record = $view.Fetch()) {
-      $record
+  function Get-MsiRecords {
+    param(
+      [Parameter(Mandatory = $true)]
+      [string]$Query,
+
+      [int]$MaxRows = 32768
+    )
+
+    if ($MaxRows -lt 1) {
+      throw "MSI query row cap must be positive: $MaxRows"
     }
+    $rows = [Collections.Generic.List[object]]::new()
+    $view = $null
+    $record = $null
+    try {
+      $view = $database.OpenView($Query)
+      [void]$view.Execute()
+      while ($null -ne ($record = $view.Fetch())) {
+        try {
+          if ($rows.Count -ge $MaxRows) {
+            throw "MSI query exceeds its $MaxRows-row cap: $Query"
+          }
+          [int]$fieldCount = $record.FieldCount
+          if ($fieldCount -lt 1 -or $fieldCount -gt 16) {
+            throw "MSI query returned an invalid field count ${fieldCount}: $Query"
+          }
+          $values = [string[]]::new($fieldCount)
+          for ($field = 1; $field -le $fieldCount; $field += 1) {
+            $value = [string]$record.StringData($field)
+            if ($value.Length -gt $maxMsiFieldUtf16Units) {
+              throw "MSI query field exceeds $maxMsiFieldUtf16Units UTF-16 units: $Query"
+            }
+            $values[$field - 1] = $value
+          }
+          [void]$rows.Add([PSCustomObject]@{ Values = $values })
+        } finally {
+          Release-ComObject $record
+          $record = $null
+        }
+      }
+    } finally {
+      Release-ComObject $record
+      if ($null -ne $view) {
+        try {
+          [void]$view.Close()
+        } catch {
+          Write-Warning "Failed to close a read-only MSI query view: $($_.Exception.Message)"
+        }
+      }
+      Release-ComObject $view
+    }
+    return $rows.ToArray()
   }
 
   function Require-MsiRecord([string]$query, [string]$description) {
@@ -74,7 +136,7 @@ try {
       $view = $database.OpenView(
         "SELECT ``Data`` FROM ``_Streams`` WHERE ``Name``='$streamName'"
       )
-      $view.Execute()
+      [void]$view.Execute()
       $record = $view.Fetch()
       if ($null -eq $record) {
         throw "MSI is missing embedded cabinet stream $streamName"
@@ -122,7 +184,7 @@ try {
       }
       if ($null -ne $view) {
         try {
-          $view.Close()
+          [void]$view.Close()
         } catch {
           Write-Warning "Failed to close the read-only MSI stream view: $($_.Exception.Message)"
         }
@@ -132,14 +194,15 @@ try {
   }
 
   function Get-MsiSequenceRow([string]$table, [string]$action) {
-    $record = Get-MsiRecord "SELECT ``Condition``, ``Sequence`` FROM ``$table`` WHERE ``Action``='$action'"
-    if ($null -eq $record) {
-      throw "MSI contract is missing sequence action $action in $table"
+    $records = @(Get-MsiRecords "SELECT ``Condition``, ``Sequence`` FROM ``$table`` WHERE ``Action``='$action'")
+    if ($records.Count -ne 1) {
+      throw "MSI contract requires exactly one sequence action $action in $table; found $($records.Count)"
     }
+    $record = $records[0]
     return [PSCustomObject]@{
       Action = $action
-      Condition = [string]$record.StringData(1)
-      Sequence = [int]$record.IntegerData(2)
+      Condition = [string]$record.Values[0]
+      Sequence = [int]$record.Values[1]
     }
   }
 
@@ -158,25 +221,88 @@ try {
   }
 
   function Assert-MsiCustomAction([string]$action, [int]$expectedType, [string]$expectedSource, [string]$expectedTarget) {
-    $record = Get-MsiRecord "SELECT ``Type``, ``Source``, ``Target`` FROM ``CustomAction`` WHERE ``Action``='$action'"
+    $records = @(Get-MsiRecords "SELECT ``Type``, ``Source``, ``Target`` FROM ``CustomAction`` WHERE ``Action``='$action'")
     if (
-      $null -eq $record -or
-      $record.IntegerData(1) -ne $expectedType -or
-      [string]$record.StringData(2) -cne $expectedSource -or
-      [string]$record.StringData(3) -cne $expectedTarget
+      $records.Count -ne 1 -or
+      [int]$records[0].Values[0] -ne $expectedType -or
+      [string]$records[0].Values[1] -cne $expectedSource -or
+      [string]$records[0].Values[2] -cne $expectedTarget
     ) {
       throw "MSI custom action contract drifted for $action"
     }
-    return $record
+  }
+
+  function Assert-MsiPropertyValue([string]$property, [string]$expectedValue) {
+    $records = @(Get-MsiRecords "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='$property'")
+    if (
+      $records.Count -ne 1 -or
+      [string]$records[0].Values[0] -cne $expectedValue
+    ) {
+      throw "MSI Property-table default drifted for $property"
+    }
+  }
+
+  function Assert-PerMachineShortcut(
+    [string]$shortcut,
+    [string]$expectedDirectory
+  ) {
+    $shortcutRecord = Get-MsiRecord "SELECT ``Directory_``, ``Component_``, ``Target`` FROM ``Shortcut`` WHERE ``Shortcut``='$shortcut'"
+    if (
+      $null -eq $shortcutRecord -or
+      [string]$shortcutRecord.Values[0] -cne $expectedDirectory -or
+      [string]$shortcutRecord.Values[1] -cne 'Path' -or
+      [string]::IsNullOrWhiteSpace([string]$shortcutRecord.Values[2])
+    ) {
+      throw "MSI per-machine shortcut row drifted for $shortcut"
+    }
+    $targetFeature = [string]$shortcutRecord.Values[2]
+    if ($targetFeature -cnotmatch '^[A-Za-z_][A-Za-z0-9_.]{0,37}$') {
+      throw "MSI shortcut $shortcut has an invalid advertised Feature identifier"
+    }
+    if ($null -eq (Get-MsiRecord "SELECT ``Feature`` FROM ``Feature`` WHERE ``Feature``='$targetFeature'")) {
+      throw "MSI shortcut $shortcut is not authored as an advertised feature target"
+    }
+    Require-MsiRecord "SELECT ``Feature_`` FROM ``FeatureComponents`` WHERE ``Feature_``='$targetFeature' AND ``Component_``='Path'" "advertised shortcut $shortcut feature owns the Path component"
+    return $targetFeature
+  }
+
+  function Assert-MsiControlEventCondition(
+    [string]$event,
+    [string]$argument,
+    [string]$expectedCondition,
+    [int]$expectedOrdering
+  ) {
+    $records = @(Get-MsiRecords "SELECT ``Condition``, ``Ordering`` FROM ``ControlEvent`` WHERE ``Dialog_``='InstallDirDlg' AND ``Control_``='Next' AND ``Event``='$event' AND ``Argument``='$argument'")
+    if (
+      $records.Count -ne 1 -or
+      [string]$records[0].Values[0] -cne $expectedCondition -or
+      [int]$records[0].Values[1] -ne $expectedOrdering
+    ) {
+      throw "MSI InstallDir Next condition drifted for $event/$argument"
+    }
   }
 
   Require-MsiRecord 'SELECT `Name` FROM `Binary` WHERE `Name`=''FyAgentInstallerActions''' 'architecture-matched installer-actions Binary row'
-  if ($null -ne (Get-MsiRecord 'SELECT `File` FROM `File` WHERE `FileName` LIKE ''%fyagent_installer_actions.dll%''')) {
+  $installerActionPayloadRows = @(
+    Get-MsiRecords 'SELECT `File`, `FileName` FROM `File`' | Where-Object {
+      if ($null -eq $_) {
+        $false
+      } else {
+        $payloadName = [string]$_.Values[1]
+        $payloadName -match '(?i)(?:^|\|)fyagent_installer_actions\.dll$'
+      }
+    }
+  )
+  if ($installerActionPayloadRows.Count -ne 0) {
     throw 'MSI must not install the custom-action DLL as an application payload'
   }
 
   $productVersion = Get-MsiRecord 'SELECT `Value` FROM `Property` WHERE `Property`=''ProductVersion'''
-  if ($null -eq $productVersion -or $productVersion.StringData(1) -ne $AppVersion) {
+  if ($null -eq $productVersion) {
+    throw 'MSI Property table is missing ProductVersion'
+  }
+  $productVersionValue = [string]$productVersion.Values[0]
+  if ($productVersionValue -ne $AppVersion) {
     throw "MSI ProductVersion does not match frozen APP_VERSION $AppVersion"
   }
 
@@ -187,28 +313,30 @@ try {
   if ($null -eq $payloadRecord) {
     throw 'MSI File table is missing the unique Path executable payload'
   }
-  $payloadLongName = @([string]$payloadRecord.StringData(1) -split '\|')[-1]
+  $payloadLongName = @([string]$payloadRecord.Values[0] -split '\|')[-1]
   if ($payloadLongName -notmatch '(?i)(?:^|-)fyagent\.exe$') {
     throw "MSI Path payload is not fyagent.exe: $payloadLongName"
   }
-  [int64]$payloadFileSize = $payloadRecord.IntegerData(2)
-  [int]$payloadSequence = $payloadRecord.IntegerData(3)
+  [int64]$payloadFileSize = $payloadRecord.Values[1]
+  [int]$payloadSequence = $payloadRecord.Values[2]
   $builtSize = (Get-Item -LiteralPath $resolvedBuiltExe -ErrorAction Stop).Length
   if ($payloadFileSize -ne $builtSize) {
     throw "MSI File table size $payloadFileSize differs from built fyagent.exe size $builtSize"
   }
 
   $candidateMedia = @(
-    foreach ($row in @(Get-MsiRecords 'SELECT `DiskId`, `LastSequence`, `Cabinet` FROM `Media`')) {
-      if ($row.IntegerData(2) -ge $payloadSequence) {
-        [PSCustomObject]@{
-          DiskId = [int]$row.IntegerData(1)
-          LastSequence = [int]$row.IntegerData(2)
-          Cabinet = [string]$row.StringData(3)
+    @(
+      foreach ($row in @(Get-MsiRecords 'SELECT `DiskId`, `LastSequence`, `Cabinet` FROM `Media`')) {
+        if ([int]$row.Values[1] -ge $payloadSequence) {
+          [PSCustomObject]@{
+            DiskId = [int]$row.Values[0]
+            LastSequence = [int]$row.Values[1]
+            Cabinet = [string]$row.Values[2]
+          }
         }
       }
-    }
-  ) | Sort-Object LastSequence, DiskId
+    ) | Sort-Object LastSequence, DiskId
+  )
   if ($candidateMedia.Count -lt 1) {
     throw "MSI Media table does not cover executable sequence $payloadSequence"
   }
@@ -223,9 +351,13 @@ try {
   $expandedRoot = Join-Path $payloadRoot 'expanded'
   New-Item -ItemType Directory -Path $expandedRoot -ErrorAction Stop | Out-Null
   Export-MsiStream -streamName $cabinetStream -outputPath $cabinetPath
-  Get-Command expand.exe -ErrorAction Stop | Out-Null
-  & expand.exe $cabinetPath '-F:Path' $expandedRoot
-  if ($LASTEXITCODE -ne 0) {
+  $expandCommand = Get-Command expand.exe -ErrorAction Stop
+  $expandProcess = Start-Process -FilePath $expandCommand.Source -ArgumentList @(
+    $cabinetPath,
+    '-F:Path',
+    $expandedRoot
+  ) -NoNewWindow -Wait -PassThru
+  if ($expandProcess.ExitCode -ne 0) {
     throw "expand.exe could not extract the fixed Path payload from $cabinetStream"
   }
   $expandedItems = @(Get-ChildItem -LiteralPath $expandedRoot -Force -Recurse)
@@ -266,9 +398,9 @@ try {
   $uiAction = Get-MsiRecord 'SELECT `Type`, `Source`, `Target` FROM `CustomAction` WHERE `Action`=''ValidateFyAgentInstallDirUi'''
   if (
     $null -eq $uiAction -or
-    $uiAction.IntegerData(1) -ne 1 -or
-    $uiAction.StringData(2) -ne 'FyAgentInstallerActions' -or
-    $uiAction.StringData(3) -ne 'ValidateFyAgentInstallDirUi'
+    [int]$uiAction.Values[0] -ne 1 -or
+    [string]$uiAction.Values[1] -cne 'FyAgentInstallerActions' -or
+    [string]$uiAction.Values[2] -cne 'ValidateFyAgentInstallDirUi'
   ) {
     throw 'MSI UI directory action is not the expected Type 1 DLL entry'
   }
@@ -276,20 +408,29 @@ try {
   $executeAction = Get-MsiRecord 'SELECT `Type`, `Source`, `Target` FROM `CustomAction` WHERE `Action`=''ValidateFyAgentInstallDirExecute'''
   if (
     $null -eq $executeAction -or
-    $executeAction.IntegerData(1) -ne 1 -or
-    $executeAction.StringData(2) -ne 'FyAgentInstallerActions' -or
-    $executeAction.StringData(3) -ne 'ValidateFyAgentInstallDirExecute'
+    [int]$executeAction.Values[0] -ne 1 -or
+    [string]$executeAction.Values[1] -cne 'FyAgentInstallerActions' -or
+    [string]$executeAction.Values[2] -cne 'ValidateFyAgentInstallDirExecute'
   ) {
     throw 'MSI execute directory action is not the expected Type 1 DLL entry'
   }
 
   Assert-MsiCustomAction 'ClearFyAgentPreviousInstallDir' 307 'FYAGENT_PREVIOUS_INSTALLDIR' ''
   Assert-MsiCustomAction 'ClearMaintenanceInstallDir' 307 'INSTALLDIR' ''
+  Assert-MsiCustomAction 'EnforceFyAgentAllUsers' 51 'ALLUSERS' '1'
+  Assert-MsiCustomAction 'EnforceFyAgentDisableAdvertisedShortcuts' 51 'DISABLEADVTSHORTCUTS' '1'
   Assert-MsiCustomAction 'RestoreInstallDirFromPrevious' 51 'INSTALLDIR' '[FYAGENT_PREVIOUS_INSTALLDIR]'
+  Assert-MsiCustomAction 'ClassifyFyAgentPureUninstall' 1 'FyAgentInstallerActions' 'ClassifyFyAgentPureUninstall'
+  Assert-MsiCustomAction 'ApplyValidatedFyAgentInstallDir' 35 'INSTALLDIR' '[FYAGENT_INSTALLDIR_NORMALIZED]'
   Assert-MsiCustomAction 'AbortUnsafeFyAgentInstallDir' 19 '' '[FYAGENT_INSTALLDIR_ERROR_MESSAGE]'
+  foreach ($obsoleteAction in @('ClearFyAgentPureUninstall', 'SetFyAgentPureUninstall')) {
+    if ($null -ne (Get-MsiRecord "SELECT ``Action`` FROM ``CustomAction`` WHERE ``Action``='$obsoleteAction'")) {
+      throw "MSI still contains obsolete authored component-state action $obsoleteAction"
+    }
+  }
 
   $missingAnchorAction = Get-MsiRecord 'SELECT `Type` FROM `CustomAction` WHERE `Action`=''AbortUntrustedFyAgentMaintenance'''
-  if ($null -eq $missingAnchorAction -or $missingAnchorAction.IntegerData(1) -ne 19) {
+  if ($null -eq $missingAnchorAction -or [int]$missingAnchorAction.Values[0] -ne 19) {
     throw 'MSI missing-InstallDir-anchor action is not Type 19'
   }
 
@@ -298,73 +439,184 @@ try {
   $installDirLock = Get-MsiRecord 'SELECT `SDDLText` FROM `MsiLockPermissionsEx` WHERE `LockObject`=''INSTALLDIR'''
   if (
     $null -eq $installDirLock -or
-    $installDirLock.StringData(1) -cne 'O:SYD:P(A;OICI;0x1200a9;;;BU)(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)'
+    [string]$installDirLock.Values[0] -cne 'O:SYD:P(A;OICI;0x1200a9;;;BU)(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)'
   ) {
     throw 'MSI INSTALLDIR protected DACL contract drifted'
   }
 
+  Assert-MsiPropertyValue 'ALLUSERS' '1'
+  Assert-MsiPropertyValue 'DISABLEADVTSHORTCUTS' '1'
+  if ($null -ne (Get-MsiRecord 'SELECT `Property` FROM `Property` WHERE `Property`=''FyAgentPureUninstall''')) {
+    throw 'MSI must not author a default for the private pure-uninstall classifier marker'
+  }
+  if ($null -ne (Get-MsiRecord 'SELECT `Property` FROM `Property` WHERE `Property`=''FYAGENT_PURE_UNINSTALL''')) {
+    throw 'MSI still contains the obsolete public pure-uninstall marker'
+  }
+  Require-MsiRecord 'SELECT `Directory` FROM `Directory` WHERE `Directory`=''DesktopFolder'' AND `Directory_Parent`=''TARGETDIR''' 'context-redirected DesktopFolder'
+  Require-MsiRecord 'SELECT `Directory` FROM `Directory` WHERE `Directory`=''ProgramMenuFolder'' AND `Directory_Parent`=''TARGETDIR''' 'context-redirected ProgramMenuFolder'
+  Require-MsiRecord 'SELECT `Directory` FROM `Directory` WHERE `Directory`=''ApplicationProgramsFolder'' AND `Directory_Parent`=''ProgramMenuFolder''' 'FyAgent product directory below ProgramMenuFolder'
+  $pathComponent = Get-MsiRecord 'SELECT `Directory_`, `Attributes`, `KeyPath` FROM `Component` WHERE `Component`=''Path'''
+  if (
+    $null -eq $pathComponent -or
+    [string]$pathComponent.Values[0] -cne 'INSTALLDIR' -or
+    ([int]$pathComponent.Values[1] -band 4) -ne 0 -or
+    [string]$pathComponent.Values[2] -cne 'Path'
+  ) {
+    throw 'MSI Path component must use the installed executable as its file KeyPath'
+  }
+  Require-MsiRecord 'SELECT `File` FROM `File` WHERE `File`=''Path'' AND `Component_`=''Path''' 'Path executable owned by the Path component'
+  $desktopShortcutFeature = Assert-PerMachineShortcut 'ApplicationDesktopShortcut' 'DesktopFolder'
+  $startMenuShortcutFeature = Assert-PerMachineShortcut 'ApplicationStartMenuShortcut' 'ApplicationProgramsFolder'
+  if ($desktopShortcutFeature -cne $startMenuShortcutFeature) {
+    throw 'MSI desktop and Start Menu shortcuts must target the same Path-owning feature'
+  }
+  if ($null -ne (Get-MsiRecord 'SELECT `Registry` FROM `Registry` WHERE `Name`=''DesktopShortcut'' OR `Name`=''StartMenuShortcut''')) {
+    throw 'MSI still contains obsolete standalone shortcut marker values'
+  }
+  if ($null -ne (Get-MsiRecord 'SELECT `FileKey` FROM `RemoveFile` WHERE `DirProperty`=''DesktopFolder''')) {
+    throw 'MSI must not attempt to remove the context-redirected DesktopFolder root'
+  }
+  if ($null -ne (Get-MsiRecord 'SELECT `FileKey` FROM `RemoveFile` WHERE `DirProperty`=''ProgramMenuFolder''')) {
+    throw 'MSI must not attempt to remove the context-redirected ProgramMenuFolder root'
+  }
+  $programFolderCleanup = @(Get-MsiRecords 'SELECT `FileKey`, `Component_`, `FileName`, `InstallMode` FROM `RemoveFile` WHERE `DirProperty`=''ApplicationProgramsFolder''')
+  if (
+    $programFolderCleanup.Count -ne 1 -or
+    [string]$programFolderCleanup[0].Values[0] -cne 'RemoveApplicationProgramsFolder' -or
+    [string]$programFolderCleanup[0].Values[1] -cne 'Path' -or
+    -not [string]::IsNullOrEmpty([string]$programFolderCleanup[0].Values[2]) -or
+    [int]$programFolderCleanup[0].Values[3] -ne 2
+  ) {
+    throw 'MSI product Start Menu directory cleanup row drifted'
+  }
+
   # Recompute every rendered component rooted at INSTALLDIR so a template
   # addition cannot make a mixed remove/add transaction skip admission.
-  $directoryParents = @{}
-  foreach ($row in @(Get-MsiRecords 'SELECT `Directory`, `Directory_Parent` FROM `Directory`')) {
-    $directoryParents[[string]$row.StringData(1)] = [string]$row.StringData(2)
+  $directoryParents = [Collections.Generic.Dictionary[string, string]]::new(
+    [StringComparer]::Ordinal
+  )
+  foreach ($row in @(Get-MsiRecords -Query 'SELECT `Directory`, `Directory_Parent` FROM `Directory`' -MaxRows $maxDirectoryRows)) {
+    $directory = [string]$row.Values[0]
+    $directoryParent = [string]$row.Values[1]
+    if ([string]::IsNullOrWhiteSpace($directory)) {
+      throw 'MSI Directory table contains an empty identifier'
+    }
+    if (
+      -not [string]::IsNullOrEmpty($directoryParent) -and
+      [string]::IsNullOrWhiteSpace($directoryParent)
+    ) {
+      throw "MSI Directory table contains a whitespace-only parent for $directory"
+    }
+    if ($directoryParents.ContainsKey($directory)) {
+      throw "MSI Directory table contains duplicate identifier $directory"
+    }
+    $directoryParents.Add($directory, $directoryParent)
   }
 
   function Test-InstallDirDescendant([string]$directory) {
-    $visited = @{}
-    while (-not [string]::IsNullOrWhiteSpace($directory) -and -not $visited.ContainsKey($directory)) {
-      if ($directory -eq 'INSTALLDIR') {
-        return $true
+    $visited = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $belowInstallDir = $false
+    while (-not [string]::IsNullOrWhiteSpace($directory)) {
+      if ($directory -ceq 'INSTALLDIR') {
+        $belowInstallDir = $true
       }
-      $visited[$directory] = $true
+      if (-not $visited.Add($directory)) {
+        throw "MSI Directory table contains a cycle through $directory"
+      }
       if (-not $directoryParents.ContainsKey($directory)) {
-        return $false
+        throw "MSI Component references unknown directory $directory"
       }
       $directory = $directoryParents[$directory]
     }
-    return $false
+    return $belowInstallDir
   }
 
-  $expectedInstallDirComponents = @(
+  if (-not $directoryParents.ContainsKey('INSTALLDIR')) {
+    throw 'MSI Directory table is missing INSTALLDIR'
+  }
+  foreach ($directory in @($directoryParents.Keys)) {
+    # Validate every rendered parent chain, including directories which do not
+    # currently own components and INSTALLDIR's own ancestors.
+    [void](Test-InstallDirDescendant $directory)
+  }
+
+  $requiredInstallDirComponents = @(
     'CMP_UninstallShortcut',
     'InstallDirectoryAcl',
     'Path',
     'RegistryEntries'
   )
-  $actualInstallDirComponents = @(
-    foreach ($row in @(Get-MsiRecords 'SELECT `Component`, `Directory_` FROM `Component`')) {
-      if (Test-InstallDirDescendant ([string]$row.StringData(2))) {
-        [string]$row.StringData(1)
-      }
+  [Array]::Sort($requiredInstallDirComponents, [StringComparer]::Ordinal)
+  $allComponentSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+  $actualComponentSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+  foreach ($row in @(Get-MsiRecords -Query 'SELECT `Component`, `Directory_` FROM `Component`' -MaxRows $maxComponentRows)) {
+    $component = [string]$row.Values[0]
+    $componentDirectory = [string]$row.Values[1]
+    if (
+      [string]::IsNullOrWhiteSpace($component) -or
+      [string]::IsNullOrWhiteSpace($componentDirectory) -or
+      -not $allComponentSet.Add($component)
+    ) {
+      throw "MSI Component table contains an empty or duplicate identifier/directory: $component"
     }
-  ) | Sort-Object
-  $componentDifference = @(
-    Compare-Object -ReferenceObject $expectedInstallDirComponents -DifferenceObject $actualInstallDirComponents
-  )
-  if ($componentDifference.Count -ne 0) {
-    throw "MSI INSTALLDIR component guard drifted: $($componentDifference | Out-String)"
+    if (Test-InstallDirDescendant $componentDirectory) {
+      [void]$actualComponentSet.Add($component)
+    }
+  }
+  $actualInstallDirComponents = @($actualComponentSet)
+  [Array]::Sort($actualInstallDirComponents, [StringComparer]::Ordinal)
+  if ($actualInstallDirComponents.Count -lt $requiredInstallDirComponents.Count) {
+    throw 'MSI INSTALLDIR component closure is unexpectedly smaller than its required core'
+  }
+  foreach ($requiredComponent in $requiredInstallDirComponents) {
+    if ($actualInstallDirComponents -cnotcontains $requiredComponent) {
+      throw "MSI INSTALLDIR component closure is missing required core component $requiredComponent"
+    }
   }
 
   $maintenanceCondition = 'Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE'
-  $pureUninstallCondition = '$CMP_UninstallShortcut = 2 AND $InstallDirectoryAcl = 2 AND $Path = 2 AND $RegistryEntries = 2'
-  $missingAnchorCondition = "(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND NOT FYAGENT_PREVIOUS_INSTALLDIR AND NOT ($pureUninstallCondition)"
+  $pureUninstallProperty = 'FyAgentPureUninstall'
+  $firstInstallCondition = 'NOT Installed AND NOT WIX_UPGRADE_DETECTED AND NOT UPGRADINGPRODUCTCODE'
+  $missingAnchorCondition = "(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND NOT FYAGENT_PREVIOUS_INSTALLDIR AND NOT $pureUninstallProperty"
   $restoreDirectoryCondition = '(Installed OR WIX_UPGRADE_DETECTED OR UPGRADINGPRODUCTCODE) AND FYAGENT_PREVIOUS_INSTALLDIR'
-  $activeDirectoryCondition = "NOT ($pureUninstallCondition)"
-  $allowedDirectoryCondition = "$activeDirectoryCondition AND FYAGENT_INSTALLDIR_VALID = `"1`""
+  $activeDirectoryCondition = "NOT $pureUninstallProperty"
+  $allowedDirectoryCondition = "$firstInstallCondition AND $activeDirectoryCondition AND FYAGENT_INSTALLDIR_VALID = `"1`""
   $rejectedDirectoryCondition = "$activeDirectoryCondition AND FYAGENT_INSTALLDIR_VALID <> `"1`""
 
   foreach ($table in @('InstallUISequence', 'InstallExecuteSequence')) {
+    foreach ($row in @(Get-MsiRecords "SELECT ``Action``, ``Condition`` FROM ``$table``")) {
+      [string]$condition = $row.Values[1]
+      if ($condition.Length -gt 255) {
+        throw "MSI $table condition exceeds the 255-character table limit for $($row.Values[0])"
+      }
+    }
+  }
+  foreach ($row in @(Get-MsiRecords 'SELECT `Dialog_`, `Control_`, `Event`, `Argument`, `Condition` FROM `ControlEvent`')) {
+    [string]$condition = $row.Values[4]
+    if ($condition.Length -gt 255) {
+      throw "MSI ControlEvent condition exceeds the 255-character table limit for $($row.Values[0])/$($row.Values[1])/$($row.Values[2])/$($row.Values[3])"
+    }
+  }
+
+  foreach ($table in @('InstallUISequence', 'InstallExecuteSequence')) {
+    $enforceAllUsers = Assert-MsiSequenceCondition $table 'EnforceFyAgentAllUsers' '1'
+    $enforceOrdinaryShortcuts = Assert-MsiSequenceCondition $table 'EnforceFyAgentDisableAdvertisedShortcuts' '1'
     $clearAnchor = Assert-MsiSequenceCondition $table 'ClearFyAgentPreviousInstallDir' $maintenanceCondition
     $clearInstallDir = Assert-MsiSequenceCondition $table 'ClearMaintenanceInstallDir' $maintenanceCondition
+    $classifier = Assert-MsiSequenceCondition $table 'ClassifyFyAgentPureUninstall' '1'
     $missingAnchor = Assert-MsiSequenceCondition $table 'AbortUntrustedFyAgentMaintenance' $missingAnchorCondition
     $restoreInstallDir = Assert-MsiSequenceCondition $table 'RestoreInstallDirFromPrevious' $restoreDirectoryCondition
+    $costInitialize = Get-MsiSequenceRow $table 'CostInitialize'
     $appSearch = Get-MsiSequenceRow $table 'AppSearch'
     $costFinalize = Get-MsiSequenceRow $table 'CostFinalize'
+    Assert-MsiSequenceBefore $enforceAllUsers $costInitialize "$table enforce ALLUSERS before CostInitialize"
+    Assert-MsiSequenceBefore $enforceOrdinaryShortcuts $costInitialize "$table enforce DISABLEADVTSHORTCUTS before CostInitialize"
     Assert-MsiSequenceBefore $clearAnchor $appSearch "$table clear anchor before AppSearch"
     Assert-MsiSequenceBefore $clearInstallDir $appSearch "$table clear INSTALLDIR before AppSearch"
     Assert-MsiSequenceBefore $appSearch $restoreInstallDir "$table AppSearch before InstallDir restore"
     Assert-MsiSequenceBefore $restoreInstallDir $costFinalize "$table InstallDir restore before CostFinalize"
-    Assert-MsiSequenceBefore $costFinalize $missingAnchor "$table CostFinalize before missing-anchor abort"
+    Assert-MsiSequenceBefore $costFinalize $classifier "$table CostFinalize before native pure-uninstall classifier"
+    Assert-MsiSequenceBefore $classifier $missingAnchor "$table pure-uninstall classifier before missing-anchor abort"
     if ($table -eq 'InstallUISequence') {
       $validator = Assert-MsiSequenceCondition $table 'ValidateFyAgentInstallDirUi' $activeDirectoryCondition
     } else {
@@ -383,9 +635,19 @@ try {
     }
   }
 
+  $removeShortcuts = Get-MsiSequenceRow 'InstallExecuteSequence' 'RemoveShortcuts'
+  $removeFiles = Get-MsiSequenceRow 'InstallExecuteSequence' 'RemoveFiles'
+  Assert-MsiSequenceBefore $removeShortcuts $removeFiles 'InstallExecuteSequence RemoveShortcuts before RemoveFiles'
+
   Require-MsiRecord 'SELECT `Dialog` FROM `Dialog` WHERE `Dialog`=''FyAgentUnsafeInstallDirDlg''' 'unsafe-directory dialog'
-  Require-MsiRecord 'SELECT `Event` FROM `ControlEvent` WHERE `Dialog_`=''InstallDirDlg'' AND `Control_`=''Next'' AND `Event`=''DoAction'' AND `Argument`=''ValidateFyAgentInstallDirUi''' 'InstallDir Next native validator event'
-  Require-MsiRecord 'SELECT `Event` FROM `ControlEvent` WHERE `Dialog_`=''InstallDirDlg'' AND `Control_`=''Next'' AND `Event`=''SpawnDialog'' AND `Argument`=''FyAgentUnsafeInstallDirDlg''' 'InstallDir unsafe-directory dialog event'
+  $standardPathAccepted = '(WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID="1")'
+  Assert-MsiControlEventCondition 'SetTargetPath' '[WIXUI_INSTALLDIR]' '1' 1
+  Assert-MsiControlEventCondition 'DoAction' 'WixUIValidatePath' 'NOT WIXUI_DONTVALIDATEPATH' 2
+  Assert-MsiControlEventCondition 'SpawnDialog' 'InvalidDirDlg' 'NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"' 3
+  Assert-MsiControlEventCondition 'DoAction' 'ValidateFyAgentInstallDirUi' "$standardPathAccepted AND NOT FyAgentPureUninstall" 4
+  Assert-MsiControlEventCondition 'DoAction' 'ApplyValidatedFyAgentInstallDir' "$standardPathAccepted AND NOT Installed AND NOT WIX_UPGRADE_DETECTED AND NOT UPGRADINGPRODUCTCODE AND FYAGENT_INSTALLDIR_VALID=`"1`" AND NOT FyAgentPureUninstall" 5
+  Assert-MsiControlEventCondition 'SpawnDialog' 'FyAgentUnsafeInstallDirDlg' "$standardPathAccepted AND FYAGENT_INSTALLDIR_VALID<>`"1`" AND NOT FyAgentPureUninstall" 6
+  Assert-MsiControlEventCondition 'NewDialog' 'VerifyReadyDlg' "$standardPathAccepted AND FYAGENT_INSTALLDIR_VALID=`"1`" AND NOT FyAgentPureUninstall" 7
   if ($null -ne (Get-MsiRecord 'SELECT `Action` FROM `CustomAction` WHERE `Action`=''ValidateInstallDirectory''')) {
     throw 'MSI still contains the legacy scripted directory action'
   }
@@ -394,6 +656,7 @@ try {
   if ($template -notmatch "(?i)$Architecture") {
     throw "MSI summary template does not match ${Architecture}: $template"
   }
+  Write-Output "Windows MSI structure OK: architecture=$Architecture version=$AppVersion INSTALLDIR-components=$($actualInstallDirComponents -join ',')"
 } finally {
   if ($null -ne $database) {
     [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($database)

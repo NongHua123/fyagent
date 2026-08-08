@@ -1,7 +1,7 @@
 # GitHub Actions CI 验收矩阵
 
 > **交付状态**：Implemented and locally verified; remote runs pending, merge_group live run N/A by accepted exception / 已实施并完成本地验证，远程运行待验，merge_group live run 按已接受例外为 N/A
-> **关联决策**：13–19、24、49、70、81–87、105–115
+> **关联决策**：13–19、24、49、70、81–87、105–117
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
 [Observed / 已核实] commit `038675b3` 已冻结六个 Required dependency job 与一个稳定 aggregate；下表描述真实 workflow，不再是建议。修改 job ID 必须同步 pure-Node evaluator 与合同测试。
@@ -40,7 +40,7 @@ permissions:
 
 - 前端纯逻辑测试可以只在 Linux 运行；Node/pnpm **实际版本验证**仍在所有相关平台 job 执行。
 - Rust fmt 可以只在 Linux执行一次；Rust check/test 必须覆盖 Linux、Windows、macOS 条件编译面。Clippy 是否三平台执行可按真实兼容性/耗时调整，但至少 Linux 阻断，且 Windows/macOS 的编译警告不得被静默忽略。
-- Windows ARM64 的本地开发合同不强制在每个 PR 使用昂贵 runner；至少由定期/手动 smoke 或 Release preflight 验证，并在发布前成为阻断证据。
+- Windows ARM64 的平台合同不强制在每个 PR 使用昂贵 runner；至少由定期/手动 Actions native smoke 或 Release preflight 验证，并在发布前成为阻断证据。本地非 ARM64 宿主不能替代该 runner。
 - CI 不安装 mise。`mise run tasks:validate` 属于本地 canonical task；CI 运行同一底层 Node 合同解析器并校验提交的 task 元数据/生成文档。不得因此在 YAML 重复版本事实。
 
 ## 3. 运行时版本证据
@@ -69,11 +69,24 @@ rustfmt/clippy  == rust-toolchain.toml 对应组件
 | workflow/job 名重构但 exact dependency set 未同步 | contract failure                                                |
 | merge queue `merge_group` 事件                    | 静态 trigger 已覆盖；D114 接受当前治理下 live run=N/A，不是成功 |
 
-## 5. 非 CI 证据
+## 5. 远程运行观察
 
-- 当前宿主 `mise run check` 不是多平台 CI 的替代品；
+每个已授权触发的 run 使用同一证据顺序：
+
+```text
+trigger -> initiating primary flow blocks on whole run -> completed
+        -> one final run/job result read
+        -> failed-job logs once, only if the final result failed
+```
+
+不得启动后台/异步 monitor agent，不得通过反复 `list`/`view`/job/check 查询拼接状态，也不得在成功后无差别下载全部 job 日志。同步等待不授权 rerun、cancel、tag 或 publish；这些仍是独立门禁。
+
+## 6. 非 CI 证据
+
+- 当前宿主 `mise run check` 不是多平台 CI 的替代品；所有本地 dev/build/test/package/verify 只能针对当前宿主 OS/架构，非宿主结果必须来自匹配的 Actions native runner；
 - Tauri 安装包、Windows/macOS 无签名负向状态、Linux glibc 基线和精确 10 资产属于 Release preflight/formal workflow；签名与公证不是 v0.3.0 门禁；
 - 根据决策 49，不建立上游 merge 专用产品验收 workflow，但合并 PR 仍执行上述 Required CI 和冲突/许可审查。
 - 仓库不配置 ruleset/branch protection；`CI / Required` 是 workflow 输出，不是管理员强制的 merge policy。该残余风险已接受，不能宣称受保护。
-- 本地 21 个 CI/Labeler 合同测试、CI-safe 42 个 contract/898 个 app tests、全量 137 files/936 tests 和 actionlint 已通过；真实 PR/main/manual/Labeler run 仍 Pending。
+- 本地 21 个 CI/Labeler 合同测试、CI-safe 42 个 contract/898 个 app tests、全量 137 files/936 tests 和 actionlint 已通过；当前最终候选的 PR/main/manual/Labeler 成功证据仍 Pending，先前失败或过时 SHA 的运行不计入完成。
 - The project owner accepted D113/D114 on 2026-08-08。D114 确认 `merge_group` 因个人账户仓库且禁止保护规则而无法产生真实运行，在当前治理下记为 N/A 而非成功；接受的替代证据是 YAML trigger、失败关闭合同/静态测试及真实 PR/main/manual 运行，不以 manual dispatch 冒充 `merge_group`。
+- D116 清理后当前 Rust target 仅 `x86_64-unknown-linux-gnu`，`src-tauri/target/app` 与 `target/installer-actions` 已不存在；先前本地 Windows Light/MSI 仅是诊断。D117 的首次真实同步 whole-run 观察尚未发生，因此远程接受状态保持 Pending/NO-GO。

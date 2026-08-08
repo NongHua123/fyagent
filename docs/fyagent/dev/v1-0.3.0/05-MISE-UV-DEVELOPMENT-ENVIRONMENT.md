@@ -1,7 +1,7 @@
 # mise、uv 与开发任务环境设计
 
 > **交付状态**：Implemented and locally verified / 已实施并完成 Linux x64 本地验证；其他原生平台待远程验证
-> **关联决策**：6–12、20–34、57–80、115
+> **关联决策**：6–12、20–34、57–80、115–117
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
 ## 1. 管理链路
@@ -144,6 +144,7 @@ mise.toml
 ├─ release.toml
 └─ hooks.toml
 scripts/tasks/
+├─ host-native.mjs
 ├─ toolchain-check.mjs
 ├─ lockfile-check.mjs
 ├─ task-contract-check.mjs
@@ -152,7 +153,7 @@ scripts/tasks/
 └─ ...
 ```
 
-简单叶子 task 包装 package scripts/Cargo；复杂跨平台逻辑使用 Node `.mjs`，避免核心逻辑依赖 Bash。
+简单无目标叶子 task 可直接包装 package scripts/Cargo；Tauri dev/build 与 Cargo check/clippy/test 必须先经过 `host-native.mjs` 运行时边界。复杂跨平台逻辑使用 Node `.mjs`，避免核心逻辑依赖 Bash。
 
 ## 6. 规范 task 目录
 
@@ -180,13 +181,16 @@ scripts/tasks/
 - `upstream:merge:prepare` 确认后最多执行 `git merge --no-ff --no-commit`；
 - `clean:all` 确认并验证路径在仓库根内；不删 lock、Git、Trellis 状态或用户数据；
 - `release:check` 只读，不创建 tag/资产/Release。
+- `dev`/`build`/`build:binary`/`build:debug` 是固定操作，不接受任何 forwarded argv；`rust:test` 只接受一个非 option 测试名过滤器；
+- caller target/compiler/rustdoc/wrapper/runner/linker env、任意 target-specific Rust/rustdoc flags、普通/build/encoded flags 中的 `--target`，以及 `LD_PRELOAD`、DYLD loader 路径、`NODE_OPTIONS`/`NODE_PATH` 等 loader/runtime injection 控制（均含大小写变体）在启动 rustc/rustdoc/Cargo/Tauri 前失败关闭。
 
 ## 8. 本地 check 与 Actions
 
-`mise run check` 在当前宿主复用同一脚本/合同，但不能证明其它 OS。建议组成：
+`mise run check` 在当前宿主复用同一脚本/合同，但不能证明其它 OS 或架构。`pnpm dev`/`pnpm build` 及 canonical `mise run dev`、`build*`、`rust:check`、`rust:clippy`、`rust:test` 都先把 `process.platform`/`process.arch` 严格映射到六个受支持宿主之一，把 PATH 中的 rustc/rustdoc 解析为绝对路径并要求两者 `-vV` 的 host/release/commit 与当前宿主一致。随后 child env 显式 own 两个工具、清空 compiler wrapper 与 Rust/rustdoc flag 来源，并给 Tauri/Cargo 传 `--target <current-host>`；在工具链启动前还会遍历仓库、祖先目录、Cargo home 及递归 include 的有效 Cargo config，拒绝 build target/compiler/rustdoc/wrapper/flags 和 target runner/linker/flags，也拒绝 required-missing include、symlink 与 include cycle。Cargo config `[env]` 中的对应 protected key 按大小写无关规则统一拒绝，不允许 string/table/force 形式从 include 恢复已清空控制。Cargo test 另外通过 CLI TOML array 注入当前 target 的原生直通 runner，数组元素是当前绝对 Node、同一 `host-native.mjs`、固定子命令和 host target，含空格路径仍保持独立 argv。Cargo 追加 binary/filter argv 后，runner 验证 host target、仓库 target 路径边界、regular non-symlink、原生格式以及 ELF `e_machine`、PE `Machine` 或 thin Mach-O `cputype` 与目标完全一致，再使用 `spawnSync(..., shell:false)` 直接执行；不使用 cmd/PowerShell/Bash 等 shell。canonical task 不保留 caller 的安全自定义 flags。所有标准本地 dev/build/test/package/verify 命令只能使用实际宿主 OS/架构；不得通过 target 参数、linker、WSL/子系统桥接、外来可执行文件、模拟器、复制工具链或本地暂存的非宿主产物改变证据归属。建议组成：
 
 ```text
 check
+├─ host-native guard（无子进程）
 ├─ env:check
 ├─ check:frontend
 ├─ check:backend
@@ -194,6 +198,13 @@ check
 ```
 
 前端独立检查可并行；Cargo fmt/check/clippy/test 顺序执行；交互和修改型 task 不进入 check。
+`check` 的第一步是无子进程的 host-native guard，在 `env:check` 探测 rustc
+之前拒绝 caller compiler/wrapper/runner/linker/target environment 与 target-bearing
+flags；后续 Rust wrapper 仍独立核验绝对 rustc/rustdoc 身份并固定 Cargo env。
+
+低层 `pnpm tauri` 仅保留给经过审阅、刻意绕开本地 task API 的 Actions/维护命令，不是本地标准入口。合同不声称能拦截任意手写 `cargo`、`rustc` 或 `pnpm tauri` 命令；这类命令的输出也不能作为项目验收证据。
+
+纯逻辑/可移植测试可以在当前宿主验证合同，但不能升级为另一平台的原生结果。Windows、macOS、ARM64 及其他非宿主验证由匹配的 GitHub Actions native runner 独占。
 
 ## 9. lockfile 治理
 
@@ -205,6 +216,12 @@ check
 
 ## 10. 实施证据与剩余门禁
 
-实现 commit 为 `3d534710307d538e570c137231b1d80a64ac8ab7`；`mise run bootstrap`、`mise run check`、80-task 合同、lock 二次生成稳定性、hooks 模拟、version `0.3.0` 和 Linux x64 managed-toolchain 检查已通过。`mise.lock` SHA-256 为 `5f0d9df527ec1fdaf5532726ba30d330c74872786ad0380783064a36ceeefd9d`，解析 uv `0.12.2`。
+基础实现 commit 为 `3d534710307d538e570c137231b1d80a64ac8ab7`；`mise run bootstrap`、`mise run check`、80-task 合同、lock 二次生成稳定性、hooks 模拟、version `0.3.0` 和 Linux x64 managed-toolchain 检查已通过。D116 runtime hardening 又补充了共享 host planner、package/mise wrapper 路由、caller env/argv 拒绝和真实 wrapper smoke；当前变更仍未提交，不虚构 commit。`mise.lock` SHA-256 为 `5f0d9df527ec1fdaf5532726ba30d330c74872786ad0380783064a36ceeefd9d`，解析 uv `0.12.2`。
+
+D116 收口时已停止为本地 Windows 诊断启动的 cargo/rustc 进程，删除显式诊断临时目录，并清理 `src-tauri/target/app`（清理前 4.1 GiB）与 `target/installer-actions`（清理前 57.4 MiB）。当前复核确认两个目录均不存在，`rustup target list --installed` 只有 `x86_64-unknown-linux-gnu`。此前本地 Windows Light/MSI 输出仅是诊断信息，不是 Windows 原生验收。
 
 Windows x64/ARM64、Linux ARM64 和 macOS 的 native setup/env/hooks/task 证据仍待 Actions；实际 `v0.3.0` tag 与正式 Release 也未发生。因此 Child 3 保持 `in_progress`，不能从 lock 平台条目推断远程执行成功。
+
+## 11. Actions 运行观察纪律
+
+D117 规定：仅在触发已单独获授权后，由发起主流程同步等待整次 Actions run 到 `completed`；不得启动后台/异步监控代理，也不得反复执行 run/job/check 状态查询。等待结束后只读取一次最终 run/job 结果；成功时不批量抓日志，失败时才获取一次失败 job 日志。该观察流程不授权 rerun、cancel、tag 或 publish，且本轮没有触发或监控任何 Actions run。

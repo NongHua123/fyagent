@@ -48,17 +48,18 @@ run = "pnpm build"
 ["build:binary"]
 description = "Build the current host's release Tauri binary without a bundle"
 env = { FYAGENT_TASK_EFFECT = "build-output", FYAGENT_WINDOWS_MANIFEST = "dev" }
-run = "pnpm tauri build --no-bundle"
+run = "node scripts/tasks/host-native.mjs build:binary"
 
 ["build:debug"]
 description = "Build a debug Tauri bundle for the current host"
 env = { FYAGENT_TASK_EFFECT = "build-output", FYAGENT_WINDOWS_MANIFEST = "dev" }
-run = "pnpm tauri build --debug"
+run = "node scripts/tasks/host-native.mjs build:debug"
 
 [check]
 description = "Run the complete current-host environment, frontend, backend, and contract gate"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
 run = [
+  "node scripts/tasks/host-native.mjs guard",
   { task = "env:check" },
   { task = "check:frontend" },
   { task = "check:backend" },
