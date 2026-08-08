@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 10
-- **Last Active**: 2026-08-06
+- **Total Sessions**: 11
+- **Last Active**: 2026-08-09
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~321 | Active |
+| `journal-1.md` | ~359 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 11 | 2026-08-09 | Close FyAgent v0.3.0 modernization | `623b6924e3b8682321b26aa69c15dc6f0b9f6f09`, `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd`, `9e86dbb67d76a736da163a6099d794d2eb903bb6` | `codex/fyagent-v0.3.0-closeout` |
 | 10 | 2026-08-06 | FyAgent 0.2.1 secure installer and version contract | `7049a834` | `feature/fyagent-v1` |
 | 9 | 2026-08-06 | Restore Windows cross-built MSI packaging | `09042531` | `feature/fyagent-v1` |
 | 8 | 2026-08-05 | Sync upstream v3.19.1 | `b8c68eb104b31ab4d77027aaac82f90d054a9e97`, `ca0f055bd373217ebef9af907a3d828cab41c59c` | `feature/fyagent-v1` |

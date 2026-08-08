@@ -28,18 +28,29 @@ Provide a stable `mise run` repository API with standard version sources, uv-own
 
 ## Acceptance Criteria
 
-- [ ] supported platforms resolve exact toolchain
-- [ ] uv-managed Python and Trellis work on Windows ARM64
+- [x] supported platforms resolve exact toolchain
+- [x] uv-managed Python and Trellis work on Windows ARM64
 - [x] task DAG/metadata/docs checks pass
 - [x] all current local docs use canonical tasks
 - [x] Codex hooks are offline/no-sync and degrade visibly
-- [ ] Cargo workspace, both local lock packages, package metadata, version checks, and eventual tag agree on `0.3.0`
+- [x] Cargo workspace, both local lock packages, package metadata, version checks, and formal tag agree on `0.3.0`
 
 ## Evidence Boundary
 
 Implementation commit `3d534710307d538e570c137231b1d80a64ac8ab7`
 and the Linux x64/local-static evidence are recorded in
 `research/development-environment-evidence.md`. The Child 6 active-document
-migration is complete in `58101230e634e2280ef24937fad1942ed3d3d75f`. Native
-Windows, macOS, and Linux ARM64 evidence and the eventual formal `v0.3.0` tag
-remain pending; this child therefore remains in progress.
+migration is complete in `58101230e634e2280ef24937fad1942ed3d3d75f`. PR #7,
+exact-main Required CI, the five-target native preflight, the annotated
+`v0.3.0` tag, and the formal stable Release are verified. PR #8 run
+`31264604075` at head `623b6924e3b8682321b26aa69c15dc6f0b9f6f09`
+failed closed after x64 job `93120609402` passed: ARM64 job `93120609411`
+failed because setup-uv's version-only request selected `win-amd64`, and
+Required job `93121912798` failed. Commit
+`4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` switched to a full uv request
+with managed Python. Run `31265504901` then passed x64 job `93122857985`,
+ARM64 job `93122858012`, and Required job `93123992476`. This is the native
+execution evidence that closes the Windows ARM64 uv-managed Python and Trellis
+criterion. The task remains `in_progress` only until its ordered archive;
+manifest, archive, journal, final PR/main CI, merge, and cleanup stages are not
+claimed here.

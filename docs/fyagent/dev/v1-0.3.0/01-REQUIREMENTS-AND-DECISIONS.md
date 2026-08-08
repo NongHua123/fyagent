@@ -1,7 +1,7 @@
 # 需求规格与决策基线
 
-> **交付状态**：Core implementation locally verified / 核心实施已完成本地验证；Child 6 进行中且远程发布验收待完成
-> **关联决策**：1–117（含历史、执行覆盖、已接受治理例外与当前执行纪律）
+> **交付状态**：Release requirements verified / 发布需求已完成远程验收；closeout 与归档进行中
+> **关联决策**：1–118（含历史、执行覆盖、已接受治理例外与当前执行纪律）
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
 ## 1. 背景
@@ -114,10 +114,10 @@
 
 ## 6. 验收总则
 
-- 所有 `D-001`–`D-117` 可追踪到设计、文件、子任务和证据状态；历史行由覆盖行解释，不篡改原时间线；
-- 合并、配置、依赖和本地 CI/Release 合同已有真实提交证据；远程 Actions、原生包和 Release 结果必须由后续运行产生；
+- 所有 `D-001`–`D-118` 可追踪到设计、文件、子任务和证据状态；历史行由覆盖行解释，不篡改原时间线；
+- 合并、配置、依赖和本地 CI/Release 合同已有真实提交证据；PR #7、same-SHA main CI、五原生目标 preflight、formal run、stable/latest Release、13 附件、独立重下载和 12-subject attestation 也已由真实远程证据满足；
 - 不得用“默认无告警”“编译成功”或“某平台静态检查”替代明确的跨平台、无签名负向状态或依赖图验收；
 - The project owner accepted D113/D114 on 2026-08-08：D113 确认 merge → main CI → exact-main/workflow-SHA preflight 的发布顺序；D114 确认真实 `merge_group` 在当前治理下为 N/A 的验证例外；
-- D116 固化“本地仅宿主原生、非宿主只走 Actions native runner”；D117 固化“主流程同步等待整次 run，再一次读取结果，失败后才取日志”。二者不把任何尚未发生的远程运行变成已验证；
-- `merge_group` 仍无法产生真实事件，且不得把静态 YAML 合同写成事件成功；D114 接受的替代证据是 YAML trigger、失败关闭合同/静态测试以及后续真实 PR/main/manual 运行，后三类远程运行仍待验证；
-- 任一违反身份、许可、远程安全、正式发布来源或 strict 工具链契约的情况均为 NO-GO。
+- D116 固化“本地仅宿主原生、非宿主只走 Actions native runner”；D117 固化“主流程同步等待整次 run，再一次读取结果，失败后才取日志”。本次 PR/main/preflight/formal 运行已按 D117 形成单一有序证据链，且非宿主结果全部来自匹配的 Actions native runner；
+- `merge_group` 仍无法产生真实事件，且不得把静态 YAML 合同写成事件成功；D114 保持 live run=N/A 的已接受例外，其 YAML trigger、失败关闭静态合同与真实 PR/main/manual 替代证据已完整；
+- 任一违反身份、许可、远程安全、正式发布来源或 strict 工具链契约的情况均是未来 Release 的 NO-GO；v0.3.0 的这些门禁已有通过证据，但无 ruleset/branch protection/Release environment 的已接受残余风险仍持续存在。

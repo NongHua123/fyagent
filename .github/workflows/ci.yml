@@ -271,22 +271,71 @@ jobs:
         run: cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml
 
   windows-msi-query:
-    name: Windows Installer Query (${{ matrix.architecture }})
+    name: Windows Native Contracts (${{ matrix.architecture }})
     timeout-minutes: 15
+    env:
+      UV_MANAGED_PYTHON: "true"
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: windows-2022
             architecture: X64
+            python_architecture: x86_64
+            python_platform: win-amd64
           - runner: windows-11-arm
             architecture: Arm64
+            python_architecture: aarch64
+            python_platform: win-arm64
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Resolve locked toolchain facts
+        id: toolchain-facts
+        run: node scripts/ci/verify-toolchain.mjs --emit-github-output
+
+      - name: Setup uv and managed Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ steps.toolchain-facts.outputs.uv-version }}
+          python-version: cpython-${{ steps.toolchain-facts.outputs.python-version }}-windows-${{ matrix.python_architecture }}-none
+          enable-cache: false
+
+      - name: Synchronize locked Python environment
+        run: uv sync --locked --managed-python
+
+      - name: Verify managed Windows toolchains
+        run: node scripts/ci/verify-toolchain.mjs --tools node,uv,python
+
+      - name: Exercise Trellis through managed Python
+        shell: pwsh
+        run: |
+          $pythonPlatform = uv run --locked --no-sync python -c "import sysconfig; print(sysconfig.get_platform())"
+          if ($LASTEXITCODE -ne 0 -or $pythonPlatform -ne '${{ matrix.python_platform }}') {
+            throw "Managed Python platform mismatch: expected ${{ matrix.python_platform }}, got $pythonPlatform"
+          }
+          $report = uv run --locked --no-sync python .trellis/scripts/task.py list --json
+          if ($LASTEXITCODE -ne 0) {
+            throw "Trellis task listing failed with exit code $LASTEXITCODE"
+          }
+          $parsed = $report | ConvertFrom-Json
+          if (
+            $null -eq $parsed -or
+            -not ($parsed.PSObject.Properties.Name -contains 'tasks') -or
+            -not ($parsed.tasks -is [System.Array])
+          ) {
+            throw "Trellis task listing did not return a tasks array"
+          }
+          Write-Host "Verified Trellis with $($parsed.tasks.Count) active task(s)"
 
       - name: Exercise native Windows Installer query boundary
         shell: pwsh

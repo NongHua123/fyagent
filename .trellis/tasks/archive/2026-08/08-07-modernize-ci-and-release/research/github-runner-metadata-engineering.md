@@ -364,3 +364,18 @@ All web references below were checked on 2026-08-08. GitHub repository `main` li
 4. Standard artifact attestation authenticates subject bytes and workflow provenance under GitHub's trust model. It does not protect against a trusted workflow deliberately writing false custom values; fail-closed writer/validator review and branch/release controls remain part of the trust boundary.
 5. GitHub runner/runner-images implementation links track `main` and can drift. They are used only to explain the observed absence and classify `ImageOS`/`ImageVersion` as implementation details. The recommended contract depends on public GitHub context/container documentation, OCI digest semantics, and values measured by the workflow—not on those internal source paths.
 6. No implementation, spec, test, workflow, or public document was modified, and no test was executed in this research-only subtask. The prescribed commands and the native Actions preflight remain verification work for the implement/check phases.
+
+## Outcome / Closure
+
+The historical caveats above remain accurate for the research-only snapshot.
+The source-explicit metadata contract was subsequently implemented, passed
+corrected PR Required CI `31258884239` and exact-main CI `31259389682`, then
+completed both digest-pinned Linux x64/ARM64 legs in full preflight
+`31259905022`. Formal run `31260931509` published the matching metadata and
+attested subjects in stable Release ID `367220197`; independent re-download
+matched the release allowlist, sizes, SHA-256 values, and URLs.
+
+No `ImageOS`/`ImageVersion` compatibility field was restored. The realized
+contract continues to distinguish workflow-selected runner labels, observed
+runner context, measured container/user-space facts, and configured OCI child
+digests.

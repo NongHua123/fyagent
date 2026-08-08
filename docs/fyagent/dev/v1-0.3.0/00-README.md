@@ -1,8 +1,8 @@
 # FyAgent 上游同步、工具链与发布现代化设计包
 
-> **交付状态**：Implementation in progress / 实施中
-> **关联决策**：1–117（含历史、执行覆盖与已接受治理例外）
-> **证据边界**：Child 1、2、5 已实施、本地验证并归档；Child 3、4 已实施且本地验证，远程证据待补；Child 6 实施中；parent 与正式 Release closeout 待完成。
+> **交付状态**：Released; repository closeout in progress / v0.3.0 已发布，仓库收尾进行中
+> **关联决策**：1–118（含历史、执行覆盖与已接受治理例外）
+> **证据边界**：Child 1、2、5 已归档；Child 3 的 Windows x64/ARM64 locked uv/Python/Trellis closeout smoke 与 Child 4 的发布验收均已远程验证，但两个 task 仍待 closeout 归档；`v0.3.0` 已以 exact-main SHA 完成 preflight、formal Release、13 附件与 attestation 独立复核。最终设计包 manifest 已在 closeout 证据冻结后重建并复验；当前剩余步骤是 Child 3/4/6 与 parent 归档、journal、final PR CI/merge、exact-main CI 与分支清理。
 
 ## 1. 目的
 
@@ -13,12 +13,14 @@
 [Decision / 已决策] 2026-08-08 的执行授权覆盖了原“只生成文档和 ZIP”的边界，并批准代码、配置、Git、Actions、PR、tag、Release 和 Trellis 归档。当前真实状态是：
 
 - 上游两父 merge、交叉构建退役、mise/uv/task API、CI/Labeler、无签名 Release workflow 和 DEP0040 根因修复已经落地并完成本地合同验证；
-- 产品版本已更新为 `0.3.0`，正式 tag 固定为 `v0.3.0`，但 tag 与 GitHub Release 尚未创建；
+- 产品版本为 `0.3.0`；annotated tag `v0.3.0` 的 tag object 为 `e6706d4bdc33a184cf641204574df1fc2962ca4c`，peeled commit 为 `bde1370bbaffd345c3d9875708615eaf96140591`；
 - v0.3.0 明确不签名、不公证、不 staple，不使用签名 secrets 或 Release environment；
 - 仓库公开，但不配置 branch/tag ruleset、branch protection 或 Release environment；来源资格仅由 workflow 失败关闭检查约束，该残余风险已接受；
 - The project owner accepted D113/D114 on 2026-08-08：D113 确认 post-merge exact-main/workflow-SHA preflight 顺序；D114 确认当前个人仓库/无保护治理下真实 `merge_group` 运行不适用（N/A）的验证例外；
 - D116 已把本地标准 native 入口收紧为运行时验证并显式固定当前宿主 target；任意非宿主平台只能由匹配的 Actions native runner 验证。D117 固定触发后的同步 whole-run 等待与一次性结果读取纪律；
-- 真实 PR/main/full-matrix/preflight/13 附件/attestation/Release URL 证据仍待远程执行，不得从本地测试推断；
+- [PR #8](https://github.com/NongHua123/fyagent/pull/8) 首次 [run `31264604075`](https://github.com/NongHua123/fyagent/actions/runs/31264604075) 在 head `623b6924e3b8682321b26aa69c15dc6f0b9f6f09` 上证明 x64 job `93120609402` 成功，但 version-only `setup-uv` 在 Windows on ARM 选择 `win-amd64`，导致 ARM64 job `93120609411` 与 Required `93121912798` 失败；commit [`4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd`](https://github.com/NongHua123/fyagent/commit/4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd) 改用 uv 官方完整 `implementation-version-os-arch-libc` request 并强制 managed Python；修复后的 [run `31265504901`](https://github.com/NongHua123/fyagent/actions/runs/31265504901) 中 x64 `93122857985`、ARM64 `93122858012` 与 Required `93123992476` 均成功，Child 3/D116 原生 smoke 已远程验证；
+- [PR #7](https://github.com/NongHua123/fyagent/pull/7)、[PR CI](https://github.com/NongHua123/fyagent/actions/runs/31258884239)、[main CI](https://github.com/NongHua123/fyagent/actions/runs/31259389682)、[exact-main preflight](https://github.com/NongHua123/fyagent/actions/runs/31259905022) 与 [formal Release run](https://github.com/NongHua123/fyagent/actions/runs/31260931509) 均已成功；[stable/latest v0.3.0 Release](https://github.com/NongHua123/fyagent/releases/tag/v0.3.0) 含 exact 13 附件；
+- 独立重下载校验了 13 附件 allowlist、manifest 的 10 个 installer 尺寸/SHA-256/URL、formal metadata 的 same-SHA Required CI 绑定，并使用官方 checksum 核验的 GitHub CLI 2.97.0 和本地 bundle 验证全部 12 个 attestation subjects；
 - `merge_group` YAML trigger 与失败关闭合同已实现；个人账户仓库且禁止保护规则使 Merge Queue 无法启用，因此不会有真实事件成功证据。D114 接受以该静态合同加后续真实 PR/main/manual 运行作为替代证据，不得把 N/A 写成成功运行。
 
 ## 3. 证据标签
@@ -66,8 +68,8 @@
 - CI/Labeler 已使用明确 runner、固定 Action SHA、最小权限和稳定 Required gate；
 - Linux Release 在新宿主的同架构 Ubuntu 22.04 容器中构建；
 - 已删除 `cross-fetch` polyfill，使用 Node 原生 Fetch，并用行为、依赖图和弃用探针防止 `DEP0040` 回流；
-- 活动 README、CONTRIBUTING、Trellis specs/workflow/skills 已完成本地迁移；五个旧任务已以 `superseded` 语义归档，剩余新任务只在真实远程 closeout 证据完整后归档。
+- 活动 README、CONTRIBUTING、Trellis specs/workflow/skills 已完成迁移；五个旧任务已以 `superseded` 语义归档，远程发布、closeout native smoke 与最终 manifest 前置均已满足；剩余新任务现在按规定顺序 archive，随后记录 journal。
 
 ## 8. 完整性
 
-根目录现有 `MANIFEST.sha256` 是原始设计包快照，当前修订期间必然 stale。只有正式 Release 和 closeout 证据落地后才重新生成，覆盖本目录中除清单自身外的最终文件；在此之前不得把它作为当前字节完整性证据。
+根目录 `MANIFEST.sha256` 已在 closeout native 证据与本设计包字节冻结后确定性重建并复验，覆盖本目录中除清单自身外的 134 个最终普通文件；路径按 `LC_ALL=C` 排序，清单不自引用且包内无 symlink。`.trellis/tasks` archive 不属于该清单，后续归档与 journal 不需要再次改写它。

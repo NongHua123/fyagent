@@ -108,12 +108,51 @@ Python   3.14.7
 uv       0.12.2
 ```
 
-## Evidence boundary
+## Remote and release evidence
 
-The current host proves Linux x64 only. A lock entry is not native execution
-evidence: Windows x64/ARM64, Linux ARM64, and macOS must still run locked setup,
-environment ownership, hooks, and canonical tasks in GitHub Actions. Active
-README/CONTRIBUTING/spec examples that remain on the explicit handoff allowlist
-belong to `08-07-migrate-docs-and-trellis-specs`. The actual `v0.3.0` tag and
-formal Release have not occurred. Those unchecked acceptance items keep this
-child open and prevent its archive from overstating completion.
+- PR #7 corrected Required CI run `31258884239` passed. Its predecessor
+  `31258303784` failed closed in the new native Windows MSI fixture and was
+  repaired without a compatibility fallback.
+- Merge commit `bde1370bbaffd345c3d9875708615eaf96140591` passed exact-main
+  Required CI run `31259389682`.
+- Exact-main preflight `31259905022` passed Windows x64, Windows ARM64, Linux
+  x64, Linux ARM64, and macOS Universal native build/package groups plus exact
+  aggregation and attestation.
+- Annotated `v0.3.0` tag object
+  `e6706d4bdc33a184cf641204574df1fc2962ca4c` peels to that exact main source.
+- Formal run `31260931509` published the stable, non-prerelease Release
+  <https://github.com/NongHua123/fyagent/releases/tag/v0.3.0> with exactly ten
+  installers and three evidence attachments. Independent re-download and all
+  12 subject attestations passed.
+
+These runs prove version/tag agreement, pinned Release toolchains, and native
+release-package architecture. D117 observation also passed: each initiating
+flow waited synchronously for the whole run to complete and then read final
+results once; only the already-final failed PR run had failed-job logs
+retrieved.
+
+## Closeout native evidence and remaining boundary
+
+The current host proves Linux x64 only, and no local non-host command was used.
+A lock entry is not native execution evidence. The integrated
+`windows-11-arm` Required job exercised the MSI query fixture, while the formal
+Windows ARM64 Release job exercised Node/Rust compilation and MSI packaging;
+neither ran uv-managed Python or a Trellis wrapper.
+
+PR #8 <https://github.com/NongHua123/fyagent/pull/8> extends both Windows x64
+and ARM64 Required legs with a Node plus locked uv/Python setup,
+`uv sync --locked`, toolchain verification, and a Trellis task-list smoke before
+the MSI fixture. Run `31264604075`, at head
+`623b6924e3b8682321b26aa69c15dc6f0b9f6f09`, failed closed after x64 job
+`93120609402` passed: ARM64 job `93120609411` failed because setup-uv's
+version-only request selected `win-amd64`, and Required job `93121912798`
+failed. Commit `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` switched to a full
+uv request with managed Python. Run `31265504901` then passed x64 job
+`93122857985`, ARM64 job `93122858012`, and Required job `93123992476`.
+
+The original acceptance criterion “uv-managed Python and Trellis work on
+Windows ARM64” is therefore complete. The formal Release is verified and GO,
+the final design-package manifest is rebuilt and verified, and this child
+remains active only until ordered archive. Archives, journal, final PR CI/merge,
+exact-main CI, and branch cleanup remain pending closeout stages; D114 remains
+N/A.

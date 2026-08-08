@@ -32,11 +32,19 @@ Make current human/agent documentation, Trellis specs/tasks, and generated task 
 - [x] source/provenance and FyAgent CHANGELOG records remain
 - [x] documentation contract checks pass
 - [x] Release Notes and download guidance explain unsigned macOS Privacy & Security → Open Anyway and Windows SmartScreen behavior safely
-- [ ] real CI/preflight/Release/asset/digest/attestation evidence is recorded before final new-task archival
+- [x] real CI/preflight/Release/asset/digest/attestation evidence is recorded before final new-task archival
 
 ## Evidence Boundary
 
-Implementation was authorized on 2026-08-08. Current-contract migration and the
-five old superseded archives are locally complete; formal Release closeout,
-new-task archive, final manifest, and journal evidence remain pending until each
-stage is real.
+Implementation was authorized on 2026-08-08. Current-contract migration, the
+five old superseded archives, and formal Release evidence are complete. The
+closeout branch records the real run, Release, digest, metadata, and attestation
+results. PR #8 run `31264604075` failed closed when setup-uv's version-only
+request selected `win-amd64` for ARM64. Commit
+`4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` changed it to a full uv request
+with managed Python, and run `31265504901` passed x64 job `93122857985`, ARM64
+job `93122858012`, and Required job `93123992476`. Native evidence writeback is
+therefore complete. The final design-package manifest is rebuilt and verified;
+ordered archive remains this child's prerequisite. Parent archive, journal,
+final closeout CI/merge, exact-main CI, and branch cleanup are later ordered
+stages. D114 remains N/A, not successful.

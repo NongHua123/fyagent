@@ -1,9 +1,19 @@
 # FyAgent v0.3.0 正式 Release 资产与事务合同
 
-> **交付状态**：本地合同已实施并验证；原生预演、正式发布与独立复核待远端证据
+> **交付状态**：已实施并由原生预演、正式发布及独立重下载/attestation 复核验证；Trellis closeout 仍在进行
 >
 > **产品/tag**：`0.3.0` / `v0.3.0`
 > **发布性质**：公开、稳定、无签名、手动下载安装
+
+实现证据冻结在 exact main SHA
+`bde1370bbaffd345c3d9875708615eaf96140591`：full-matrix preflight
+`31259905022`、formal Release run `31260931509` 和 stable Release
+[`v0.3.0`](https://github.com/NongHua123/fyagent/releases/tag/v0.3.0)
+均成功。Release ID `367220197` 恰好包含本合同的 10 个安装资产与 3
+个证据附件；独立重下载的 allowlist、size、SHA-256、URL 以及全部 12
+个 attestation subjects 已复核。完整台账见
+[`DELIVERY-METADATA.md`](../DELIVERY-METADATA.md) 与
+[`VALIDATION-REPORT.md`](../VALIDATION-REPORT.md)。
 
 ## 1. 唯一来源
 

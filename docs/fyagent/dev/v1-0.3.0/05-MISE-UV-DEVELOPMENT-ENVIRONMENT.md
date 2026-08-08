@@ -1,6 +1,6 @@
 # mise、uv 与开发任务环境设计
 
-> **交付状态**：Implemented and locally verified / 已实施并完成 Linux x64 本地验证；其他原生平台待远程验证
+> **交付状态**：Implemented and native-remote verified / 已实施并完成 Linux x64 本地验证及匹配 runner 的原生远程验证
 > **关联决策**：6–12、20–34、57–80、115–117
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
@@ -216,12 +216,24 @@ flags；后续 Rust wrapper 仍独立核验绝对 rustc/rustdoc 身份并固定 
 
 ## 10. 实施证据与剩余门禁
 
-基础实现 commit 为 `3d534710307d538e570c137231b1d80a64ac8ab7`；`mise run bootstrap`、`mise run check`、80-task 合同、lock 二次生成稳定性、hooks 模拟、version `0.3.0` 和 Linux x64 managed-toolchain 检查已通过。D116 runtime hardening 又补充了共享 host planner、package/mise wrapper 路由、caller env/argv 拒绝和真实 wrapper smoke；当前变更仍未提交，不虚构 commit。`mise.lock` SHA-256 为 `5f0d9df527ec1fdaf5532726ba30d330c74872786ad0380783064a36ceeefd9d`，解析 uv `0.12.2`。
+基础实现 commit 为 `3d534710307d538e570c137231b1d80a64ac8ab7`；`mise run bootstrap`、`mise run check`、80-task 合同、lock 二次生成稳定性、hooks 模拟、version `0.3.0` 和 Linux x64 managed-toolchain 检查已通过。D116 runtime hardening 由 `a1c1238c4f7ec8f80238edfb2618823bcedf49f5` 补充共享 host planner、package/mise wrapper 路由、caller env/argv 拒绝和真实 wrapper smoke。`mise.lock` SHA-256 为 `5f0d9df527ec1fdaf5532726ba30d330c74872786ad0380783064a36ceeefd9d`，解析 uv `0.12.2`。
 
 D116 收口时已停止为本地 Windows 诊断启动的 cargo/rustc 进程，删除显式诊断临时目录，并清理 `src-tauri/target/app`（清理前 4.1 GiB）与 `target/installer-actions`（清理前 57.4 MiB）。当前复核确认两个目录均不存在，`rustup target list --installed` 只有 `x86_64-unknown-linux-gnu`。此前本地 Windows Light/MSI 输出仅是诊断信息，不是 Windows 原生验收。
 
-Windows x64/ARM64、Linux ARM64 和 macOS 的 native setup/env/hooks/task 证据仍待 Actions；实际 `v0.3.0` tag 与正式 Release 也未发生。因此 Child 3 保持 `in_progress`，不能从 lock 平台条目推断远程执行成功。
+PR #7、exact-main Required CI `31259389682`、五 target preflight
+`31259905022`、annotated `v0.3.0` 和 formal Release run `31260931509`
+已经证明实现与原生打包合同。closeout [PR #8](https://github.com/NongHua123/fyagent/pull/8)
+补齐 Windows x64/ARM64 Required smoke：锁定 uv/Python、执行
+`uv sync --locked --managed-python`、校验 Python native platform，并通过
+managed Python 调用 Trellis JSON task list。首次 run `31264604075` 的 x64 job
+`93120609402` 成功，但 version-only `setup-uv` 在 Windows on ARM 选择
+`win-amd64`，ARM64 job `93120609411` 和 Required `93121912798` 因此失败。
+commit `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` 改用 uv 官方完整
+`implementation-version-os-arch-libc` request 并强制 managed Python；修复后的
+run `31265504901` 中 x64 `93122857985`、ARM64 `93122858012` 与 Required
+`93123992476` 均成功。因此 Child 3/D116 原生 smoke 已远程验证；task 仍因后续
+manifest/archive/journal 门禁保持 `in_progress`。
 
 ## 11. Actions 运行观察纪律
 
-D117 规定：仅在触发已单独获授权后，由发起主流程同步等待整次 Actions run 到 `completed`；不得启动后台/异步监控代理，也不得反复执行 run/job/check 状态查询。等待结束后只读取一次最终 run/job 结果；成功时不批量抓日志，失败时才获取一次失败 job 日志。该观察流程不授权 rerun、cancel、tag 或 publish，且本轮没有触发或监控任何 Actions run。
+D117 规定：仅在触发已单独获授权后，由发起主流程同步等待整次 Actions run 到 `completed`；不得启动后台/异步监控代理，也不得反复执行 run/job/check 状态查询。等待结束后只读取一次最终 run/job 结果；成功时不批量抓日志，失败时才获取一次失败 job 日志。PR #7、exact-main、preflight、formal Release，以及 closeout PR 的首次失败 run `31264604075` 和修复成功 run `31265504901` 均按该纪律观察。该观察流程本身不扩张 rerun、cancel、tag 或 publish 权限。

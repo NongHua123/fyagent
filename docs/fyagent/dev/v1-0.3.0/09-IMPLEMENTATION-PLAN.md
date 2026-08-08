@@ -1,7 +1,7 @@
 # 分阶段实施计划
 
-> **交付状态**：Phases 0–5 implemented; Phase 6 in progress; Phase 7 remote evidence pending / 阶段 0–5 已实施，阶段 6 进行中，阶段 7 待远程验收
-> **关联决策**：1–117
+> **交付状态**：Phases 0–5 and release gates complete; Phase 6/7 repository closeout in progress / 阶段 0–5 与发布门禁已完成，阶段 6/7 的仓库收尾进行中
+> **关联决策**：1–118
 > **证据等级**：本文使用 `[Observed / 已核实]`、`[Decision / 已决策]`、`[Proposed / 拟实施]`、`[Pending Verification / 待验证]`。
 
 ## 1. 总体顺序
@@ -23,7 +23,7 @@ Phase 7  最终 CI、预演和 Release 验收
 
 | 任务                                     | 输入                 | 主要输出                                               | 依赖                           |
 | ---------------------------------------- | -------------------- | ------------------------------------------------------ | ------------------------------ |
-| Parent modernization                     | 决策 1–117           | 跨子任务契约、最终追踪                                 | 全部 child                     |
+| Parent modernization                     | 决策 1–118           | 跨子任务契约、最终追踪                                 | 全部 child                     |
 | merge-cc-switch-v3-19-2                  | 55173d2b、上游 tag   | 显式 merge commit、许可来源                            | Phase 0                        |
 | remove-local-cross-builds                | merge 结果           | 删除脚本/task/spec/test                                | Child 1                        |
 | redesign-mise-uv-development-environment | 标准版本选择         | mise/uv/task/lock 合同                                 | Child 2                        |
@@ -42,8 +42,10 @@ Phase 7  最终 CI、预演和 Release 验收
 7. `eb748f9c` / `58101230` — Trellis 合同修复以及活动文档、长期 specs、决策追踪；
 8. `1d3849e6` — 五个旧任务的 superseded archive；
 9. `580c5efa` — 归档后活动任务统一验证回归；
-10. 实现 PR 采用 GitHub merge commit 合入 `main`；
-11. 正式 Release 后 closeout PR — 远程证据、剩余新任务归档、journal。
+10. `d0af898a` / `d8c26b70` — D118 原生查询/metadata 工程化与 empty cleanup accumulator 根因修复；
+11. [PR #7](https://github.com/NongHua123/fyagent/pull/7) 通过 [PR CI `31258884239`](https://github.com/NongHua123/fyagent/actions/runs/31258884239)，以 merge commit `bde1370bbaffd345c3d9875708615eaf96140591` 合入 `main`；
+12. [main CI `31259389682`](https://github.com/NongHua123/fyagent/actions/runs/31259389682) → [preflight `31259905022`](https://github.com/NongHua123/fyagent/actions/runs/31259905022) → annotated `v0.3.0` → [formal run `31260931509`](https://github.com/NongHua123/fyagent/actions/runs/31260931509) → [stable/latest Release](https://github.com/NongHua123/fyagent/releases/tag/v0.3.0) 已完成；
+13. [closeout PR #8](https://github.com/NongHua123/fyagent/pull/8) — 首次 run `31264604075` 暴露 Windows on ARM version-only Python 选择错误，commit `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` 修复后 run `31265504901` 已通过 Windows x64/ARM64 locked uv/Python/Trellis + MSI fixture Required gate；最终 manifest 已重建并复验，当前待归档剩余新任务、记录 journal，并在 final PR CI/merge 与 exact-main CI 后清理分支。
 
 实际可按审查大小拆分，但 merge commit 不得混入 2–9。
 
@@ -113,4 +115,4 @@ D117 不改变任何触发或发布授权。获得单次触发授权后，发起
 
 原计划中的“待合入 main 的同一 SHA preflight”与 GitHub merge commit 及标准 artifact attestation 的 `GITHUB_SHA` provenance 不兼容。已实施的安全顺序为：实现 PR merge → main 的 `CI / Required` 成功 → `source_sha == GITHUB_SHA == GITHUB_WORKFLOW_SHA` 的 manual preflight → tag → formal Release。The project owner accepted D113/D114 on 2026-08-08，其中 D113 明确接受该顺序；不得把 pre-merge candidate 标记为 trusted-main attestation provenance，也不得把决策接受写成 preflight 已运行。
 
-D113/D114 继续有效；D116/D117 只收紧执行与取证方式。当前最终候选尚未形成满足门禁的 PR/main/manual、preflight、formal Release 与 closeout 完整成功证据；先前失败、诊断或过时 SHA 的运行不能升级为完成，整体仍为 Pending/NO-GO。
+D113/D114 继续有效；D116/D117 只收紧执行与取证方式。PR/main/manual、preflight、formal Release、13 附件与独立复核已形成满足门禁的成功证据，v0.3.0 已 `Released / Verified`。closeout Windows native smoke 也已由修复后 run `31265504901` 的 x64 job `93122857985`、ARM64 job `93122858012` 与 Required `93123992476` 远程验证，最终设计包 manifest 已按冻结字节重建并复验。当前 Pending 仅限按 Child 3 → Child 4 → Child 6 → parent 归档、journal、final PR CI/merge、exact-main CI 与非 main 分支清理。它们不改写已发布事实，但仍阻止提前宣称 parent closeout 已完成。
